@@ -15,25 +15,29 @@ Ingliz tili ustozlari va o'quvchilari uchun Telegram Mini App. Butun interfeys o
    - O'quvchi: ism familiya, telefon, ota-ona telefoni, maktab sinfi, guruh.
    - Sinf bo'yicha filtr + ism bo'yicha qidiruv.
 
-Demo ma'lumotlar: **2 guruh, 6 o'quvchi** (`public/js/data.js`).
+Demo ma'lumotlar: **2 guruh, 6 o'quvchi** (`js/data.js`).
 
 ## Ishga tushirish
 
 ```bash
 npm install      # test uchun (jsdom)
 npm test         # interaktiv smoke-test (56 tekshiruv)
-npm start        # http://localhost:3000 (public/ papkasini server qiladi)
+npm start        # http://localhost:3000
 ```
 
 ## Tuzilishi
 
 ```
-public/
-  index.html      — ilova qobigi
-  css/styles.css  — Telegram tema o'zgaruvchilari bilan (yorug'/qorong'i)
-  js/data.js      — mock ma'lumotlar
-  js/app.js       — auth, ekranlar, guruh/o'quvchi boshqaruvi
+index.html        — ilova qobigi
+css/styles.css    — Telegram tema o'zgaruvchilari bilan (yorug'/qorong'i)
+js/data.js        — mock ma'lumotlar
+js/app.js         — auth, ekranlar, guruh/o'quvchi boshqaruvi
 test/smoke.js     — jsdom asosida butun oqimni sinovdan o'tkazadi
+.nojekyll         — GitHub Pages'ga Jekyll'siz to'g'ridan-to'g'ri serverlash
 ```
+
+## GitHub Pages
+
+Sayt `main` ildizidan serverlanadi: https://revilend.github.io/EnglishappMuzaffar/
 
 Ma'lumotlar brauzer `localStorage`'ida saqlanadi (Step 1 uchun mock).

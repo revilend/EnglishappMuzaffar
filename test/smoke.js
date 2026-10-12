@@ -5,7 +5,7 @@ const path = require('path');
 const { JSDOM } = require('jsdom');
 
 const root = path.join(__dirname, '..');
-const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8')
+const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
   .replace(/<script src="https:\/\/telegram\.org[^"]*"><\/script>/, '');
 
 let failed = 0;
@@ -18,8 +18,8 @@ const dom = new JSDOM(html, { url: 'http://localhost:3000/', runScripts: 'outsid
 const win = dom.window;
 const doc = win.document;
 
-win.eval(fs.readFileSync(path.join(root, 'public', 'js', 'data.js'), 'utf8') + '\nwindow.APP_DATA = APP_DATA;');
-win.eval(fs.readFileSync(path.join(root, 'public', 'js', 'app.js'), 'utf8'));
+win.eval(fs.readFileSync(path.join(root, 'js', 'data.js'), 'utf8') + '\nwindow.APP_DATA = APP_DATA;');
+win.eval(fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8'));
 
 const q = sel => doc.querySelector(sel);
 const qa = sel => Array.from(doc.querySelectorAll(sel));
