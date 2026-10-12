@@ -1,0 +1,13 @@
+{
+  "name": "english-tutor-mini-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "English Tutor — Telegram Mini App (Step 1)",
+  "scripts": {
+    "start": "python3 -m http.server 3000 --bind 0.0.0.0 -d public",
+    "test": "node test/smoke.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0"
+  }
+}
