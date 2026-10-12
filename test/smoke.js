@@ -1,5 +1,5 @@
 'use strict';
-/* Step 1 — interaktiv smoke-test: haqiqiy DOM'da butun oqimni boshqaramiz. */
+/* Step 3 — interaktiv smoke-test: haqiqiy DOM'da butun oqimni boshqaramiz. */
 const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
@@ -24,154 +24,10 @@ win.eval(fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8'));
 const q = sel => doc.querySelector(sel);
 const qa = sel => Array.from(doc.querySelectorAll(sel));
 const text = () => q('#screen').textContent;
-const click = el => { const node = typeof el === 'string' ? q(el) : el; if (!node) throw new Error('click: element topilmadi -> ' + el); node.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true })); };
+const click = el => { const node = typeof el === 'string' ? q(el) : el; if (!node) throw new Error('click: topilmadi -> ' + el); node.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true })); };
 const clickAct = act => click(q('[data-act="' + act + '"]'));
 const setVal = (sel, val) => { const el = q(sel); if (!el) throw new Error('setVal: ' + sel + ' topilmadi'); el.value = val; el.dispatchEvent(new win.Event('input', { bubbles: true })); };
-const studentCards = () => qa('#students-list .student-card').length;
-const groupCards = () => qa('#screen .group-card').length;
-
-/* ---------- 1. Login ekrani ---------- */
-check(text().includes('English Tutor'), 'login: sarlavha "English Tutor"');
-check(!!q('#phone-input'), 'login: telefon inputi mavjud');
-check(q('#phone-input').value === '+998 90 123-45-67', 'login: raqam +998 formatida oldindan to\'ldirilgan');
-check(q('#app-header').textContent.includes('English Tutor'), 'header: ilova nomi');
-check(qa('.nav-item').length === 0, 'auth rejimida bottom nav yo\'q');
-
-/* noto\'g\'ri raqam */
-setVal('#phone-input', '123');
-clickAct('do-login');
-check(text().includes('Davom etish') && q('#phone-error').classList.contains('show'), 'login: noto\'g\'ri raqam xabar bermoqda');
-
-/* ---------- 2. Ro\'yxatdan o\'tish (birinchi kirish) ---------- */
-setVal('#phone-input', '998901234567');
-clickAct('do-login');
-check(text().includes("Ro'yxatdan o'tish"), 'register: ro\'yxatdan o\'tish ekrani ochildi');
-check(qa('.role-card').length === 2, 'register: 2 ta rol (Ustoz / O\'quvchi)');
-check(text().includes('Ustoz') && text().includes("O'quvchi"), 'register: rollar o\'zbekcha ko\'rsatilgan');
-
-clickAct('to-pin-create');
-check(q('#role-error').classList.contains('show'), 'register: rol tanlanmasa xabar');
-
-click('[data-role="teacher"]');
-check(q('[data-role="teacher"]').classList.contains('selected'), 'register: "Ustoz" roli tanlandi');
-clickAct('to-pin-create');
-check(text().includes('PIN kod yarating'), 'pin-create: PIN yaratish ekrani');
-
-/* ---------- 3. PIN yaratish / tasdiqlash ---------- */
-setVal('#pin-input', '1234');
-clickAct('submit-pin');
-check(text().includes("PIN'ni tasdiqlang"), 'pin-confirm: tasdiqlash ekrani');
-
-setVal('#pin-input', '1235');
-clickAct('submit-pin');
-check(text().includes("PIN'ni tasdiqlang") && q('#pin-error').textContent.includes('mos kelmadi'), 'pin-confirm: mos kelmaydigan PIN xabar bermoqda');
-
-setVal('#pin-input', '1234');
-clickAct('submit-pin');
-check(text().includes('Assalomu alaykum'), 'home: bosh sahifa ochildi');
-check(q('#app-header').textContent.includes('Ustoz'), 'home: roli "Ustoz" ko\'rinadi');
-check(text().includes('IELTS Band 7.0') === false, 'home: guruh nomi bosh sahifada emas (statistika)');
-
-/* ---------- 4. Guruhlar ---------- */
-click('[data-act="nav"][data-screen="groups"]');
-check(text().includes('Guruhlar'), 'groups: Guruhlar ekrani');
-check(groupCards() === 2, 'groups: 2 ta mock guruh');
-check(text().includes('IELTS Band 7.0'), 'groups: IELTS guruh nomi');
-check(text().includes("500 000 so'm"), 'groups: oylik to\'lov UZS formatida');
-check(text().includes('Dushanba, Chorshanba, Juma'), 'groups: dars kunlari');
-check(text().includes('18:00'), 'groups: dars vaqti');
-check(text().includes('4 o\'quvchi') && text().includes('2 o\'quvchi'), 'groups: guruhlarga biriktirilgan o\'quvchilar soni');
-
-/* ---------- 5. O\'quvchilar + filtr ---------- */
-click('[data-act="nav"][data-screen="students"]');
-check(text().includes("O'quvchilar"), 'students: O\'quvchilar ekrani');
-check(studentCards() === 6, 'students: 6 ta mock o\'quvchi');
-check(q('#students-count').textContent.includes('6'), 'students: hisoblagich "6 ta"');
-
-click('[data-act="filter-class"][data-class="IELTS"]');
-check(studentCards() === 1, 'filter: IELTS filtrida 1 ta o\'quvchi');
-click('[data-act="filter-class"][data-class="11-sinf"]');
-check(studentCards() === 1, 'filter: 11-sinf filtrida 1 ta o\'quvchi');
-click('[data-act="filter-class"][data-class="Barchasi"]');
-check(studentCards() === 6, 'filter: "Barchasi" 6 ta o\'quvchi');
-
-setVal('#s-search', 'malika');
-check(studentCards() === 1, 'search: "malika" bo\'yicha 1 ta natija');
-setVal('#s-search', '');
-check(studentCards() === 6, 'search: qidiruv tozalandi');
-
-check(text().includes('Ota-ona') && text().includes('+998 93 111-22-33'), 'student card: ota-ona telefoni ko\'rinadi');
-check(qa('#students-list .chip-class').length === 6, 'student card: sinf chipsi mavjud');
-
-/* ---------- 6. O\'quvchi qo\'shish ---------- */
-clickAct('open-add-student');
-check(q('#modal-overlay').hidden === false, 'modal: o\'quvchi qo\'shish ochildi');
-clickAct('save-student');
-check(q('#modal-overlay').hidden === false, 'validation: bo\'sh forma saqlanmaydi');
-
-setVal('#f-sname', "Gulnoza Ismoilova");
-setVal('#f-sphone', '971112233');
-setVal('#f-sparent', '931112233');
-q('#f-sclass').value = 'IELTS';
-q('#f-sgroup').value = 'g1';
-clickAct('save-student');
-check(q('#modal-overlay').hidden === true, 'modal: saqlangandan keyin yopildi');
-check(studentCards() === 7, 'students: yangi o\'quvchi qo\'shildi (7 ta)');
-check(text().includes('Gulnoza Ismoilova'), 'students: yangi ism ro\'yxatda');
-check(text().includes('7 ta o\'quvchi'), 'students: hisoblagich yangilandi (7 ta)');
-
-click('[data-act="filter-class"][data-class="IELTS"]');
-check(studentCards() === 2, 'filter: qo\'shilgandan keyin IELTS = 2');
-click('[data-act="filter-class"][data-class="Barchasi"]');
-
-/* ---------- 7. Guruh qo\'shish ---------- */
-click('[data-act="nav"][data-screen="groups"]');
-clickAct('open-add-group');
-check(q('#modal-overlay').hidden === false, 'modal: guruh qo\'shish ochildi');
-setVal('#f-gname', 'Club English');
-qa('#f-days input')[0].checked = true;
-qa('#f-days input')[4].checked = true;
-q('#f-gtime').value = '19:30';
-setVal('#f-gfee', '450000');
-clickAct('save-group');
-check(q('#modal-overlay').hidden === true, 'modal: guruh saqlanib yopildi');
-check(groupCards() === 3, 'groups: yangi guruh qo\'shildi (3 ta)');
-check(text().includes("450 000 so'm"), 'groups: yangi to\'lov formatlandi');
-check(text().includes('Dushanba, Juma'), 'groups: tanlangan kunlar saqlandi');
-
-/* ---------- 8. Chiqish va qayta kirish (avtomatik) ---------- */
-click('[data-act="nav"][data-screen="profile"]');
-check(text().includes('Hisobdan chiqish'), 'profile: chiqish tugmasi');
-check(text().includes('Xavfsizlik') && text().includes('••••'), 'profile: PIN himoyalangan ko\'rinadi');
-clickAct('logout');
-check(text().includes('Telefon raqam'), 'logout: login ekraniga qaytdi');
-
-setVal('#phone-input', '+998 90 123-45-67');
-clickAct('do-login');
-check(text().includes('Assalomu alaykum'), 'login: o\'z hisobida PIN\'siz avtomatik kirdi');
-
-/* ---------- 9. Boshqa Telegram hisobi → PIN talab qilinadi ---------- */
-click('[data-act="nav"][data-screen="profile"]');
-clickAct('switch-account');
-check(text().includes('Telefon raqam'), 'switch: login ekrani');
-setVal('#phone-input', '+998 90 123-45-67');
-clickAct('do-login');
-check(text().includes('PIN kodni kiriting'), 'boshqa hisob: PIN ekraniga yuborildi');
-
-setVal('#pin-input', '9999');
-clickAct('submit-pin');
-check(text().includes('PIN kodni kiriting') && q('#pin-error').textContent.includes("noto'g'ri"), 'boshqa hisob: noto\'g\'ri PIN rad etildi');
-
-setVal('#pin-input', '1234');
-clickAct('submit-pin');
-check(text().includes('Assalomu alaykum'), 'boshqa hisob: to\'g\'ri PIN bilan kirdi');
-
-/* ============================================================
-   STEP 2 — Baholar jurnali, Davomat va rollarni ajratish
-   ============================================================ */
-const now = new Date();
-const pad2 = n => String(n).padStart(2, '0');
-const TODAY = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
+const changeVal = (sel, val) => { const el = q(sel); if (!el) throw new Error('changeVal: ' + sel + ' topilmadi'); el.value = val; el.dispatchEvent(new win.Event('change', { bubbles: true })); };
 const forceNav = screen => {
   const b = doc.createElement('button');
   b.setAttribute('data-act', 'nav');
@@ -180,148 +36,284 @@ const forceNav = screen => {
   click(b);
   b.remove();
 };
+const navLabels = () => qa('.nav-item span').map(s => s.textContent);
+const studentCards = () => qa('#students-list .student-card').length;
+const groupCards = () => qa('#screen .group-card').length;
+function logout() { click('[data-act="nav"][data-screen="profile"]'); clickAct('logout'); }
+function loginAs(l, p) {
+  setVal('#login-input', l);
+  setVal('#password-input', p);
+  clickAct('do-login');
+}
 
-/* ---------- 10. Baholar jurnali (ustoz) ---------- */
-click('[data-act="nav"][data-screen="grades"]');
-check(text().includes('Baholar'), 'baholar: ekran ochildi');
-check(!!q('table.bj'), 'baholar: jadval mavjud');
-check(qa('.selector-row')[0] && qa('.selector-row')[0].querySelectorAll('.chip-btn').length === 3, 'baholar: 3 ta guruh tanlagich (yangi guruh ham)');
-check(qa('.selector-row')[1] && qa('.selector-row')[1].querySelectorAll('.chip-btn').length === 6, 'baholar: sinf tanlagich (Barchasi + 5 sinf)');
-check(qa('thead .bj-date').length === 5, 'baholar: 5 ta dars sanasi ustuni');
-check(qa('thead .bj-sum').length === 1, 'baholar: oxirida yakuniy ustun');
-check(text().includes('Jami:'), 'baholar: "Jami ball" hisoblanadi');
-check(text().includes('8–10') && text().includes('6–7') && text().includes('1–5'), 'baholar: rang legendasi (A\'lo/Yaxshi/Qoniqarsiz)');
-check(qa('tbody tr').length === 3, 'baholar: IELTS guruhida 3 ta o\'quvchi qatori');
-check(qa('tbody .chip-class').length === 3, 'baholar: har qatorda sinf badge');
+const now = new Date();
+const pad2 = n => String(n).padStart(2, '0');
+const TODAY = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
 
-/* sana ustunini tanlash */
-const dateBtns = qa('[data-act="grade-date"]');
-click(dateBtns[0]);
-check(qa('.bj-date')[0].classList.contains('is-focus'), 'baholar: sana tanlanadi va ustun belgilanadi');
+/* ================= 1. KIRISH EKRANI ================= */
+check(text().includes('English Tutor'), 'login: sarlavha "English Tutor"');
+check(!!q('#login-input'), 'login: Login inputi mavjud');
+check(!!q('#password-input'), 'login: Parol inputi mavjud');
+check(text().includes('Kirish'), 'login: "Kirish" tugmasi');
+check(q('#app-header').textContent.includes('English Tutor'), 'header: ilova nomi');
+check(qa('.nav-item').length === 0, 'login rejimida bottom nav yo\'q');
 
-/* ochiq katakchaga baho qo'yish (1-tap) */
-let targetCell = qa('.bj-grade.g-empty')[0] || q('.bj-grade');
-const tSid = targetCell.getAttribute('data-sid');
-const tDate = targetCell.getAttribute('data-date');
-const before = targetCell.textContent.trim();
-const want = before === '10' ? '1' : '10';
-click(targetCell);
-check(q('#modal-overlay').hidden === false, 'editor: modal ochildi');
-check(qa('.score-btn').length === 10, 'editor: 10 ta ball tugmasi (1–10)');
-check(qa('.cat-wrap .chip-btn').length === 4, 'editor: 4 ta vazifa turi');
-check(!!q('#grade-note'), 'editor: izoh maydoni mavjud');
+/* bo'sh forma */
+clickAct('do-login');
+check(q('#login-error').classList.contains('show'), 'login: bo\'sh forma rad etildi');
 
-click(qa('.score-btn').filter(b => b.getAttribute('data-score') === want)[0]);
-check(q('#modal-overlay').hidden === false, 'editor: 1-tap kiritish — modal yopilmadi');
-check(q('.editor-info .gr-score').textContent.trim() === want, 'editor: tanlangan ball ko\'rinadi');
+/* noto\'g\'ri parol */
+loginAs('admin', '999');
+check(q('#login-error').textContent.includes("noto'g'ri"), 'login: noto\'g\'ri parol xabar bermoqda');
+check(q('#password-input').value === '', 'login: noto\'g\'ri parol tozalanadi');
 
-const noteIn = q('#grade-note');
-noteIn.value = "A'lo faollik";
-noteIn.dispatchEvent(new win.Event('input', { bubbles: true }));
-click(qa('.cat-wrap .chip-btn')[3]);
-click(q('[data-act="close-grade"]'));
+/* ================= 2. USTOZ (admin/123) ================= */
+loginAs('admin', '123');
+check(text().includes('Assalomu alaykum'), 'ustoz: dashboard ochildi');
+check(q('#app-header').textContent.includes('Ustoz'), 'ustoz: headerda "Ustoz" roli');
+check(navLabels().length === 6, 'ustoz: 6 ta nav tabi (' + navLabels().join(', ') + ')');
 
-const newCell = q('[data-act="edit-grade"][data-sid="' + tSid + '"][data-date="' + tDate + '"]');
-check(newCell && newCell.textContent.trim() === want, 'baholar: baho saqlandi (' + want + ')');
-const expectCls = Number(want) >= 8 ? 'g-a' : (Number(want) >= 6 ? 'g-b' : 'g-c');
-check(newCell && newCell.classList.contains(expectCls), 'baholar: rang kodlash to\'g\'ri (' + expectCls + ')');
-check(/Jami: \d+/.test(text()), 'baholar: jami ball hisoblandi');
+/* Moliyaviy ma'lumotlar UMUMAN yo'q */
+check(!text().includes("so'm"), 'moliya: dashboardda narx yo\'q');
+check(!text().includes("To'lov") && !text().includes('Qarz'), 'moliya: to\'lov/qarz kartasi yo\'q');
+
+/* ================= 3. GURUHLAR ================= */
+click('[data-act="nav"][data-screen="groups"]');
+check(text().includes('Guruhlar'), 'guruhlar: ekran');
+check(groupCards() === 2, 'guruhlar: 2 ta guruh');
+check(text().includes('IELTS Band 7.0') && text().includes('18:00'), 'guruhlar: nom + dars vaqti');
+check(!text().includes("so'm"), 'moliya: guruh kartasida narx yo\'q');
+
+/* ================= 4. O'QUVCHILAR ================= */
+click('[data-act="nav"][data-screen="students"]');
+check(text().includes("O'quvchilar"), 'o\'quvchilar: ekran');
+check(studentCards() === 6, 'o\'quvchilar: 6 ta mock o\'quvchi');
+check(text().includes('Jasur Karimov'), 'o\'quvchilar: ism ko\'rinadi');
+check(text().includes('Login') && text().includes('jasur'), 'o\'quvchilar: login ko\'rinadi');
+check(!text().includes('Ota-ona'), 'moliya/kontakt: ota-ona bloki yo\'q');
+check(qa('[data-act="reset-pwd"]').length === 6, 'o\'quvchilar: har kartada "Parolni yangilash"');
 
 /* sinf filtri */
+click('[data-act="filter-class"][data-class="IELTS"]');
+check(studentCards() === 1, 'filtr: IELTS = 1 ta');
+click('[data-act="filter-class"][data-class="Barchasi"]');
+check(studentCards() === 6, 'filtr: Barchasi = 6 ta');
+
+/* ================= 5. YANGI O'QUVCHI + LOGIN/PAROL ================= */
+clickAct('open-add-student');
+check(q('#modal-overlay').hidden === false, 'modal: o\'quvchi qo\'shish ochildi');
+clickAct('save-student');
+check(q('#modal-overlay').hidden === false, 'validation: bo\'sh forma saqlanmaydi');
+
+setVal('#f-sname', 'Gulnoza Ismoilova');
+q('#f-sclass').value = 'IELTS';
+setVal('#f-sphone', '971112233');
+q('#f-sgroup').value = 'g1';
+setVal('#f-slogin', 'gulnoza');
+setVal('#f-spass', '1234');
+clickAct('save-student');
+check(q('#modal-overlay').hidden === true, 'modal: saqlanib yopildi');
+check(studentCards() === 7, 'o\'quvchilar: yangi o\'quvchi qo\'shildi (7 ta)');
+check(text().includes('gulnoza'), 'o\'quvchilar: yangi login ko\'rinadi');
+
+/* takrorlanuvchi login */
+clickAct('open-add-student');
+setVal('#f-sname', 'Test User');
+q('#f-sclass').value = '9-sinf';
+setVal('#f-sphone', '971112234');
+q('#f-sgroup').value = 'g2';
+setVal('#f-slogin', 'jasur');
+setVal('#f-spass', '1111');
+clickAct('save-student');
+check(q('#modal-overlay').hidden === false, 'validation: band login rad etildi');
+click('[data-act="close-modal"]');
+
+/* ================= 6. BAHOLAR JURNALI ================= */
+click('[data-act="nav"][data-screen="grades"]');
+check(text().includes('Baholar'), 'jurnal: ekran');
+check(!!q('table.bj'), 'jurnal: jadval mavjud');
+check(qa('.selector-row')[0].querySelectorAll('.chip-btn').length === 2, 'jurnal: guruh tanlagich (2 guruh)');
+check(qa('thead .bj-date').length >= 5, 'jurnal: kamida 5 ta dars sanasi ustuni');
+check(qa('thead .bj-sum').length === 1, 'jurnal: oxirida "O\'rtacha" ustuni');
+check(text().includes('Jami:'), 'jurnal: jami ball hisoblanadi');
+check(text().includes('8–10') && text().includes('6–7') && text().includes('1–5'), 'jurnal: rang legendasi');
+check(qa('tbody tr').length === 3, 'jurnal: IELTS guruhida 3 ta qator (yangi o\'quvchi bilan)');
+
+/* sana ustunini tanlash */
+click(qa('[data-act="grade-date"]')[0]);
+check(qa('.bj-date')[0].classList.contains('is-focus'), 'jurnal: sana ustuni belgilanadi');
+
+/* 1-tap baho kiritish */
+let target = qa('.bj-grade.g-empty')[0] || q('.bj-grade');
+const tSid = target.getAttribute('data-sid');
+const tDate = target.getAttribute('data-date');
+const before = target.textContent.trim();
+const want = before === '10' ? '1' : '10';
+click(target);
+check(q('#modal-overlay').hidden === false, 'editor: modal ochildi');
+check(qa('.score-btn').length === 10, 'editor: 10 ta ball tugmasi');
+check(qa('.cat-wrap .chip-btn').length === 3, 'editor: 3 ta vazifa turi (Darsdagi javob, Lug\'at, Uyga vazifa)');
+check(!!q('#grade-note'), 'editor: izoh maydoni');
+click(qa('.score-btn').filter(b => b.getAttribute('data-score') === want)[0]);
+check(q('.editor-info .gr-score').textContent.trim() === want, 'editor: ball tanlandi');
+click(qa('.cat-wrap .chip-btn')[2]);
+click(q('[data-act="close-grade"]'));
+const newCell = q('[data-act="edit-grade"][data-sid="' + tSid + '"][data-date="' + tDate + '"]');
+check(newCell && newCell.textContent.trim() === want, 'jurnal: baho saqlandi (' + want + ')');
+const wantCls = Number(want) >= 8 ? 'g-a' : (Number(want) >= 6 ? 'g-b' : 'g-c');
+check(newCell && newCell.classList.contains(wantCls), 'jurnal: rang kodlash to\'g\'ri (' + wantCls + ')');
+
+/* sinf filtri jurnalda */
 const rowsBefore = qa('tbody tr').length;
 click(qa('.selector-row')[1].querySelectorAll('.chip-btn')[5]);
-const rowsAfter = qa('tbody tr').length;
-check(rowsAfter <= rowsBefore && rowsAfter >= 1, 'baholar: sinf filtri qatorlarni qisqartirdi (' + rowsBefore + ' → ' + rowsAfter + ')');
+check(qa('tbody tr').length <= rowsBefore, 'jurnal: sinf filtri ishlaydi');
 click(qa('.selector-row')[1].querySelectorAll('.chip-btn')[0]);
-check(qa('tbody tr').length === rowsBefore, 'baholar: "Barchasi" qaytardi');
+check(qa('tbody tr').length === rowsBefore, 'jurnal: "Barchasi" qaytardi');
 
-/* ---------- 11. Tezkor davomat (ustoz) ---------- */
-click('[data-act="open-attendance"]');
-check(text().includes('Davomat'), 'davomat: ekran ochildi');
+/* ================= 7. TEZKOR DAVOMAT ================= */
+click('[data-act="nav"][data-screen="attendance"]');
+check(text().includes('davomat') || text().includes('Davomat'), 'davomat: ekran');
 check(q('#att-date').value === TODAY, 'davomat: sana bugungi sana');
 check(qa('.att-row').length === 3, 'davomat: IELTS guruhida 3 ta o\'quvchi');
-check(qa('.att-row')[0].querySelectorAll('.att-btn').length === 3, 'davomat: 3 ta holat tugmasi (Keldi/Kelmadi/Sababli)');
+check(qa('.att-row')[0].querySelectorAll('.att-btn').length === 3, 'davomat: 3 ta holat tugmasi');
 check(text().includes('Keldi') && text().includes('Kelmadi') && text().includes('Sababli'), 'davomat: tugma matunlari o\'zbekcha');
 
-/* birinchi qatordagi holatni tozalab, aniq holat qo'yamiz */
 const active0 = qa('.att-row')[0].querySelector('.att-btn[class*="on-"]');
 if (active0) click(active0);
 check(!qa('.att-row')[0].querySelector('.att-btn[class*="on-"]'), 'davomat: holatni o\'chirish mumkin');
 click(qa('.att-row')[0].querySelector('[data-status="absent"]'));
 check(qa('.att-row')[0].querySelector('[data-status="absent"]').classList.contains('on-absent'), 'davomat: "Kelmadi" tanlandi');
-/* 2-qator: avval mavjud holatni tozalaymiz (tugma bosilsa toggle bo'ladi) */
 const active1 = qa('.att-row')[1].querySelector('.att-btn[class*="on-"]');
 if (active1) click(active1);
-check(!qa('.att-row')[1].querySelector('.att-btn[class*="on-"]'), 'davomat: 2-qator holati tozalandi');
 click(qa('.att-row')[1].querySelector('[data-status="present"]'));
 check(qa('.att-row')[1].querySelector('[data-status="present"]').classList.contains('on-present'), 'davomat: "Keldi" tanlandi');
-check(text().includes('belgilandi'), 'davomat: hisoblagich ko\'rinadi');
-
 click('[data-act="att-save"]');
-check(q('#toast').textContent.includes('Davomat saqlandi'), 'davomat: "Davomatni saqlash" tasdiq toast berdi');
+check(q('#toast').textContent.includes('Davomat saqlandi'), 'davomat: "Davomatni saqlash" tasdiq toast');
 
-/* saqlangan holat qayta ochilganda saqlanib qoladi */
 click('[data-act="nav"][data-screen="grades"]');
-click('[data-act="open-attendance"]');
+click('[data-act="nav"][data-screen="attendance"]');
 check(qa('.att-row')[0].querySelector('[data-status="absent"]').classList.contains('on-absent'), 'davomat: saqlangan holat tiklandi');
 
-/* ---------- 12. ROL AJRATISH: o\'quvchi portali ---------- */
-click('[data-act="nav"][data-screen="profile"]');
-clickAct('logout');
-check(text().includes('Telefon raqam'), 'student: logout ishladi');
+/* ================= 8. SPEAKING SCHEDULER ================= */
+click('[data-act="nav"][data-screen="speaking"]');
+check(text().includes('Speaking'), 'speaking: ekran');
+check(qa('.speak-row').length === 3, 'speaking: 3 ta seed slot');
+check(text().includes('14:00 – 14:20'), 'speaking: slot vaqti');
+check(text().includes('Bosh (tayinlanmagan)'), 'speaking: tayinlanmagan slot');
 
-setVal('#phone-input', '+998 91 300-40-50');
-clickAct('do-login');
-check(text().includes("Ro'yxatdan o'tish"), 'student: ro\'yxatdan o\'tish ekrani');
-click('[data-role="student"]');
-clickAct('to-pin-create');
-setVal('#pin-input', '5678');
-clickAct('submit-pin');
-setVal('#pin-input', '5678');
-clickAct('submit-pin');
+/* yangi slot yaratish */
+clickAct('open-slot');
+check(q('#modal-overlay').hidden === false, 'speaking: slot modali ochildi');
+setVal('#sp-start', '16:00');
+setVal('#sp-end', '15:00');
+clickAct('save-slot');
+check(q('#modal-overlay').hidden === false, 'speaking: noto\'g\'ri vaqt rad etildi');
+setVal('#sp-end', '16:20');
+q('#sp-student').value = 's2'; /* Nilufar */
+clickAct('save-slot');
+check(q('#modal-overlay').hidden === true, 'speaking: slot saqlandi');
+check(text().includes('16:00 – 16:20'), 'speaking: yangi slot ro\'yxatda');
+check(text().includes('Nilufar Ergasheva'), 'speaking: slotga o\'quvchi tayinlandi');
 
-check(text().includes('Jasur Karimov'), 'student: portal o\'z ismini ko\'rsatdi');
-check(text().includes('8-sinf'), 'student: o\'z maktab sinfi ko\'rsatildi');
-check(text().includes('General English'), 'student: o\'z guruhi ko\'rsatildi');
-check(q('#app-header').textContent.includes("O'quvchi"), 'student: headerda "O\'quvchi" roli');
-check(qa('.nav-item').length === 2, 'student: nav faqat 2 ta (Portim, Profil)');
-check(!Array.from(doc.querySelectorAll('.nav-item')).some(n => n.getAttribute('data-screen') === 'students'), 'student: "O\'quvchilar" tabi YO\'Q');
-check(!Array.from(doc.querySelectorAll('.nav-item')).some(n => n.getAttribute('data-screen') === 'groups'), 'student: "Guruhlar" tabi YO\'Q');
-check(!Array.from(doc.querySelectorAll('.nav-item')).some(n => n.getAttribute('data-screen') === 'grades'), 'student: "Baholar" tabi YO\'Q');
+/* baholash → jurnalga sync */
+const newRow = qa('.speak-row').filter(r => r.textContent.includes('16:00'))[0];
+click(newRow.querySelector('[data-act="slot-score"]'));
+check(q('#modal-overlay').hidden === false, 'speaking: baholash modali');
+check(qa('.score-btn').length === 10, 'speaking: 10 ta ball tugmasi');
+click(qa('.score-btn').filter(b => b.getAttribute('data-score') === '9')[0]);
+check(q('#modal-overlay').hidden === true, 'speaking: baho saqlanib yopildi');
+check(q('#toast').textContent.includes('jurnalga yozildi'), 'speaking: jurnalga sync toast');
 
-/* Shaxsiy ma'lumotlar */
-check(text().includes('Mening baholarim'), 'student: "Mening baholarim" bo\'limi');
+/* jurnalda tekshirish (Nilufar g2 da) */
+click('[data-act="nav"][data-screen="grades"]');
+click('[data-act="grade-group"][data-group="g2"]');
+const cells = qa('[data-act="edit-grade"][data-sid="s2"]');
+const scoredCell = cells.filter(c => c.textContent.trim() === '9')[0];
+check(!!scoredCell, 'speaking→jurnal: ball baholar jurnaliga tushdi');
+check(qa('tbody tr').length === 4, 'jurnal: g2 da 4 ta o\'quvchi');
+
+/* ================= 9. USTOZ: PAROL YANGILASH ================= */
+click('[data-act="nav"][data-screen="students"]');
+const nilCard = qa('.student-card').filter(c => c.textContent.includes('Nilufar Ergasheva'))[0];
+click(nilCard.querySelector('[data-act="reset-pwd"]'));
+check(q('#modal-overlay').hidden === false, 'reset: modal ochildi');
+setVal('#rp-pass', '7777');
+clickAct('save-reset');
+check(q('#modal-overlay').hidden === true, 'reset: parol saqlandi');
+check(q('#toast').textContent.includes('Parol yangilandi'), 'reset: tasdiq toast');
+
+/* ================= 10. O'QUVCHI KABINETI (jasur/123) ================= */
+logout();
+check(text().includes('Login') && !!q('#login-input'), 'logout: login ekraniga qaytdi');
+loginAs('jasur', '1234');
+check(q('#login-error').classList.contains('show'), 'student: noto\'g\'ri parol rad etildi');
+loginAs('jasur', '123');
+check(text().includes('Jasur Karimov'), 'student: kabinet ochildi');
+check(text().includes('8-sinf') && text().includes('General English'), 'student: sinf + guruh ko\'rsatildi');
+check(q('#app-header').textContent.includes("O'quvchi"), 'student: headerda "O\'quvchi"');
+check(navLabels().length === 2 && navLabels().join(',') === 'Portim,Profil', 'student: nav faqat Portim + Profil');
+
+check(text().includes('Mening baholarim'), 'student: "Mening baholarim"');
 check(qa('.grade-row').length > 0, 'student: baholar ro\'yxati bor');
-check(!!q('.avg-badge') && /\d\.\d/.test(q('.avg-badge').textContent), 'student: "O\'rtacha baho" badge (8.8 uslubida)');
-check(text().includes('Mening davomatim'), 'student: "Mening davomatim" bo\'limi');
-check(text().includes("To'lov holati"), 'student: "To\'lov holati" bo\'limi');
-check(text().includes("To'langan") || text().includes("To'lov muddati o'tdi"), 'student: to\'lov holati ko\'rsatildi');
-check(text().includes('Speaking vaqtim'), 'student: "Speaking vaqtim" bo\'limi');
+check(!!q('.avg-badge') && /\d\.\d/.test(q('.avg-badge').textContent), 'student: "O\'rtacha baho" badge');
+check(text().includes('Mening davomatim'), 'student: "Mening davomatim"');
+check(text().includes('Speaking vaqtim'), 'student: "Speaking vaqtim"');
+check(!text().includes("To'lov"), 'moliya: o\'quvchi kabinetida to\'lov kartasi yo\'q');
+check(!text().includes("so'm"), 'moliya: o\'quvchi kabinetida narx yo\'q');
 
-/* Boshqalarning maxfiy ma'lumotlari KO'RINMASLIGI kerak */
+/* Boshqalarning ma'lumotlari KO'RINMASLIGI kerak */
 check(!text().includes('Nilufar Ergasheva'), 'maxfiy: boshqa o\'quvchi ismi yo\'q');
-check(!text().includes('Aziz Rahimov'), 'maxfiy: boshqa o\'quvchi ismi yo\'q (2)');
-check(!text().includes('Malika Yusupova'), 'maxfiy: boshqa o\'quvchi ismi yo\'q (3)');
-check(!text().includes('+998 93 111-22-33'), 'maxfiy: boshqa ota-ona telefoni yo\'q');
-check(!text().includes('+998 94 555-66-77'), 'maxfiy: boshqa ota-ona telefoni yo\'q (2)');
-check(!text().includes('Ota-ona'), 'maxfiy: ota-ona kontaktlari umuman yo\'q');
-check(!text().includes("500 000 so'm"), 'maxfiy: guruh to\'lovlari ko\'rinmaydi');
+check(!text().includes('Malika Yusupova'), 'maxfiy: boshqa o\'quvchi ismi yo\'q (2)');
+check(!text().includes('Aziz Rahimov'), 'maxfiy: boshqa o\'quvchi ismi yo\'q (3)');
+check(!text().includes('+998 97 222-33-44'), 'maxfiy: boshqa telefon yo\'q');
+check(!text().includes('+998 95 700-80-90'), 'maxfiy: boshqa telefon yo\'q (2)');
+check(!text().includes('Guruhlar') || !qa('.nav-item').some(n => n.getAttribute('data-screen') === 'groups'), 'maxfiy: guruhlar boshqaruvi yo\'q');
 
 /* To'g'ridan-to'g'ri navigatsiya urinishi bloklandi */
 forceNav('students');
-check(!text().includes('Ota-ona') && qa('.student-card').length === 0, 'guard: o\'quvchi "O\'quvchilar" ekraniga kira olmaydi');
+check(qa('.student-card').length === 0, 'guard: o\'quvchi "O\'quvchilar"ga kira olmaydi');
 forceNav('groups');
-check(qa('.group-card').length === 0 && !text().includes("500 000 so'm"), 'guard: o\'quvchi "Guruhlar" ekraniga kira olmaydi');
+check(qa('.group-card').length === 0, 'guard: o\'quvchi "Guruhlar"ga kira olmaydi');
 forceNav('grades');
-check(qa('table.bj').length === 0, 'guard: o\'quvchi baholar jurnaliga kira olmaydi');
+check(qa('table.bj').length === 0, 'guard: o\'quvchi jurnalga kira olmaydi');
 forceNav('attendance');
-check(qa('.att-btn').length === 0 && !text().includes('Davomatni saqlash'), 'guard: o\'quvchi davomat boshqaruviga kira olmaydi');
-check(text().includes('Jasur Karimov'), 'guard: o\'quvchi o\'z portalida qoladi');
+check(qa('.att-btn').length === 0, 'guard: o\'quvchi davomatga kira olmaydi');
+forceNav('speaking');
+check(qa('.speak-row').length === 0, 'guard: o\'quvchi speaking boshqaruvida yo\'q');
+check(text().includes('Jasur Karimov'), 'guard: o\'quvchi o\'z kabinetida qoladi');
 
-/* Profil: o\'quvchida ustoz demo kartasi yo\'q */
-forceNav('profile');
-check(!text().includes('Boshqa hisobda sinash'), 'student: profilda ustoz demo kartasi yo\'q');
-check(text().includes('Jasur Karimov'), 'student: profilda o\'z ismi');
+/* ================= 11. O'QUVCHI: PAROLNI O'ZGARTIRISH ================= */
+click('[data-act="nav"][data-screen="profile"]');
+check(text().includes('Parolni o\'zgartirish'), 'student: profilda parol o\'zgartirish tugmasi');
+clickAct('open-change-pwd');
+check(q('#modal-overlay').hidden === false, 'change: modal ochildi');
+setVal('#cp-old', '999');
+setVal('#cp-new', '4321');
+setVal('#cp-new2', '4321');
+clickAct('save-change-pwd');
+check(q('#modal-overlay').hidden === false, 'change: noto\'g\'ri joriy parol rad etildi');
+setVal('#cp-old', '123');
+clickAct('save-change-pwd');
+check(q('#modal-overlay').hidden === true, 'change: parol o\'zgartirildi');
+check(q('#toast').textContent.includes("Parol o'zgartirildi"), 'change: tasdiq toast');
+
+logout();
+loginAs('jasur', '123');
+check(q('#login-error').classList.contains('show'), 'change: eski parol bilan kirib bo\'lmaydi');
+loginAs('jasur', '4321');
+check(text().includes('Jasur Karimov'), 'change: yangi parol bilan kirdi');
+
+/* ================= 12. USTOZ QAYTA KIRIB, YANGILANGAN PAROLNI TEKSHIRADI ================= */
+logout();
+loginAs('admin', '123');
+click('[data-act="nav"][data-screen="students"]');
+check(text().includes('Nilufar Ergasheva'), 'ustoz: qayta kirdi');
+logout();
+
+loginAs('nilufar', '7777');
+check(text().includes('Nilufar Ergasheva'), 'reset: ustoz yangilagan parol bilan kirdi');
+check(text().includes('9-sinf'), 'reset: Nilufar portali ko\'rinadi');
+check(!text().includes('Jasur Karimov'), 'reset: boshqa o\'quvchi ko\'rinmaydi');
 
 console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
 process.exit(failed ? 1 : 0);

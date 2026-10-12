@@ -25,47 +25,54 @@ const store = {
 };
 
 const K = {
-  users: 'et_users',
+  accounts: 'et_accounts',
   session: 'et_session',
   groups: 'et_groups',
   students: 'et_students',
   grades: 'et_grades',
-  attendance: 'et_attendance'
+  attendance: 'et_attendance',
+  speaking: 'et_speaking'
 };
 
 function seedIfEmpty(key, data) { if (store.get(key, null) === null) store.set(key, data); }
 seedIfEmpty(K.groups, APP_DATA.groups);
 seedIfEmpty(K.students, APP_DATA.students);
+seedIfEmpty(K.attendance, null);
 
-let users = store.get(K.users, {});
-function persistUsers() { store.set(K.users, users); }
+/* Kirish hisoblari (login → ma'lumot) */
+let accounts = store.get(K.accounts, null);
+if (!accounts || !Object.keys(accounts).length) {
+  accounts = {};
+  APP_DATA.accounts.forEach(a => {
+    accounts[a.login] = { login: a.login, password: a.password, role: a.role, name: a.name, studentId: a.studentId || null };
+  });
+  store.set(K.accounts, accounts);
+}
+function persistAccounts() { store.set(K.accounts, accounts); }
 
 const state = {
   screen: 'login',
-  pendingPhone: '',
-  pendingRole: null,
-  pendingPin: '',
   filterClass: 'Barchasi',
   search: '',
-  demoAccount: null,
   toastTimer: null,
-  /* Step 2 — Baholar jurnali */
+  editor: null,
   gradeGroup: '',
   gradeClass: 'Barchasi',
   gradeDate: '',
-  editor: null,
-  /* Step 2 — Davomat */
   attGroup: '',
   attDate: '',
   attDraft: null,
-  attDraftFor: ''
+  attDraftFor: '',
+  speakDate: '',
+  slotMode: 'create',
+  slotId: ''
 };
 
-const AUTH_SCREENS = ['login', 'register', 'pin-create', 'pin-confirm', 'pin-login'];
-/* Faqat "Ustoz" ruxsat beradigan ekranlar — xavfsizlik chegarasi */
-const TEACHER_SCREENS = ['groups', 'students', 'grades', 'attendance'];
+const AUTH_SCREENS = ['login'];
+/* Faqat ustoz ruxsat beradigan ekranlar */
+const TEACHER_SCREENS = ['groups', 'students', 'grades', 'attendance', 'speaking'];
 
-/* ---- Telefon formati: +998 XX XXX-XX-XX ---- */
+/* ---- Telefon: +998 XX XXX-XX-XX (faqat o'quvchi formasi uchun) ---- */
 function normPhone(v) {
   let d = String(v || '').replace(/\D/g, '');
   if (d.indexOf('998') === 0) return d;
@@ -84,7 +91,6 @@ function formatPhone(v) {
   if (d.length > 7) out += '-' + d.slice(7, 9);
   return out;
 }
-function money(n) { return String(Number(n) || 0).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + " so'm"; }
 function initials(name) {
   return String(name || '?').trim().split(/\s+/).slice(0, 2).map(w => w.charAt(0)).join('').toUpperCase();
 }
@@ -93,10 +99,15 @@ function esc(s) {
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
 }
+
+/* ---- Ma'lumot o'uvchilari ---- */
 function getGroups() { return store.get(K.groups, []); }
 function getStudents() { return store.get(K.students, []); }
 function getGrades() { return store.get(K.grades, {}); }
-function getAttendance() { return store.get(K.attendance, {}); }
+function getAttendance() { return store.get(K.attendance, {}) || {}; }
+function getSpeaking() { return store.get(K.speaking, []) || []; }
+function studentById(id) { return getStudents().filter(s => s.id === id)[0] || null; }
+function groupById(id) { return getGroups().filter(g => g.id === id)[0] || null; }
 
 /* ---- Sana yordamchilari ---- */
 function dateKey(d) {
@@ -109,11 +120,10 @@ function todayKey() { return dateKey(new Date()); }
 function fmtDM(iso) { const p = String(iso).split('-'); return p[2] + '.' + p[1]; }
 function fmtDMY(iso) { const p = String(iso).split('-'); return p[2] + '.' + p[1] + '.' + p[0]; }
 
-/* Guruh dars kunlari bo'yicha so'nggi `count` ta dars sanasi (eski → yangi) */
 function lessonDates(groupId, count) {
-  const g = getGroups().filter(x => x.id === groupId)[0];
+  const g = groupById(groupId);
   if (!g) return [];
-  const names = String(g.days).split(',').map(s => s.trim());
+  const names = String(g.days).split(',').map(x => x.trim());
   const jsDays = names
     .map(n => APP_DATA.days.indexOf(n))
     .filter(i => i >= 0)
@@ -128,6 +138,16 @@ function lessonDates(groupId, count) {
     cur.setDate(cur.getDate() - 1);
   }
   return out.reverse();
+}
+
+/* Jurnal ustunlari = dars sanalari + baho olgan sanalar (speaking sync uchun) */
+function journalDates(groupId, count) {
+  const set = {};
+  lessonDates(groupId, count).forEach(d => { set[d] = 1; });
+  getStudents().filter(s => s.groupId === groupId).forEach(s => {
+    Object.keys(getGrades()[s.id] || {}).forEach(d => { set[d] = 1; });
+  });
+  return Object.keys(set).sort().slice(-count);
 }
 
 /* ---- Baholar hisobi ---- */
@@ -147,34 +167,37 @@ function avgOf(nums) {
 function totalOf(nums) { return nums.reduce((a, b) => a + b, 0); }
 function fmtAvg(v) { return v == null ? '—' : v.toFixed(1); }
 
-/* ---- Hisob (Telegram account) ---- */
-function currentAccountId() {
-  return state.demoAccount || (tgUser ? String(tgUser.id) : 'demo-1');
-}
+/* ---- Hisob va sessiya (login/parol) ---- */
 function getSession() { return store.get(K.session, null); }
 function currentUser() {
   const s = getSession();
-  return s && users[s.phoneKey] ? users[s.phoneKey] : null;
+  return s && accounts[s.login] ? accounts[s.login] : null;
 }
 function isTeacher() {
   const u = currentUser();
   return !!u && u.role === 'teacher';
 }
-/* O'quvchi hisobini faqat o'z student yozuvidan topadi (telefon bo'yicha) */
 function linkedStudent() {
   const u = currentUser();
-  if (!u) return null;
-  const key = normPhone(u.phone);
-  return getStudents().filter(s => normPhone(s.phone) === key)[0] || null;
+  if (!u || !u.studentId) return null;
+  return studentById(u.studentId);
 }
-function startSession(key) {
-  store.set(K.session, { phoneKey: key, role: users[key].role });
+function startSession(login) {
+  store.set(K.session, { login: login, role: accounts[login].role });
   state.screen = 'home';
   render();
 }
 function go(screen) { state.screen = screen; render(); }
 
-/* ---- Toast / PIN ---- */
+function suggestLogin(fullName) {
+  const base = String(fullName || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10) || 'user';
+  let candidate = base;
+  let n = 1;
+  while (accounts[candidate]) { candidate = base + (++n); }
+  return candidate;
+}
+
+/* ---- Toast ---- */
 function toast(msg, type) {
   const el = $('#toast');
   if (!el) return;
@@ -183,31 +206,16 @@ function toast(msg, type) {
   clearTimeout(state.toastTimer);
   state.toastTimer = setTimeout(() => { el.className = 'toast'; }, 2600);
 }
-function pinValue() { const el = $('#pin-input'); return el ? el.value.replace(/\D/g, '') : ''; }
-function clearPin() { const el = $('#pin-input'); if (el) el.value = ''; updateDots(); }
-function updateDots() {
-  const el = $('#pin-input');
-  const v = el ? el.value : '';
-  $$('#pin-dots i').forEach((d, i) => d.classList.toggle('on', i < v.length));
-}
-function pinError(msg) {
-  const box = $('#pin-error');
-  if (box) box.textContent = msg || '';
-  const wrap = $('.pin-wrap');
-  if (wrap && msg) {
-    wrap.classList.remove('shake');
-    void wrap.offsetWidth;
-    wrap.classList.add('shake');
-  }
-}
 
 /* ==================== Ikonkalar ==================== */
 const ICON = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.8 12 3l9 7.8"/><path d="M5.5 9.6V21h13V9.6"/><path d="M9.5 21v-6h5v6"/></svg>',
-  groups: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.2 20c0-3.2 2.6-5.4 5.8-5.4s5.8 2.2 5.8 5.4"/><circle cx="17.3" cy="9.3" r="2.3"/><path d="M16.5 14.7c2.7.1 4.6 2.3 4.6 4.6"/></svg>',
   students: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.4"/><circle cx="4.5" cy="12" r="1.4"/><circle cx="4.5" cy="18" r="1.4"/></svg>',
   grades: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16"/><path d="M8 16v-4"/><path d="M12 16V8"/><path d="M16 16v-6"/></svg>',
-  profile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5c0-3.7 3.3-6.2 7.5-6.2s7.5 2.5 7.5 6.2"/></svg>'
+  cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/><path d="M9 15l2 2 4-4"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>',
+  profile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5c0-3.7 3.3-6.2 7.5-6.2s7.5 2.5 7.5 6.2"/></svg>',
+  groups: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.2 20c0-3.2 2.6-5.4 5.8-5.4s5.8 2.2 5.8 5.4"/><circle cx="17.3" cy="9.3" r="2.3"/><path d="M16.5 14.7c2.7.1 4.6 2.3 4.6 4.6"/></svg>'
 };
 
 /* ==================== Header / Bottom nav ==================== */
@@ -218,6 +226,7 @@ function scrLabel(s) {
     students: "O'quvchilar",
     grades: 'Baholar jurnali',
     attendance: 'Tezkor davomat',
+    speaking: 'Speaking (1-on-1)',
     profile: 'Profil'
   }[s] || '';
 }
@@ -239,13 +248,14 @@ function navItems() {
   if (isTeacher()) {
     return [
       ['home', 'Bosh', ICON.home],
-      ['groups', 'Guruhlar', ICON.groups],
-      ['students', "O'quvchilar", ICON.students],
+      ['students', "O'quvchi", ICON.students],
       ['grades', 'Baholar', ICON.grades],
+      ['attendance', 'Davomat', ICON.cal],
+      ['speaking', 'Speaking', ICON.mic],
       ['profile', 'Profil', ICON.profile]
     ];
   }
-  /* O'quvchi: faqat o'z portali va profili — boshqaruv ekranlari YO'Q */
+  /* O'quvchi: faqat o'z portali va profili */
   return [
     ['home', 'Portim', ICON.home],
     ['profile', 'Profil', ICON.profile]
@@ -254,136 +264,57 @@ function navItems() {
 function renderNav() {
   if (AUTH_SCREENS.indexOf(state.screen) >= 0) return '';
   return navItems().map(it => {
-    const active = (state.screen === it[0] ||
-      (it[0] === 'grades' && state.screen === 'attendance')) ? ' active' : '';
+    const active = state.screen === it[0] ? ' active' : '';
     return `<button type="button" class="nav-item${active}" data-act="nav" data-screen="${it[0]}">${it[2]}<span>${it[1]}</span></button>`;
   }).join('');
 }
 
-/* ==================== Auth ekranlari ==================== */
+/* ==================== KIRISH EKRANI (login / parol) ==================== */
 function loginScreen() {
   return `<div class="auth">
     <div class="auth-logo">🎓</div>
     <h1 class="auth-title">English Tutor</h1>
-    <p class="auth-sub">Ingliz tili darslari — ustoz va o'quvchilar uchun</p>
+    <p class="auth-sub">Ingliz tili darslari — ustoz paneli va o'quvchi kabineti</p>
 
     <div class="card auth-card">
-      <label class="field-label" for="phone-input">Telefon raqam</label>
-      <input class="input" id="phone-input" type="tel" inputmode="tel" autocomplete="tel"
-             value="${formatPhone(APP_DATA.detectedPhone)}" />
-      <div class="field-hint">✓ Telegram hisobingizdan raqam aniqlandi</div>
-      <div class="field-error" id="phone-error"></div>
-      <button type="button" class="btn btn-primary btn-block" data-act="do-login">Davom etish</button>
+      <label class="field-label" for="login-input">Login</label>
+      <input class="input" id="login-input" type="text" autocapitalize="none" autocorrect="off"
+             autocomplete="username" placeholder="Masalan: admin" />
+
+      <label class="field-label" for="password-input">Parol</label>
+      <input class="input" id="password-input" type="password"
+             autocomplete="current-password" placeholder="••••" />
+
+      <div class="field-error" id="login-error"></div>
+      <button type="button" class="btn btn-primary btn-block" data-act="do-login">Kirish</button>
     </div>
 
     <div class="hint-card">
-      <strong>Demo rejim</strong>
-      <p>Joriy hisob: <code>${esc(currentAccountId())}</code></p>
-      <p>Ro'yxatdan o'tgach, boshqa hisobda kirilsa PIN so'raladi.</p>
-      <button type="button" class="btn btn-ghost btn-block" data-act="switch-account">Boshqa Telegram hisobni sinash</button>
-    </div>
-  </div>`;
-}
-
-function registerScreen() {
-  return `<div class="auth">
-    <div class="card auth-card">
-      <h2 class="card-title">Ro'yxatdan o'tish</h2>
-      <div class="phone-readonly">${formatPhone(state.pendingPhone)}</div>
-
-      <div class="field-label">Siz kimsiz?</div>
-      <div class="role-grid">
-        <button type="button" class="role-card ${state.pendingRole === 'teacher' ? 'selected' : ''}" data-act="select-role" data-role="teacher">
-          <span class="role-emoji">👨‍🏫</span>
-          <strong>Ustoz</strong>
-          <small>Guruhlarni boshqaradi, baho qo'yadi</small>
-        </button>
-        <button type="button" class="role-card ${state.pendingRole === 'student' ? 'selected' : ''}" data-act="select-role" data-role="student">
-          <span class="role-emoji">🎓</span>
-          <strong>O'quvchi</strong>
-          <small>Faqat o'z bahosi va davomatini ko'radi</small>
-        </button>
+      <strong>Demo kirish ma'lumotlari</strong>
+      <div class="login-demo">
+        <span class="pill">Ustoz: <code>admin</code> / <code>123</code></span>
+        <span class="pill">O'quvchi: <code>jasur</code> / <code>123</code></span>
       </div>
-      <div class="field-error" id="role-error"></div>
-
-      <button type="button" class="btn btn-primary btn-block" data-act="to-pin-create">Davom etish</button>
-      <button type="button" class="link-btn" data-act="restart-auth">← Boshqa raqam bilan kirish</button>
     </div>
   </div>`;
 }
 
-function pinBox() {
-  return `<div class="pin-wrap">
-    <div class="pin-dots" id="pin-dots"><i></i><i></i><i></i><i></i></div>
-    <input class="pin-input" id="pin-input" type="tel" inputmode="numeric" maxlength="4"
-           autocomplete="one-time-code" aria-label="PIN kod" />
-  </div>`;
-}
-function backToPhone() {
-  return `<button type="button" class="link-btn" data-act="restart-auth">← Boshqa raqam bilan kirish</button>`;
-}
-
-function pinCreateScreen() {
-  return `<div class="auth">
-    <div class="card auth-card center">
-      <div class="pin-icon">🔒</div>
-      <h2 class="card-title">PIN kod yarating</h2>
-      <p class="muted small">Hisobingizni himoya qilish uchun 4 raqamli PIN kiriting</p>
-      ${pinBox()}
-      <div class="pin-error" id="pin-error"></div>
-      <button type="button" class="btn btn-primary btn-block" data-act="submit-pin" data-mode="create">Davom etish</button>
-      ${backToPhone()}
-    </div>
-  </div>`;
-}
-
-function pinConfirmScreen() {
-  return `<div class="auth">
-    <div class="card auth-card center">
-      <div class="pin-icon">✅</div>
-      <h2 class="card-title">PIN'ni tasdiqlang</h2>
-      <p class="muted small">Yaratgan PIN kodni qaytadan kiriting</p>
-      ${pinBox()}
-      <div class="pin-error" id="pin-error"></div>
-      <button type="button" class="btn btn-primary btn-block" data-act="submit-pin" data-mode="confirm">Tasdiqlash</button>
-      ${backToPhone()}
-    </div>
-  </div>`;
-}
-
-function pinLoginScreen() {
-  return `<div class="auth">
-    <div class="card auth-card center">
-      <div class="pin-icon">🔐</div>
-      <h2 class="card-title">PIN kodni kiriting</h2>
-      <p class="muted small">Bu raqam boshqa hisobda ro'yxatdan o'tgan</p>
-      <div class="phone-readonly">${formatPhone(state.pendingPhone)}</div>
-      ${pinBox()}
-      <div class="pin-error" id="pin-error"></div>
-      <button type="button" class="btn btn-primary btn-block" data-act="submit-pin" data-mode="verify">Kirish</button>
-      <button type="button" class="link-btn" data-act="restart-auth">← Boshqa raqam bilan kirish</button>
-      <p class="muted small" style="margin-top:10px">PIN'ni unutdingizmi? Ustozga murojaat qiling.</p>
-    </div>
-  </div>`;
-}
-
-/* ==================== Ekran yordamchilari ==================== */
+/* ==================== Yordamchilar ==================== */
 function emptyState(text) {
   return `<div class="empty"><span class="emoji">📭</span>${esc(text)}</div>`;
 }
 function blockedScreen(msg) {
   return `<div class="blocked"><span class="emoji">🔒</span>${esc(msg)}</div>`;
 }
-function roleName(u) { return u && u.role === 'teacher' ? 'Ustoz' : "O'quvchi"; }
 
-/* ==================== Bosh sahifa: USTOZ ==================== */
+/* ==================== BOSH SAHIFA: USTOZ ==================== */
 function teacherHome() {
   const groups = getGroups();
   const students = getStudents();
   const classSet = {};
   students.forEach(s => { classSet[s.schoolClass] = 1; });
   const u = currentUser() || {};
-  const name = u.name || (tgUser && tgUser.first_name) || "Do'st";
+  const name = u.name || 'Ustoz';
   const recent = students.slice(0, 3);
 
   return `
@@ -408,10 +339,10 @@ function teacherHome() {
   <div class="quick-grid">
     <button type="button" class="card quick" data-act="nav" data-screen="grades"><span class="quick-ico">📊</span><span>Baholar jurnali</span></button>
     <button type="button" class="card quick" data-act="nav" data-screen="attendance"><span class="quick-ico">🗓️</span><span>Tezkor davomat</span></button>
-    <button type="button" class="card quick" data-act="nav" data-screen="groups"><span class="quick-ico">👥</span><span>Guruhlar</span></button>
+    <button type="button" class="card quick" data-act="nav" data-screen="speaking"><span class="quick-ico">🗣️</span><span>Speaking slotlari</span></button>
     <button type="button" class="card quick" data-act="nav" data-screen="students"><span class="quick-ico">🧒</span><span>O'quvchilar</span></button>
+    <button type="button" class="card quick" data-act="nav" data-screen="groups"><span class="quick-ico">👥</span><span>Guruhlar</span></button>
     <button type="button" class="card quick" data-act="open-add-student"><span class="quick-ico">➕</span><span>O'quvchi qo'shish</span></button>
-    <button type="button" class="card quick" data-act="open-add-group"><span class="quick-ico">📅</span><span>Guruh qo'shish</span></button>
   </div>
 
   <div class="section-title">So'nggi o'quvchilar</div>
@@ -420,7 +351,7 @@ function teacherHome() {
   `;
 }
 
-/* ==================== Bosh sahifa: O'QUVCHI PORTALI ==================== */
+/* ==================== BOSH SAHIFA: O'QUVCHI KABINETI ==================== */
 function studentPortal() {
   const u = currentUser() || {};
   const st = linkedStudent();
@@ -430,21 +361,17 @@ function studentPortal() {
     <section class="card profile-head">
       <div class="avatar avatar-xl">${esc(initials(u.name || "O'quvchi"))}</div>
       <div class="profile-name">${esc(u.name || "O'quvchi")}</div>
-      <div class="muted">${esc(u.phone || '')}</div>
+      <div class="muted">${esc(u.login || '')}</div>
       <div style="margin-top:9px"><span class="role-badge is-student">O'quvchi</span></div>
     </section>
     <div class="section-title">Mening ma'lumotlarim</div>
-    <div class="card">${blockedScreen('Profilingiz hali guruhga biriktirilmagan. Ustoz bilan bog\'laning.')}</div>
-    <div class="section-title">To'lov holati</div>
-    <div class="card">${blockedScreen("To'lov ma'lumoti topilmadi")}</div>
+    <div class="card">${blockedScreen("Profilingiz guruhga biriktirilmagan. Ustoz bilan bog'laning.")}</div>
     `;
   }
 
-  const g = getGroups().filter(x => x.id === st.groupId)[0];
+  const g = groupById(st.groupId);
   const gradeRec = getGrades()[st.id] || {};
   const attRec = getAttendance();
-  const pay = APP_DATA.payments[st.id] || null;
-  const slot = APP_DATA.speaking[st.id] || null;
 
   /* --- Baholar --- */
   const gradeKeys = Object.keys(gradeRec).sort().reverse();
@@ -477,6 +404,21 @@ function studentPortal() {
       <span class="att-tag on-${a.status}">${statusLabel[a.status]}</span>
     </div>`).join('') : `<div class="empty"><span class="emoji">🗓️</span>Davomat yozuvi yo'q</div>`;
 
+  /* --- Speaking vaqti --- */
+  const mineSlots = getSpeaking()
+    .filter(x => x.studentId === st.id)
+    .sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start))
+    .slice(0, 6);
+  const slotRows = mineSlots.length ? mineSlots.map(x => `
+    <div class="att-line">
+      <span class="gr-date">${fmtDM(x.date)}</span>
+      <span class="col">
+        <strong>${esc(x.start)} – ${esc(x.end)}</strong>
+        <span class="gr-note">1-on-1 speaking</span>
+      </span>
+      <span class="slot-badge ${x.score == null ? 'wait' : 'done'}">${x.score == null ? 'Kutilmoqda' : 'Baho: ' + x.score}</span>
+    </div>`).join('') : `<div class="empty"><span class="emoji">🗣️</span>Hozircha slot biriktirilmagan</div>`;
+
   return `
   <section class="card">
     <div class="portal-head">
@@ -494,7 +436,7 @@ function studentPortal() {
   <div class="section-title">Mening baholarim</div>
   <div class="card avg-card">
     <div class="col">
-      <div class="pay-status">O'rtacha baho</div>
+      <div class="strong-label">O'rtacha baho</div>
       <div class="muted small">${nums.length} ta baholangan dars</div>
     </div>
     <div class="avg-badge ${avg == null ? 'g-empty' : gradeClassOf(avg)}">
@@ -514,29 +456,21 @@ function studentPortal() {
     ${attRows}
   </div>
 
-  <div class="section-title">To'lov holati</div>
-  <div class="card pay-card">
-    <div class="pay-ico ${pay && pay.status === 'overdue' ? 'on-overdue' : 'on-paid'}">${pay && pay.status === 'overdue' ? '⚠️' : '✅'}</div>
-    <div class="col">
-      <div class="pay-status ${pay && pay.status === 'overdue' ? 'on-overdue' : 'on-paid'}">${pay && pay.status === 'overdue' ? "To'lov muddati o'tdi" : "To'langan"}</div>
-      <div class="muted small">${pay ? "Muddat: " + fmtDMY(pay.dueDate) + " • " + money(g ? g.fee : 0) : "To'lov ma'lumoti yo'q"}</div>
-    </div>
-  </div>
-
   <div class="section-title">Speaking vaqtim</div>
-  <div class="card slot-card">
-    <div class="slot-day">🗣️</div>
-    <div class="col">
-      <div class="pay-status">${slot ? esc(slot.day) + ', ' + esc(slot.time) : 'Biriktirilmagan'}</div>
-      <div class="muted small">1-on-1 speaking (30 daqiqa)</div>
-    </div>
+  <div class="card">${slotRows}</div>
+
+  <div class="section-title">Sozlamalar</div>
+  <div class="card">
+    <div class="list-row"><span>Login</span><code>${esc(u.login || '')}</code></div>
+    <div class="list-row"><span>Parol</span><span class="muted">••••</span></div>
   </div>
+  <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">🔑 Parolni o'zgartirish</button>
   `;
 }
 
 function homeScreen() { return isTeacher() ? teacherHome() : studentPortal(); }
 
-/* ==================== Guruhlar (faqat ustoz) ==================== */
+/* ==================== GURUHLAR (faqat ustoz) ==================== */
 function groupCard(g, students) {
   const cnt = students.filter(s => s.groupId === g.id).length;
   return `<div class="card group-card">
@@ -548,9 +482,8 @@ function groupCard(g, students) {
       <div class="meta-row">📅 <span>${esc(g.days)}</span></div>
       <div class="meta-row">🕒 <span>${esc(g.time)}</span></div>
     </div>
-    <div class="fee">${money(g.fee)} <span class="fee-sub">/ oy</span></div>
     <div class="row g8" style="margin-top:11px">
-      <button type="button" class="btn btn-ghost btn-sm" data-act="nav" data-screen="grades">📊 Baholar</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-act="grade-group-go" data-group="${g.id}">📊 Baholar</button>
       <button type="button" class="btn btn-ghost btn-sm" data-act="open-attendance" data-group="${g.id}">🗓️ Davomat</button>
     </div>
   </div>`;
@@ -572,9 +505,10 @@ function groupsScreen() {
   `;
 }
 
-/* ==================== O'quvchilar (faqat ustoz) ==================== */
+/* ==================== O'QUVCHILAR (faqat ustoz) ==================== */
 function studentCard(s) {
-  const g = getGroups().filter(x => x.id === s.groupId)[0];
+  const g = groupById(s.groupId);
+  const acc = Object.keys(accounts).map(k => accounts[k]).filter(a => a.studentId === s.id)[0];
   return `<div class="card student-card">
     <div class="row top">
       <div class="avatar">${esc(initials(s.fullName))}</div>
@@ -585,8 +519,11 @@ function studentCard(s) {
         </div>
         <div class="s-group">${g ? esc(g.name) : "Guruh taylanmagan"}</div>
         <div class="s-contacts">
-          <a class="s-contact" href="tel:${esc(String(s.phone).replace(/[^\d+]/g, ''))}"><span class="lbl">O'zi</span>${esc(s.phone)}</a>
-          <a class="s-contact" href="tel:${esc(String(s.parentPhone).replace(/[^\d+]/g, ''))}"><span class="lbl">Ota-ona</span>${esc(s.parentPhone)}</a>
+          <span class="s-contact"><span class="lbl">Login</span><code>${acc ? esc(acc.login) : '—'}</code></span>
+          <span class="s-contact"><span class="lbl">Telefon</span>${esc(s.phone)}</span>
+        </div>
+        <div class="row g8" style="margin-top:10px">
+          <button type="button" class="btn btn-xs ghost" data-act="reset-pwd" data-sid="${s.id}">🔑 Parolni yangilash</button>
         </div>
       </div>
     </div>
@@ -633,10 +570,11 @@ function studentsScreen() {
   </div>
 
   <div id="students-list">${studentListHTML()}</div>
+  <button type="button" class="btn btn-ghost btn-block" data-act="nav" data-screen="groups">👥 Guruhlar</button>
   `;
 }
 
-/* ==================== Profil ==================== */
+/* ==================== PROFIL ==================== */
 function profileScreen() {
   const u = currentUser() || {};
   const st = !isTeacher() ? linkedStudent() : null;
@@ -644,32 +582,26 @@ function profileScreen() {
   <div class="card profile-head">
     <div class="avatar avatar-xl">${esc(initials(st ? st.fullName : (u.name || 'U')))}</div>
     <div class="profile-name">${esc(st ? st.fullName : (u.name || ''))}</div>
-    <div class="muted">${esc(u.phone || '')}</div>
+    <div class="muted">${esc(u.login || '')}</div>
     <div style="margin-top:9px">
-      <span class="role-badge ${isTeacher() ? 'is-teacher' : 'is-student'}">${roleName(u)}</span>
+      <span class="role-badge ${isTeacher() ? 'is-teacher' : 'is-student'}">${isTeacher() ? 'Ustoz' : "O'quvchi"}</span>
       ${st ? `<span class="pill" style="margin-left:6px">${esc(st.schoolClass)}</span>` : ''}
     </div>
   </div>
 
   <div class="section-title">Xavfsizlik</div>
   <div class="card list-card">
-    <div class="list-row"><span>PIN kod</span><span class="muted">••••</span></div>
-    <div class="list-row"><span>Telegram hisobi</span><code>${esc(currentAccountId())}</code></div>
-    <div class="list-row"><span>Ko'rinish</span><span class="muted">${roleName(u)}</span></div>
+    <div class="list-row"><span>Login</span><code>${esc(u.login || '')}</code></div>
+    <div class="list-row"><span>Parol</span><span class="muted">••••</span></div>
+    <div class="list-row"><span>Ko'rinish</span><span class="muted">${isTeacher() ? 'Ustoz' : "O'quvchi"}</span></div>
   </div>
-
-  ${isTeacher() ? `
-  <div class="section-title">Demo rejim</div>
-  <div class="card">
-    <p class="muted small">Boshqa Telegram hisobida kirilganda tizim PIN so'raydi — shu tugma bilan simulyatsiya qilinadi.</p>
-    <button type="button" class="btn btn-ghost btn-block" data-act="switch-account">Boshqa hisobda sinash</button>
-  </div>` : ''}
+  <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">🔑 Parolni o'zgartirish</button>
 
   <button type="button" class="btn btn-danger btn-block" data-act="logout">Hisobdan chiqish</button>
   `;
 }
 
-/* ==================== Modallar ==================== */
+/* ==================== MODALLAR ==================== */
 function openModal(html) {
   $('#modal-sheet').innerHTML = html;
   $('#modal-overlay').hidden = false;
@@ -678,6 +610,8 @@ function closeModal() {
   $('#modal-overlay').hidden = true;
   $('#modal-sheet').innerHTML = '';
   state.editor = null;
+  state.slotMode = 'create';
+  state.slotId = '';
 }
 
 function openAddGroup() {
@@ -704,9 +638,6 @@ function openAddGroup() {
     <label class="field-label" for="f-gtime">Dars vaqti</label>
     <input class="input" id="f-gtime" type="time" value="18:00" />
 
-    <label class="field-label" for="f-gfee">Oylik to'lov (so'm)</label>
-    <input class="input" id="f-gfee" inputmode="numeric" placeholder="500 000" />
-
     <button type="button" class="btn btn-primary btn-block" data-act="save-group">Saqlash</button>
   `);
 }
@@ -723,23 +654,27 @@ function openAddStudent() {
     <label class="field-label" for="f-sname">Ism familiya</label>
     <input class="input" id="f-sname" placeholder="Masalan: Aziz Rahimov" />
 
-    <label class="field-label" for="f-sphone">Telefon raqami</label>
-    <input class="input" id="f-sphone" data-phone type="tel" inputmode="tel" placeholder="+998 XX XXX-XX-XX" />
-
-    <label class="field-label" for="f-sparent">Ota-ona telefon raqami</label>
-    <input class="input" id="f-sparent" data-phone type="tel" inputmode="tel" placeholder="+998 XX XXX-XX-XX" />
-
     <label class="field-label" for="f-sclass">Maktab sinfi</label>
     <select class="input" id="f-sclass">
       <option value="">Sinfni tanlang</option>
       ${APP_DATA.classes.map(c => `<option value="${c}">${c}</option>`).join('')}
     </select>
 
+    <label class="field-label" for="f-sphone">Telefon raqami</label>
+    <input class="input" id="f-sphone" data-phone type="tel" inputmode="tel" placeholder="+998 XX XXX-XX-XX" />
+
     <label class="field-label" for="f-sgroup">Guruh</label>
     <select class="input" id="f-sgroup">
       <option value="">Guruhni tanlang</option>
       ${groups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('')}
     </select>
+
+    <div class="field-label">Kirish ma'lumotlari</div>
+    <label class="field-label" for="f-slogin">Login</label>
+    <input class="input" id="f-slogin" autocapitalize="none" autocorrect="off" placeholder="Masalan: jasur09" />
+
+    <label class="field-label" for="f-spass">Dastlabki parol</label>
+    <input class="input" id="f-spass" type="text" inputmode="numeric" placeholder="Masalan: 1234" />
 
     <button type="button" class="btn btn-primary btn-block" data-act="save-student">Saqlash</button>
   `);
@@ -749,15 +684,13 @@ function saveGroup() {
   const name = ($('#f-gname').value || '').trim();
   const days = $$('input:checked', $('#f-days')).map(i => i.value);
   const time = $('#f-gtime').value;
-  const fee = Number(($('#f-gfee').value || '').replace(/\D/g, ''));
 
   if (!name) { toast("Guruh nomini kiriting", 'error'); $('#f-gname').focus(); return; }
   if (!days.length) { toast("Dars kunlarini tanlang", 'error'); return; }
   if (!time) { toast("Dars vaqtini kiriting", 'error'); return; }
-  if (!fee) { toast("Oylik to'lovni kiriting (so'm)", 'error'); $('#f-gfee').focus(); return; }
 
   const groups = getGroups();
-  groups.push({ id: 'g' + Date.now(), name, days: days.join(', '), time, fee });
+  groups.push({ id: 'g' + Date.now(), name, days: days.join(', '), time });
   store.set(K.groups, groups);
   closeModal();
   render();
@@ -766,39 +699,134 @@ function saveGroup() {
 
 function saveStudent() {
   const name = ($('#f-sname').value || '').trim();
-  const phone = normPhone($('#f-sphone').value);
-  const parent = normPhone($('#f-sparent').value);
   const cls = $('#f-sclass').value;
+  const phone = normPhone($('#f-sphone').value);
   const gid = $('#f-sgroup').value;
+  const login = ($('#f-slogin').value || '').trim().toLowerCase();
+  const pass = ($('#f-spass').value || '').trim();
 
   if (name.length < 3) { toast("Ism familiyani kiriting", 'error'); $('#f-sname').focus(); return; }
-  if (!isValidPhone(phone)) { toast("Telefon raqamni tekshiring: +998 XX XXX-XX-XX", 'error'); $('#f-sphone').focus(); return; }
-  if (!isValidPhone(parent)) { toast("Ota-ona raqamini tekshiring: +998 XX XXX-XX-XX", 'error'); $('#f-sparent').focus(); return; }
   if (!cls) { toast("Maktab sinfini tanlang", 'error'); return; }
+  if (!isValidPhone(phone)) { toast("Telefon raqamni tekshiring: +998 XX XXX-XX-XX", 'error'); $('#f-sphone').focus(); return; }
   if (!gid) { toast("Guruhni tanlang", 'error'); return; }
+  if (!/^[a-z0-9_.]{3,20}$/.test(login)) { toast("Login 3–20 ta: harf, raqam, _ yoki .", 'error'); $('#f-slogin').focus(); return; }
+  if (accounts[login]) { toast("Bu login allaqachon band", 'error'); $('#f-slogin').focus(); return; }
+  if (pass.length < 3) { toast("Dastlabki parol kamida 3 ta belgi bo'lsin", 'error'); $('#f-spass').focus(); return; }
 
+  const id = 's' + Date.now();
   const students = getStudents();
-  students.push({
-    id: 's' + Date.now(),
-    fullName: name,
-    phone: formatPhone(phone),
-    parentPhone: formatPhone(parent),
-    schoolClass: cls,
-    groupId: gid
-  });
+  students.push({ id, fullName: name, phone: formatPhone(phone), schoolClass: cls, groupId: gid });
   store.set(K.students, students);
+
+  accounts[login] = { login, password: pass, role: 'student', studentId: id, name };
+  persistAccounts();
+
   closeModal();
   render();
-  toast("O'quvchi qo'shildi ✓");
+  toast("O'quvchi qo'shildi ✓ Login: " + login);
 }
 
-/* ==================== BAHOLAR JURNALI (faqat ustoz) ==================== */
+/* ---- Ustoz: o'quvchi parolini yangilash ---- */
+function openResetPwd(sid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const st = studentById(sid);
+  if (!st) return;
+  const acc = Object.keys(accounts).map(k => accounts[k]).filter(a => a.studentId === sid)[0];
+  openModal(`
+    <div class="modal-head">
+      <h3>Parolni yangilash</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+    <div class="editor-info">
+      <div class="avatar">${esc(initials(st.fullName))}</div>
+      <div class="col">
+        <div class="s-name">${esc(st.fullName)}</div>
+        <div class="muted small">${esc(st.schoolClass)} • login: <code>${acc ? esc(acc.login) : '—'}</code></div>
+      </div>
+    </div>
+    ${acc ? '' : `<label class="field-label" for="rp-login">Login</label>
+      <input class="input" id="rp-login" autocapitalize="none" value="${esc(suggestLogin(st.fullName))}" />`}
+    <label class="field-label" for="rp-pass">Yangi parol</label>
+    <input class="input" id="rp-pass" inputmode="numeric" placeholder="Masalan: 1234" />
+    <button type="button" class="btn btn-primary btn-block" data-act="save-reset" data-sid="${sid}">Saqlash</button>
+  `);
+}
+
+function saveResetPwd(sid) {
+  const st = studentById(sid);
+  if (!st) return;
+  const pass = ($('#rp-pass') ? $('#rp-pass').value : '').trim();
+  if (pass.length < 3) { toast("Parol kamida 3 ta belgi bo'lsin", 'error'); return; }
+
+  let acc = Object.keys(accounts).map(k => accounts[k]).filter(a => a.studentId === sid)[0];
+  if (acc) {
+    acc.password = pass;
+  } else {
+    const loginEl = $('#rp-login');
+    const login = loginEl ? loginEl.value.trim().toLowerCase() : suggestLogin(st.fullName);
+    if (!/^[a-z0-9_.]{3,20}$/.test(login)) { toast("Login noto'g'ri", 'error'); return; }
+    if (accounts[login]) { toast("Bu login band", 'error'); return; }
+    accounts[login] = { login, password: pass, role: 'student', studentId: sid, name: st.fullName };
+  }
+  persistAccounts();
+  closeModal();
+  render();
+  toast("Parol yangilandi ✓");
+}
+
+/* ---- O'quvchi: parolni o'zgartirish ---- */
+function openChangePwd() {
+  const u = currentUser();
+  if (!u) return;
+  openModal(`
+    <div class="modal-head">
+      <h3>Parolni o'zgartirish</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+    <div class="editor-info">
+      <div class="avatar">${esc(initials(u.name || u.login))}</div>
+      <div class="col">
+        <div class="s-name">${esc(u.name || u.login)}</div>
+        <div class="muted small">Login: <code>${esc(u.login)}</code></div>
+      </div>
+    </div>
+
+    <label class="field-label" for="cp-old">Joriy parol</label>
+    <input class="input" id="cp-old" type="password" autocomplete="current-password" placeholder="••••" />
+
+    <label class="field-label" for="cp-new">Yangi parol</label>
+    <input class="input" id="cp-new" type="password" autocomplete="new-password" placeholder="••••" />
+
+    <label class="field-label" for="cp-new2">Yangi parolni tasdiqlang</label>
+    <input class="input" id="cp-new2" type="password" autocomplete="new-password" placeholder="••••" />
+
+    <button type="button" class="btn btn-primary btn-block" data-act="save-change-pwd">Saqlash</button>
+  `);
+}
+
+function saveChangePwd() {
+  const u = currentUser();
+  if (!u) return;
+  const oldP = ($('#cp-old') ? $('#cp-old').value : '');
+  const n1 = ($('#cp-new') ? $('#cp-new').value : '');
+  const n2 = ($('#cp-new2') ? $('#cp-new2').value : '');
+  if (oldP !== u.password) { toast("Joriy parol noto'g'ri", 'error'); return; }
+  if (n1.length < 3) { toast("Yangi parol kamida 3 ta belgi bo'lsin", 'error'); return; }
+  if (n1 !== n2) { toast("Parollar mos kelmadi", 'error'); return; }
+  u.password = n1;
+  persistAccounts();
+  closeModal();
+  render();
+  toast("Parol o'zgartirildi ✓");
+}
+
+/* ==================== 10 BALLIK BAHOLAR JURNALI (faqat ustoz) ==================== */
 function ensureGradeState() {
   const groups = getGroups();
   if (!groups.some(g => g.id === state.gradeGroup)) {
     state.gradeGroup = groups.length ? groups[0].id : '';
   }
-  const dates = lessonDates(state.gradeGroup, 5);
+  const dates = journalDates(state.gradeGroup, 6);
   if (dates.indexOf(state.gradeDate) < 0) {
     state.gradeDate = dates.length ? dates[dates.length - 1] : '';
   }
@@ -817,9 +845,11 @@ function gradesScreen() {
   if (!isTeacher()) return blockedScreen("Bu bo'lim faqat ustoz uchun");
   ensureGradeState();
   const groups = getGroups();
-  if (!groups.length) return `<div class="screen-head"><h2 class="screen-title">Baholar</h2></div>` + emptyState("Avval guruh yarating");
+  if (!groups.length) {
+    return `<div class="screen-head"><h2 class="screen-title">Baholar</h2></div>` + emptyState("Avval guruh yarating");
+  }
 
-  const dates = lessonDates(state.gradeGroup, 5);
+  const dates = journalDates(state.gradeGroup, 6);
   const all = getStudents().filter(s => s.groupId === state.gradeGroup);
   const rows = all.filter(s => state.gradeClass === 'Barchasi' || s.schoolClass === state.gradeClass);
   const classChips = ['Barchasi'].concat(APP_DATA.classes);
@@ -854,7 +884,6 @@ function gradesScreen() {
       <h2 class="screen-title">Baholar</h2>
       <div class="muted small">10 ballik tizim • ${rows.length} ta o'quvchi</div>
     </div>
-    <button type="button" class="btn btn-primary btn-sm" data-act="open-attendance" data-group="${state.gradeGroup}">🗓️ Davomat</button>
   </div>
 
   <div class="selector-row">
@@ -874,7 +903,7 @@ function gradesScreen() {
   <div class="grid-scroll">
     <table class="bj">
       <thead>${head}</thead>
-      <tbody>${body || `<tr><td class="bj-name" colspan="${dates.length + 1}">${esc("Bu sinfda o'quvchi yo'q")}</td></tr>`}</tbody>
+      <tbody>${body || `<tr><td class="bj-name">${esc("Bu sinfda o'quvchi yo'q")}</td></tr>`}</tbody>
     </table>
   </div>
 
@@ -887,11 +916,11 @@ function gradesScreen() {
   `;
 }
 
-/* ---- Baho editori ---- */
+/* ---- Baho editori (1-tap) ---- */
 function renderGradeEditor() {
   const e = state.editor;
   if (!e) return;
-  const st = getStudents().filter(s => s.id === e.sid)[0];
+  const st = studentById(e.sid);
   if (!st) return;
   const cats = APP_DATA.gradeCategories;
 
@@ -973,7 +1002,9 @@ function attendanceScreen() {
   if (!isTeacher()) return blockedScreen("Bu bo'lim faqat ustoz uchun");
   ensureAttState();
   const groups = getGroups();
-  if (!groups.length) return `<div class="screen-head"><h2 class="screen-title">Davomat</h2></div>` + emptyState("Avval guruh yarating");
+  if (!groups.length) {
+    return `<div class="screen-head"><h2 class="screen-title">Davomat</h2></div>` + emptyState("Avval guruh yarating");
+  }
 
   const students = getStudents().filter(s => s.groupId === state.attGroup);
   const draft = state.attDraft || {};
@@ -1004,10 +1035,10 @@ function attendanceScreen() {
   return `
   <div class="screen-head">
     <div>
-      <h2 class="screen-title">Davomat</h2>
+      <h2 class="screen-title">Tezkor davomat</h2>
       <div class="muted small">${marked}/${students.length} belgilandi</div>
     </div>
-    <button type="button" class="btn btn-ghost btn-sm" data-act="nav" data-screen="grades">📊 Baholar</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-act="nav" data-screen="speaking">🗣️ Speaking</button>
   </div>
 
   <div class="selector-row">
@@ -1036,120 +1067,228 @@ function attendanceScreen() {
   `;
 }
 
-/* ==================== Auth mantiqi ==================== */
-function doLogin() {
-  const input = $('#phone-input');
-  const err = $('#phone-error');
-  const key = normPhone(input.value);
+/* ==================== SPEAKING (1-on-1) SLOTLARI ==================== */
+function ensureSpeakState() { if (!state.speakDate) state.speakDate = todayKey(); }
 
-  if (!isValidPhone(key)) {
-    if (err) { err.textContent = "Raqamni to'g'ri kiriting: +998 XX XXX-XX-XX"; err.classList.add('show'); }
-    input.focus();
+function speakRowHTML(x) {
+  const st = x.studentId ? studentById(x.studentId) : null;
+  const scored = x.score != null;
+  return `<div class="speak-row" data-slot="${esc(x.id)}">
+    <div class="speak-top">
+      <span class="slot-time">${esc(x.start)} – ${esc(x.end)}</span>
+      <span class="slot-who">
+        ${st ? `<span class="who-name">${esc(st.fullName)}</span>` : '<span class="who-free">Bosh (tayinlanmagan)</span>'}
+      </span>
+      <span class="slot-badge ${scored ? 'done' : 'wait'}">${scored ? 'Baho: ' + x.score : (st ? 'Baholanmagan' : 'Bo\'sh')}</span>
+    </div>
+    <div class="speak-actions">
+      ${st ? '' : `<button type="button" class="btn btn-xs ghost" data-act="slot-assign" data-id="${esc(x.id)}">👤 Tayinlash</button>`}
+      <button type="button" class="btn btn-xs ${scored ? 'ghost' : 'primary'}" data-act="slot-score" data-id="${esc(x.id)}">${scored ? "Bahoni o'zgartirish" : '⭐ Baholash'}</button>
+      <button type="button" class="btn btn-xs danger" data-act="slot-del" data-id="${esc(x.id)}">O'chirish</button>
+    </div>
+  </div>`;
+}
+
+function speakingScreen() {
+  if (!isTeacher()) return blockedScreen("Bu bo'lim faqat ustoz uchun");
+  ensureSpeakState();
+  const list = getSpeaking()
+    .filter(x => x.date === state.speakDate)
+    .sort((a, b) => a.start.localeCompare(b.start));
+
+  return `
+  <div class="screen-head">
+    <div>
+      <h2 class="screen-title">Speaking</h2>
+      <div class="muted small">1-on-1 slotlar • ${list.length} ta slot</div>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" data-act="open-slot">+ Slot</button>
+  </div>
+
+  <div class="selector-row">
+    <span class="selector-label">Sana</span>
+    <input class="input" id="sp-date" type="date" value="${esc(state.speakDate)}" />
+  </div>
+
+  <div class="card" style="padding-top:4px;padding-bottom:4px">
+    ${list.length ? list.map(speakRowHTML).join('') : emptyState("Bu sanada slot yo'q — 'Slot' tugmasini bosing")}
+  </div>
+
+  <p class="muted small" style="margin-top:10px">Slotga o'quvchi tayinlanadi. Dars keyin "Baholash" orqali 1–10 ball qo'yiladi va bu ball o'quvchining baholar jurnaliga darhol tushadi.</p>
+  `;
+}
+
+/* ---- Slot yaratish / tayinlash ---- */
+function openSlotModal(mode, id) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  ensureSpeakState();
+  state.slotMode = mode;
+  state.slotId = id || '';
+  const students = getStudents();
+  const cur = id ? getSpeaking().filter(x => x.id === id)[0] : null;
+  const assignOnly = mode === 'assign';
+
+  openModal(`
+    <div class="modal-head">
+      <h3>${assignOnly ? 'O\'quvchi tayinlash' : 'Slot qo\'shish'}</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+
+    ${cur ? `<div class="editor-info">
+      <div class="slot-time">${esc(cur.start)} – ${esc(cur.end)}</div>
+      <div class="muted small">${fmtDMY(cur.date)}</div>
+    </div>` : `
+    <label class="field-label" for="sp-modal-date">Sana</label>
+    <input class="input" id="sp-modal-date" type="date" value="${esc(state.speakDate)}" />
+
+    <div class="row g8">
+      <div class="col">
+        <label class="field-label" for="sp-start">Boshlanish</label>
+        <input class="input" id="sp-start" type="time" value="14:00" />
+      </div>
+      <div class="col">
+        <label class="field-label" for="sp-end">Tugash</label>
+        <input class="input" id="sp-end" type="time" value="14:20" />
+      </div>
+    </div>`}
+
+    <label class="field-label" for="sp-student">O'quvchi</label>
+    <select class="input" id="sp-student">
+      <option value="">— Tanlanmagan —</option>
+      ${students.map(s => {
+        const g = groupById(s.groupId);
+        return `<option value="${s.id}" ${cur && cur.studentId === s.id ? 'selected' : ''}>${esc(s.fullName)}${g ? ' — ' + esc(g.name) : ''}</option>`;
+      }).join('')}
+    </select>
+
+    <button type="button" class="btn btn-primary btn-block" data-act="save-slot">${assignOnly ? 'Tayinlash' : 'Saqlash'}</button>
+  `);
+}
+
+function saveSlot() {
+  const list = getSpeaking();
+  const sid = $('#sp-student') ? $('#sp-student').value : '';
+
+  if (state.slotMode === 'assign') {
+    const cur = list.filter(x => x.id === state.slotId)[0];
+    if (!cur) return;
+    cur.studentId = sid || null;
+    cur.score = null;
+    store.set(K.speaking, list);
+    closeModal();
+    render();
+    toast(sid ? 'O\'quvchi tayinlandi ✓' : 'Tayinlov o\'chirildi');
     return;
   }
+
+  const date = $('#sp-modal-date').value;
+  const start = $('#sp-start').value;
+  const end = $('#sp-end').value;
+  if (!date) { toast("Sanani tanlang", 'error'); return; }
+  if (!start || !end) { toast("Vaqt oralig'ini kiriting", 'error'); return; }
+  if (end <= start) { toast("Tugash vaqti boshlanishdan keyin bo'lishi kerak", 'error'); return; }
+  if (list.some(x => x.date === date && x.start === start)) { toast("Bu sanada shu vaqtda slot bor", 'error'); return; }
+
+  list.push({ id: 'sp' + Date.now(), date, start, end, studentId: sid || null, score: null });
+  store.set(K.speaking, list);
+  state.speakDate = date;
+  closeModal();
+  render();
+  toast("Slot qo'shildi ✓");
+}
+
+/* ---- Slotni baholash → jurnalga sync ---- */
+function openScoreSlot(id) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const x = getSpeaking().filter(s => s.id === id)[0];
+  if (!x || !x.studentId) { toast("Avval o'quvchi tayinlang", 'error'); return; }
+  const st = studentById(x.studentId);
+  if (!st) return;
+
+  openModal(`
+    <div class="modal-head">
+      <h3>Speaking bahosi</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+
+    <div class="editor-info">
+      <div class="avatar">${esc(initials(st.fullName))}</div>
+      <div class="col">
+        <div class="s-name">${esc(st.fullName)}</div>
+        <div class="muted small">${esc(st.schoolClass)} • ${fmtDMY(x.date)} • ${esc(x.start)} – ${esc(x.end)}</div>
+      </div>
+    </div>
+
+    <div class="field-label">Speaking baho (1–10)</div>
+    <div class="score-grid">
+      ${[1,2,3,4,5,6,7,8,9,10].map(n => `
+        <button type="button" class="score-btn ${x.score === n ? 'sel ' + gradeClassOf(n) : ''}" data-act="save-score" data-id="${esc(x.id)}" data-score="${n}">${n}</button>`).join('')}
+    </div>
+    <p class="muted small" style="margin-top:12px">Ball tanlansa, o'quvchining baholar jurnaliga darhol yoziladi.</p>
+  `);
+}
+
+function saveSlotScore(id, score) {
+  const list = getSpeaking();
+  const x = list.filter(s => s.id === id)[0];
+  if (!x || !x.studentId) return;
+
+  x.score = score;
+  store.set(K.speaking, list);
+
+  /* Jurnalga sync */
+  const all = getGrades();
+  all[x.studentId] = all[x.studentId] || {};
+  all[x.studentId][x.date] = {
+    score: score,
+    category: APP_DATA.speakingCategory,
+    note: 'Speaking 1-on-1'
+  };
+  store.set(K.grades, all);
+
+  closeModal();
+  render();
+  toast("Speaking bahosi saqlandi ✓ (jurnalga yozildi)");
+}
+
+/* ==================== KIRISH MANTIQI ==================== */
+function doLogin() {
+  const loginEl = $('#login-input');
+  const passEl = $('#password-input');
+  const err = $('#login-error');
+  const login = (loginEl.value || '').trim().toLowerCase();
+  const pass = passEl.value || '';
+
+  const fail = msg => {
+    if (err) { err.textContent = msg; err.classList.add('show'); }
+  };
+
+  if (!login || !pass) { fail("Login va parolni kiriting"); return; }
   if (err) { err.textContent = ''; err.classList.remove('show'); }
 
-  const u = users[key];
-  if (!u) {
-    state.pendingPhone = key;
-    state.pendingRole = null;
-    go('register');
+  const acc = accounts[login];
+  if (!acc || acc.password !== pass) {
+    fail("Login yoki parol noto'g'ri");
+    passEl.value = '';
+    passEl.focus();
     return;
   }
-  if (u.ownerId === currentAccountId()) {
-    startSession(key);
-    toast('Xush kelibsiz! 👋');
-    return;
-  }
-  state.pendingPhone = key;
-  go('pin-login');
-}
-
-function toPinCreate() {
-  if (!state.pendingRole) {
-    const el = $('#role-error');
-    if (el) { el.textContent = 'Rolni tanlang'; el.classList.add('show'); }
-    return;
-  }
-  state.pendingPin = '';
-  go('pin-create');
-}
-
-function submitPin(mode) {
-  const val = pinValue();
-  if (!/^\d{4}$/.test(val)) { pinError("4 ta raqamli PIN kiriting"); return; }
-
-  if (mode === 'create') {
-    state.pendingPin = val;
-    clearPin();
-    go('pin-confirm');
-    return;
-  }
-
-  if (mode === 'confirm') {
-    if (val !== state.pendingPin) {
-      pinError('PIN mos kelmadi, qaytadan kiriting');
-      clearPin();
-      return;
-    }
-    const key = state.pendingPhone;
-    users[key] = {
-      phoneKey: key,
-      phone: formatPhone(key),
-      role: state.pendingRole || 'student',
-      pin: state.pendingPin,
-      ownerId: currentAccountId(),
-      name: (tgUser && tgUser.first_name) || (state.pendingRole === 'teacher' ? 'Ustoz' : "O'quvchi"),
-      createdAt: Date.now()
-    };
-    persistUsers();
-    state.pendingPin = '';
-    startSession(key);
-    toast("Hisob yaratildi ✓");
-    return;
-  }
-
-  if (mode === 'verify') {
-    const u = users[state.pendingPhone];
-    if (!u || val !== u.pin) {
-      pinError("PIN kod noto'g'ri");
-      clearPin();
-      return;
-    }
-    startSession(state.pendingPhone);
-    toast('Xush kelibsiz! 👋');
-  }
-}
-
-function switchAccount() {
-  const cur = currentAccountId();
-  if (cur === 'demo-1') state.demoAccount = 'demo-2';
-  else if (cur === 'demo-2') state.demoAccount = 'demo-1';
-  else state.demoAccount = 'alt-' + cur;
-
-  store.del(K.session);
-  state.pendingPhone = '';
-  state.pendingRole = null;
-  state.screen = 'login';
-  render();
-  toast('Hisob almashtirildi: ' + currentAccountId());
+  startSession(login);
+  toast('Xush kelibsiz! 👋');
 }
 
 function logout() {
   store.del(K.session);
-  state.demoAccount = null;
-  state.pendingPhone = '';
-  state.pendingRole = null;
-  state.pendingPin = '';
   state.attDraft = null;
   state.attDraftFor = '';
   state.editor = null;
   closeModal();
-  go('login');
+  state.screen = 'login';
+  render();
   toast('Hisobdan chiqdingiz');
 }
 
-/* ==================== Jurnal seed (birinchi ishga tushirish) ==================== */
+/* ==================== Seed (birinchi ishga tushirish) ==================== */
 function seedJournal() {
   if (store.get(K.grades, null) !== null) return;
   const grades = {};
@@ -1178,24 +1317,34 @@ function seedJournal() {
   store.set(K.attendance, att);
 }
 
+function seedSpeaking() {
+  if (store.get(K.speaking, null) !== null) return;
+  const today = todayKey();
+  store.set(K.speaking, APP_DATA.speakingSeed.map((s, i) => ({
+    id: 'spseed' + (i + 1),
+    date: today,
+    start: s.start,
+    end: s.end,
+    studentId: s.studentId,
+    score: null
+  })));
+}
+
 /* ==================== Render ==================== */
 const SCREENS = {
   'login': loginScreen,
-  'register': registerScreen,
-  'pin-create': pinCreateScreen,
-  'pin-confirm': pinConfirmScreen,
-  'pin-login': pinLoginScreen,
   'home': homeScreen,
   'groups': groupsScreen,
   'students': studentsScreen,
   'grades': gradesScreen,
   'attendance': attendanceScreen,
+  'speaking': speakingScreen,
   'profile': profileScreen
 };
 
-/* Xavfsizlik chegarasi: noto'g'ri rol o'ziga tegishli bo'lmagan ekranga kira olmaydi */
+/* Xavfsizlik chegarasi: noto'g'ri rol o'ziga tegishli ekranlara kira olmaydi */
 function canAccess(scr) {
-  if (AUTH_SCREENS.indexOf(scr) >= 0) return true;
+  if (scr === 'login') return true;
   if (scr === 'home' || scr === 'profile') return true;
   if (TEACHER_SCREENS.indexOf(scr) >= 0) return isTeacher();
   return false;
@@ -1203,10 +1352,10 @@ function canAccess(scr) {
 
 function render() {
   let scr = state.screen;
-  if (!canAccess(scr)) {
-    state.screen = 'home';
-    scr = 'home';
-  }
+  if (!currentUser()) scr = 'login';
+  else if (!canAccess(scr)) scr = 'home';
+  state.screen = scr;
+
   document.body.classList.toggle('auth-mode', AUTH_SCREENS.indexOf(scr) >= 0);
   $('#app-header').innerHTML = renderHeader();
   $('#bottom-nav').innerHTML = renderNav();
@@ -1214,6 +1363,7 @@ function render() {
   if (scr === 'students') refreshStudentList();
   if (scr === 'grades') ensureGradeState();
   if (scr === 'attendance') ensureAttState();
+  if (scr === 'speaking') ensureSpeakState();
 }
 
 /* ==================== Hodisalar ==================== */
@@ -1223,37 +1373,36 @@ document.addEventListener('click', function (e) {
   const act = btn.getAttribute('data-act');
 
   const actions = {
+    /* --- Kirish --- */
     'do-login': doLogin,
-    'switch-account': switchAccount,
-    'select-role': function () {
-      state.pendingRole = btn.getAttribute('data-role');
-      render();
-    },
-    'to-pin-create': toPinCreate,
-    'submit-pin': function () { submitPin(btn.getAttribute('data-mode')); },
-    'restart-auth': function () {
-      state.pendingPhone = '';
-      state.pendingRole = null;
-      state.pendingPin = '';
-      go('login');
-    },
+    'logout': logout,
     'nav': function () { go(btn.getAttribute('data-screen')); },
     'filter-class': function () {
       state.filterClass = btn.getAttribute('data-class');
       render();
     },
+
+    /* --- Guruhlar / o'quvchilar --- */
     'open-add-group': openAddGroup,
     'open-add-student': openAddStudent,
     'close-modal': closeModal,
     'save-group': saveGroup,
     'save-student': saveStudent,
-    'logout': logout,
+    'reset-pwd': function () { openResetPwd(btn.getAttribute('data-sid')); },
+    'save-reset': function () { saveResetPwd(btn.getAttribute('data-sid')); },
+    'open-change-pwd': openChangePwd,
+    'save-change-pwd': saveChangePwd,
 
     /* --- Baholar jurnali --- */
     'grade-group': function () {
       state.gradeGroup = btn.getAttribute('data-group');
       state.gradeDate = '';
       render();
+    },
+    'grade-group-go': function () {
+      state.gradeGroup = btn.getAttribute('data-group');
+      state.gradeDate = '';
+      go('grades');
     },
     'grade-date': function () {
       state.gradeDate = btn.getAttribute('data-date');
@@ -1287,7 +1436,7 @@ document.addEventListener('click', function (e) {
       }
       state.editor.score = null;
       renderGradeEditor();
-      toast('Baho o\'chirildi');
+      toast("Baho o'chirildi");
     },
     'close-grade': function () {
       closeModal();
@@ -1321,6 +1470,22 @@ document.addEventListener('click', function (e) {
       state.attDraftFor = state.attDate;
       const n = Object.keys(all[state.attDate]).length;
       toast(n ? "Davomat saqlandi ✓ (" + n + " ta)" : "Davomat saqlandi (bo'sh)");
+    },
+
+    /* --- Speaking --- */
+    'open-slot': function () { openSlotModal('create', ''); },
+    'slot-assign': function () { openSlotModal('assign', btn.getAttribute('data-id')); },
+    'slot-score': function () { openScoreSlot(btn.getAttribute('data-id')); },
+    'slot-del': function () {
+      if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+      const id = btn.getAttribute('data-id');
+      store.set(K.speaking, getSpeaking().filter(x => x.id !== id));
+      render();
+      toast("Slot o'chirildi");
+    },
+    'save-slot': saveSlot,
+    'save-score': function () {
+      saveSlotScore(btn.getAttribute('data-id'), Number(btn.getAttribute('data-score')));
     }
   };
 
@@ -1333,16 +1498,11 @@ document.addEventListener('click', function (e) {
 document.addEventListener('input', function (e) {
   const t = e.target;
   if (!t) return;
-  if (t.id === 'phone-input' || (t.hasAttribute && t.hasAttribute('data-phone'))) {
+  if (t.hasAttribute && t.hasAttribute('data-phone')) {
     t.value = formatPhone(t.value);
-  } else if (t.id === 'pin-input') {
-    t.value = t.value.replace(/\D/g, '').slice(0, 4);
-    updateDots();
   } else if (t.id === 's-search') {
     state.search = t.value;
     refreshStudentList();
-  } else if (t.id === 'f-gfee') {
-    t.value = t.value.replace(/\D/g, '').slice(0, 12);
   } else if (t.id === 'grade-note') {
     if (state.editor) {
       state.editor.note = t.value;
@@ -1353,15 +1513,14 @@ document.addEventListener('input', function (e) {
 
 document.addEventListener('change', function (e) {
   const t = e.target;
-  if (t && t.id === 'att-date' && t.value) {
-    state.attDate = t.value;
-    render();
-  }
+  if (!t) return;
+  if (t.id === 'att-date' && t.value) { state.attDate = t.value; render(); }
+  if (t.id === 'sp-date' && t.value) { state.speakDate = t.value; render(); }
 });
 
 document.addEventListener('keydown', function (e) {
-  if (e.target && e.target.id === 'pin-input' && e.key === 'Enter') {
-    const btn = $('[data-act="submit-pin"]');
+  if (e.key === 'Enter' && (e.target.id === 'login-input' || e.target.id === 'password-input')) {
+    const btn = $('[data-act="do-login"]');
     if (btn) btn.click();
   }
 });
@@ -1372,12 +1531,12 @@ $('#modal-overlay').addEventListener('click', function (e) {
 
 /* ==================== Ishga tushirish ==================== */
 (function init() {
+  /* Eski (Step 1–2) kalitlarni tozalash */
+  store.del('et_users');
   seedJournal();
+  seedSpeaking();
   const s = getSession();
-  if (s && users[s.phoneKey] && users[s.phoneKey].ownerId === currentAccountId()) {
-    state.screen = 'home';
-  } else if (s) {
-    store.del(K.session);
-  }
+  if (!s || !accounts[s.login]) store.del(K.session);
+  state.screen = currentUser() ? 'home' : 'login';
   render();
 })();
