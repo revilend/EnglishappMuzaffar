@@ -20,8 +20,12 @@ const store = {
   },
   set(key, value) {
     try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+    if (window.__cloud) window.__cloud.schedulePush(key, value);
   },
-  del(key) { try { localStorage.removeItem(key); } catch (e) {} }
+  del(key) {
+    try { localStorage.removeItem(key); } catch (e) {}
+    if (window.__cloud) window.__cloud.schedulePush(key, null);
+  }
 };
 
 const K = {
@@ -72,25 +76,7 @@ const AUTH_SCREENS = ['login'];
 /* Faqat ustoz ruxsat beradigan ekranlar */
 const TEACHER_SCREENS = ['groups', 'students', 'grades', 'attendance', 'speaking'];
 
-/* ---- Telefon: +998 XX XXX-XX-XX (faqat o'quvchi formasi uchun) ---- */
-function normPhone(v) {
-  let d = String(v || '').replace(/\D/g, '');
-  if (d.indexOf('998') === 0) return d;
-  if (d.length === 9) return '998' + d;
-  return d;
-}
-function isValidPhone(d) { return /^998\d{9}$/.test(d); }
-function formatPhone(v) {
-  let d = String(v || '').replace(/\D/g, '');
-  if (d.indexOf('998') === 0) d = d.slice(3);
-  d = d.slice(0, 9);
-  let out = '+998';
-  if (d.length) out += ' ' + d.slice(0, 2);
-  if (d.length > 2) out += ' ' + d.slice(2, 5);
-  if (d.length > 5) out += '-' + d.slice(5, 7);
-  if (d.length > 7) out += '-' + d.slice(7, 9);
-  return out;
-}
+
 function initials(name) {
   return String(name || '?').trim().split(/\s+/).slice(0, 2).map(w => w.charAt(0)).join('').toUpperCase();
 }
@@ -102,7 +88,26 @@ function esc(s) {
 
 /* ---- Ma'lumot o'uvchilari ---- */
 function getGroups() { return store.get(K.groups, []); }
-function getStudents() { return store.get(K.students, []); }
+
+/* ---- Ma'lumotlarni normallashtirish ---- */
+function normalizeStudents(list){
+  const arr = Array.isArray(list)? list:[];
+  return arr.map(st=>{
+    const out={...st};
+    if(out.speakingDebt==null) out.speakingDebt=0;
+    if(!Array.isArray(out.audioSubmissions)) out.audioSubmissions=[];
+    return out;
+  });
+}
+function getStudents() {
+  const raw = store.get(K.students, []);
+  const normed = normalizeStudents(raw);
+  // sync back if changed
+  const changed = JSON.stringify(raw)!==JSON.stringify(normed);
+  if(changed) store.set(K.students,normed);
+  return normed;
+}
+
 function getGrades() { return store.get(K.grades, {}); }
 function getAttendance() { return store.get(K.attendance, {}) || {}; }
 function getSpeaking() { return store.get(K.speaking, []) || []; }
@@ -167,6 +172,64 @@ function avgOf(nums) {
 function totalOf(nums) { return nums.reduce((a, b) => a + b, 0); }
 function fmtAvg(v) { return v == null ? '—' : v.toFixed(1); }
 
+/* ==================== CLOUD SYNC (Supabase) ==================== */
+const CLOUD_KEYS = [K.accounts, K.groups, K.students, K.grades, K.attendance, K.speaking];
+
+const CloudSync = (function () {
+  const url = window.SUPABASE_URL || '';
+  const key = window.SUPABASE_ANON_KEY || '';
+  const enabled = !!(url && key && window.supabase);
+  let client = null;
+  let pushTimer = null;
+  const pending = {};
+
+  if (enabled) {
+    try { client = window.supabase.createClient(url, key); } catch (e) { client = null; }
+  }
+
+  function ready() { return enabled && !!client; }
+
+  function schedulePush(k, v) {
+    if (!ready()) return;
+    pending[k] = v;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(flush, 700);
+  }
+
+  async function flush() {
+    if (!ready()) return;
+    const rows = Object.keys(pending).map(k => ({
+      key: k,
+      value: pending[k] === null ? null : JSON.stringify(pending[k]),
+      updated_at: new Date().toISOString()
+    }));
+    for (const key of rows) delete pending[key.key];
+    if (!rows.length) return;
+    try {
+      await client.from('app_state').upsert(rows, { onConflict: 'key' });
+    } catch (e) { /* offline — keyingi o'zgarishda qayta uriniladi */ }
+  }
+
+  async function pull() {
+    if (!ready()) return false;
+    try {
+      const { data, error } = await client.from('app_state').select('key, value');
+      if (error || !data) return false;
+      data.forEach(row => {
+        if (row.value == null) { store.del(row.key); return; }
+        try { localStorage.setItem(row.key, row.value); } catch (e) {}
+      });
+      /* hisoblar lokalda ham yangilanishi kerak */
+      accounts = store.get(K.accounts, accounts);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  return { ready, schedulePush, flush, pull };
+})();
+
+window.__cloud = CloudSync;
+
 /* ---- Hisob va sessiya (login/parol) ---- */
 function getSession() { return store.get(K.session, null); }
 function currentUser() {
@@ -186,6 +249,10 @@ function startSession(login) {
   store.set(K.session, { login: login, role: accounts[login].role });
   state.screen = 'home';
   render();
+  /* Boshqa qurilmadan kirgan bo'lsak — bulutdan ma'lumotni tiklaymiz */
+  if (CloudSync.ready()) {
+    CloudSync.pull().then(ok => { if (ok) render(); });
+  }
 }
 function go(screen) { state.screen = screen; render(); }
 
@@ -419,6 +486,14 @@ function studentPortal() {
       <span class="slot-badge ${x.score == null ? 'wait' : 'done'}">${x.score == null ? 'Kutilmoqda' : 'Baho: ' + x.score}</span>
     </div>`).join('') : `<div class="empty"><span class="emoji">🗣️</span>Hozircha slot biriktirilmagan</div>`;
 
+  /* --- Mening topshiriklarim --- */
+  const mySubs = (st.audioSubmissions || []).slice().reverse().map(a => `
+    <div class="audio-item">
+      <div class="audio-item__meta">${fmtDMY(a.date)} · ${a.status === 'pending' ? "⏳ Ustoz ko'rib chiqmoqda" : (a.status === 'graded' ? `✅ Baho: ${a.score}/10` : '')}</div>
+      <audio class="audio-player" controls src="${esc(a.url)}"></audio>
+      ${a.feedback ? `<div class="gr-note">Izoh: ${esc(a.feedback)}</div>` : ''}
+    </div>`).join('') || `<div class="empty"><span class="emoji">🎙</span>Hozircha topshirilmagan</div>`;
+
   return `
   <section class="card">
     <div class="portal-head">
@@ -457,7 +532,26 @@ function studentPortal() {
   </div>
 
   <div class="section-title">Speaking vaqtim</div>
-  <div class="card">${slotRows}</div>
+  <div class="card">
+    ${Number(st.speakingDebt) > 0
+      ? `<div class="debt-badge" style="margin-bottom:8px">⚠️ Speaking qarzingiz: ${Number(st.speakingDebt)} ta</div>`
+      : `<div class="att-pill" style="margin-bottom:8px">✅ Speaking qarzingiz yo'q</div>`}
+    ${slotRows}
+  </div>
+
+  <div class="section-title">Speaking topshirish (Ovoz yozish)</div>
+  <div class="card">
+    <div class="muted small">Ustozga speaking vazifangizni ovozli topshiring.</div>
+    <div class="recorder" id="recorder">
+      <button type="button" class="btn btn-primary btn-sm" data-act="rec-start">🎙 Ovoz yozish</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-act="rec-stop" id="rec-stop" hidden>⏹ To'xtatish</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-act="rec-play" id="rec-play" hidden>▶ Tinglash</button>
+      <button type="button" class="btn btn-primary btn-sm" data-act="rec-send" id="rec-send" disabled>📤 Yuborish</button>
+      <span class="recorder__status" id="rec-status"></span>
+    </div>
+    <audio id="rec-audio" class="audio-player" controls hidden></audio>
+    <div id="my-submissions" class="audio-list">${mySubs}</div>
+  </div>
 
   <div class="section-title">Sozlamalar</div>
   <div class="card">
@@ -520,7 +614,14 @@ function studentCard(s) {
         <div class="s-group">${g ? esc(g.name) : "Guruh taylanmagan"}</div>
         <div class="s-contacts">
           <span class="s-contact"><span class="lbl">Login</span><code>${acc ? esc(acc.login) : '—'}</code></span>
-          <span class="s-contact"><span class="lbl">Telefon</span>${esc(s.phone)}</span>
+        </div>
+        <div class="s-debt row between" style="margin-top:10px">
+          <span class="lbl-strong">Speaking qarzi</span>
+          <div class="debt-controls">
+            <button type="button" class="btn btn-xs ghost" data-act="debt-minus" data-sid="${s.id}" aria-label="Kamaytirish">−</button>
+            <span class="debt-num">${Number(s.speakingDebt) || 0} ta</span>
+            <button type="button" class="btn btn-xs ghost" data-act="debt-plus" data-sid="${s.id}" aria-label="Ko'paytirish">+</button>
+          </div>
         </div>
         <div class="row g8" style="margin-top:10px">
           <button type="button" class="btn btn-xs ghost" data-act="reset-pwd" data-sid="${s.id}">🔑 Parolni yangilash</button>
@@ -660,9 +761,6 @@ function openAddStudent() {
       ${APP_DATA.classes.map(c => `<option value="${c}">${c}</option>`).join('')}
     </select>
 
-    <label class="field-label" for="f-sphone">Telefon raqami</label>
-    <input class="input" id="f-sphone" data-phone type="tel" inputmode="tel" placeholder="+998 XX XXX-XX-XX" />
-
     <label class="field-label" for="f-sgroup">Guruh</label>
     <select class="input" id="f-sgroup">
       <option value="">Guruhni tanlang</option>
@@ -700,14 +798,12 @@ function saveGroup() {
 function saveStudent() {
   const name = ($('#f-sname').value || '').trim();
   const cls = $('#f-sclass').value;
-  const phone = normPhone($('#f-sphone').value);
   const gid = $('#f-sgroup').value;
   const login = ($('#f-slogin').value || '').trim().toLowerCase();
   const pass = ($('#f-spass').value || '').trim();
 
   if (name.length < 3) { toast("Ism familiyani kiriting", 'error'); $('#f-sname').focus(); return; }
   if (!cls) { toast("Maktab sinfini tanlang", 'error'); return; }
-  if (!isValidPhone(phone)) { toast("Telefon raqamni tekshiring: +998 XX XXX-XX-XX", 'error'); $('#f-sphone').focus(); return; }
   if (!gid) { toast("Guruhni tanlang", 'error'); return; }
   if (!/^[a-z0-9_.]{3,20}$/.test(login)) { toast("Login 3–20 ta: harf, raqam, _ yoki .", 'error'); $('#f-slogin').focus(); return; }
   if (accounts[login]) { toast("Bu login allaqachon band", 'error'); $('#f-slogin').focus(); return; }
@@ -715,7 +811,7 @@ function saveStudent() {
 
   const id = 's' + Date.now();
   const students = getStudents();
-  students.push({ id, fullName: name, phone: formatPhone(phone), schoolClass: cls, groupId: gid });
+  students.push({ id, fullName: name, schoolClass: cls, groupId: gid, speakingDebt: 0, audioSubmissions: [] });
   store.set(K.students, students);
 
   accounts[login] = { login, password: pass, role: 'student', studentId: id, name };
@@ -1092,6 +1188,7 @@ function speakRowHTML(x) {
 function speakingScreen() {
   if (!isTeacher()) return blockedScreen("Bu bo'lim faqat ustoz uchun");
   ensureSpeakState();
+  const students = getStudents();
   const list = getSpeaking()
     .filter(x => x.date === state.speakDate)
     .sort((a, b) => a.start.localeCompare(b.start));
@@ -1114,8 +1211,56 @@ function speakingScreen() {
     ${list.length ? list.map(speakRowHTML).join('') : emptyState("Bu sanada slot yo'q — 'Slot' tugmasini bosing")}
   </div>
 
-  <p class="muted small" style="margin-top:10px">Slotga o'quvchi tayinlanadi. Dars keyin "Baholash" orqali 1–10 ball qo'yiladi va bu ball o'quvchining baholar jurnaliga darhol tushadi.</p>
+  <div class="section-title">Speaking qarzi (o'quvchilar)</div>
+  <div class="card">
+    ${students.map(st => `
+      <div class="row between" style="padding:8px 0;border-bottom:1px solid var(--card-border)">
+        <span class="s-name">${esc(st.fullName)} <span class="chip-class">${esc(st.schoolClass)}</span></span>
+        <div class="debt-controls">
+          <button type="button" class="btn btn-xs ghost" data-act="debt-minus" data-sid="${st.id}">−</button>
+          <span class="debt-num">${Number(st.speakingDebt) || 0} ta</span>
+          <button type="button" class="btn btn-xs ghost" data-act="debt-plus" data-sid="${st.id}">+</button>
+        </div>
+      </div>`).join('')}
+  </div>
+
+  <div class="section-title">Ovozli topshiriklar (Inbox)</div>
+  <div class="card">
+    ${renderAudioInbox()}
+  </div>
+
+  <p class="muted small" style="margin-top:10px">Slotga o'quvchi tayinlanadi. Dars keyin "Baholash" orqali 1–10 ball qo'yiladi va bu ball o'quvchining baholar jurnaliga darhol tushadi. Ovozli topshirik baholansa, Speaking qarzi 1 ga kamayadi.</p>
   `;
+}
+
+/* ---- Ovozli topshiriklar (ustoz uchun inbox) ---- */
+function allAudioSubs() {
+  const out = [];
+  getStudents().forEach(st => {
+    (st.audioSubmissions || []).forEach((a, i) => {
+      out.push({ ...a, studentId: st.id, studentName: st.fullName, schoolClass: st.schoolClass, index: i });
+    });
+  });
+  return out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
+function renderAudioInbox() {
+  const subs = allAudioSubs();
+  if (!subs.length) return emptyState("Hozircha ovozli topshirik yo'q");
+  return subs.map(a => `
+    <div class="audio-item">
+      <div class="audio-item__meta">
+        <strong>${esc(a.studentName)}</strong> <span class="chip-class">${esc(a.schoolClass)}</span> · ${fmtDMY(a.date)} ·
+        ${a.status === 'graded' ? `<span class="gr-score ${gradeClassOf(a.score)}">${a.score}</span>` : '⏳ Kutilmoqda'}
+      </div>
+      <audio class="audio-player" controls src="${esc(a.url)}"></audio>
+      ${a.feedback ? `<div class="gr-note">Izoh: ${esc(a.feedback)}</div>` : ''}
+      <div class="grade-row">
+        ${[1,2,3,4,5,6,7,8,9,10].map(n => `
+          <button type="button" class="btn btn-xs ${a.score === n ? 'btn-primary' : 'ghost'}" data-act="audio-grade" data-sid="${a.studentId}" data-idx="${a.index}" data-score="${n}">${n}</button>`).join('')}
+        <input class="input" style="flex:1;min-width:140px" placeholder="Izoh (ixtiyoriy)" value="${esc(a.feedback || '')}" data-act="audio-feedback" data-sid="${a.studentId}" data-idx="${a.index}" />
+      </div>
+    </div>`).join('');
 }
 
 /* ---- Slot yaratish / tayinlash ---- */
@@ -1266,15 +1411,27 @@ function doLogin() {
   if (!login || !pass) { fail("Login va parolni kiriting"); return; }
   if (err) { err.textContent = ''; err.classList.remove('show'); }
 
-  const acc = accounts[login];
-  if (!acc || acc.password !== pass) {
-    fail("Login yoki parol noto'g'ri");
-    passEl.value = '';
-    passEl.focus();
-    return;
+  const validate = () => {
+    const acc = accounts[login];
+    if (!acc || acc.password !== pass) {
+      fail("Login yoki parol noto'g'ri");
+      passEl.value = '';
+      passEl.focus();
+      return;
+    }
+    startSession(login);
+    toast('Xush kelibsiz! 👋');
+  };
+
+  /* Boshqa qurilmadan kirish: avval bulutdan hisoblarni tekshiramiz */
+  if (CloudSync.ready()) {
+    if (loginEl.disabled) return;
+    loginEl.disabled = true;
+    const done = () => { loginEl.disabled = false; validate(); };
+    CloudSync.pull().then(done, done);
+  } else {
+    validate();
   }
-  startSession(login);
-  toast('Xush kelibsiz! 👋');
 }
 
 function logout() {
@@ -1367,6 +1524,139 @@ function render() {
 }
 
 /* ==================== Hodisalar ==================== */
+/* ==================== SPEAKING QARZI ==================== */
+function changeDebt(sid, delta) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const list = getStudents();
+  const st = list.filter(x => x.id === sid)[0];
+  if (!st) return;
+  st.speakingDebt = Math.max(0, (Number(st.speakingDebt) || 0) + delta);
+  store.set(K.students, list);
+  render();
+  toast("Speaking qarzi: " + st.speakingDebt + " ta");
+}
+
+/* ==================== OVOZ YOZISH (O'quvchi) ==================== */
+let mediaRecorder = null;
+let recChunks = [];
+let recBlobUrl = '';
+let recTimer = null;
+let recSeconds = 0;
+
+function recStatus(msg) {
+  const el = $('#rec-status');
+  if (el) el.textContent = msg;
+}
+function setRecBtn(id, show, disabled) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.hidden = !show;
+  if (disabled != null) el.disabled = disabled;
+}
+
+async function startRecording() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast("Bu qurilmada mikrofon qo'llab-quvvatlanmaydi", 'error');
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recChunks = [];
+    if (recBlobUrl) { URL.revokeObjectURL(recBlobUrl); recBlobUrl = ''; }
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(recChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+      recBlobUrl = URL.createObjectURL(blob);
+      const audio = $('#rec-audio');
+      if (audio) { audio.src = recBlobUrl; audio.hidden = false; }
+      setRecBtn('rec-play', true, false);
+      setRecBtn('rec-send', true, false);
+      recStatus('Yozuv tayyor (' + recSeconds + ' s)');
+    };
+    mediaRecorder.start();
+    recSeconds = 0;
+    setRecBtn('rec-stop', true, false);
+    setRecBtn('rec-play', false);
+    setRecBtn('rec-send', false, true);
+    recTimer = setInterval(() => {
+      recSeconds++;
+      recStatus('Yozilmoqda... ' + recSeconds + ' s');
+    }, 1000);
+    recStatus('Yozilmoqda...');
+  } catch (err) {
+    toast("Mikrofonga ruxsat berilmadi", 'error');
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  clearInterval(recTimer);
+  setRecBtn('rec-stop', false);
+}
+
+function playRecording() {
+  const audio = $('#rec-audio');
+  if (audio && recBlobUrl) { audio.play(); }
+}
+
+async function sendRecording() {
+  if (!recBlobUrl) { toast("Avval ovoz yozing", 'error'); return; }
+  const st = linkedStudent();
+  if (!st) return;
+  const blob = await (await fetch(recBlobUrl)).blob();
+  const reader = new FileReader();
+  reader.onload = function () {
+    const dataUrl = reader.result;
+    const list = getStudents();
+    const target = list.filter(x => x.id === st.id)[0];
+    target.audioSubmissions = target.audioSubmissions || [];
+    target.audioSubmissions.push({
+      id: 'a' + Date.now(),
+      date: todayKey(),
+      url: dataUrl,
+      status: 'pending',
+      score: null,
+      feedback: ''
+    });
+    /* Har bir topshirik = +1 speaking qarzi (ustoz baholaydi) */
+    target.speakingDebt = (Number(target.speakingDebt) || 0) + 1;
+    store.set(K.students, list);
+    render();
+    toast("Ovoz yuborildi ✓ Ustozga yuborildi");
+    recBlobUrl = '';
+  };
+  reader.readAsDataURL(blob);
+}
+
+/* ==================== AUDIO BAHOLASH (Ustoz) ==================== */
+function gradeAudio(sid, idx, score) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const list = getStudents();
+  const st = list.filter(x => x.id === sid)[0];
+  if (!st || !st.audioSubmissions || !st.audioSubmissions[idx]) return;
+  const sub = st.audioSubmissions[idx];
+  const wasGraded = sub.status === 'graded';
+  sub.status = 'graded';
+  sub.score = score;
+  const fbInput = document.querySelector('[data-act="audio-feedback"][data-sid="' + sid + '"][data-idx="' + idx + '"]');
+  if (fbInput) sub.feedback = fbInput.value.trim();
+
+  /* Baholangan har bir audio = qarzdan −1 (faqat birinchi marta) */
+  if (!wasGraded) st.speakingDebt = Math.max(0, (Number(st.speakingDebt) || 0) - 1);
+
+  /* O'quvchi baholar jurnaliga yozish */
+  const grades = getGrades();
+  if (!grades[sid]) grades[sid] = {};
+  grades[sid][sub.date] = { score: score, category: 'Speaking', note: sub.feedback || 'Speaking (audio)' };
+  store.set(K.grades, grades);
+
+  store.set(K.students, list);
+  render();
+  toast("Baho saqlandi ✓ (jurnalga yozildi, qarz kamaydi)");
+}
+
 document.addEventListener('click', function (e) {
   const btn = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
   if (!btn) return;
@@ -1443,6 +1733,21 @@ document.addEventListener('click', function (e) {
       render();
     },
 
+    /* --- Speaking qarzi --- */
+    'debt-plus': function () { changeDebt(btn.getAttribute('data-sid'), +1); },
+    'debt-minus': function () { changeDebt(btn.getAttribute('data-sid'), -1); },
+
+    /* --- Ovoz yozish --- */
+    'rec-start': startRecording,
+    'rec-stop': stopRecording,
+    'rec-play': playRecording,
+    'rec-send': sendRecording,
+
+    /* --- Audio baholash --- */
+    'audio-grade': function () {
+      gradeAudio(btn.getAttribute('data-sid'), Number(btn.getAttribute('data-idx')), Number(btn.getAttribute('data-score')));
+    },
+
     /* --- Davomat --- */
     'open-attendance': function () {
       state.attGroup = btn.getAttribute('data-group') || state.attGroup;
@@ -1498,9 +1803,7 @@ document.addEventListener('click', function (e) {
 document.addEventListener('input', function (e) {
   const t = e.target;
   if (!t) return;
-  if (t.hasAttribute && t.hasAttribute('data-phone')) {
-    t.value = formatPhone(t.value);
-  } else if (t.id === 's-search') {
+  if (t.id === 's-search') {
     state.search = t.value;
     refreshStudentList();
   } else if (t.id === 'grade-note') {

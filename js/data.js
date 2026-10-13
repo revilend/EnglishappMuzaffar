@@ -1,25 +1,25 @@
 'use strict';
 
-/* Step 3 — demo ma'lumotlar (mock data). Moliyaviy ma'lumotlar YO'Q. */
+/* Step 4 — demo ma'lumotlar (mock data). Moliyaviy ma'lumotlar YO'Q. */
 const APP_DATA = {
-  classes: ['8-sinf', '9-sinf', '10-sinf', '11-sinf', 'IELTS'],
+  classes: ['5-sinf', '6-sinf', '7-sinf', '8-sinf', '9-sinf', '10-sinf', '11-sinf'],
 
   days: ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'],
 
-  /* Guruhlar: faqat o'quv-jarayon ma'lumotlari (narx/to'lov YO'Q) */
+  /* Guruhlar: faqat o'quv-jarayon ma'lumotlari */
   groups: [
     { id: 'g1', name: 'IELTS Band 7.0', days: 'Dushanba, Chorshanba, Juma', time: '18:00' },
-    { id: 'g2', name: 'General English (8–10-sinf)', days: 'Seshanba, Payshanba', time: '17:00' }
+    { id: 'g2', name: "General English (8–10-sinf)", days: 'Seshanba, Payshanba', time: '17:00' }
   ],
 
-  /* O'quvchilar: ism, sinf, telefon, guruh (ota-ona telefonlari YO'Q) */
+  /* O'quvchilar: ism, sinf, guruh (telefon maydonlari olib tashlandi) */
   students: [
-    { id: 's1', fullName: 'Aziz Rahimov', phone: '+998 90 123-45-67', schoolClass: '9-sinf', groupId: 'g2' },
-    { id: 's2', fullName: 'Nilufar Ergasheva', phone: '+998 97 222-33-44', schoolClass: '9-sinf', groupId: 'g2' },
-    { id: 's3', fullName: 'Jasur Karimov', phone: '+998 91 300-40-50', schoolClass: '8-sinf', groupId: 'g2' },
-    { id: 's4', fullName: 'Dilnoza Qodirova', phone: '+998 99 400-50-60', schoolClass: '10-sinf', groupId: 'g2' },
-    { id: 's5', fullName: 'Malika Yusupova', phone: '+998 95 700-80-90', schoolClass: 'IELTS', groupId: 'g1' },
-    { id: 's6', fullName: 'Bekzod Alimov', phone: '+998 98 611-22-33', schoolClass: '11-sinf', groupId: 'g1' }
+    { id: 's1', fullName: 'Aziz Rahimov', schoolClass: '9-sinf', groupId: 'g2', speakingDebt: 0, audioSubmissions: [] },
+    { id: 's2', fullName: 'Nilufar Ergasheva', schoolClass: '9-sinf', groupId: 'g2', speakingDebt: 0, audioSubmissions: [] },
+    { id: 's3', fullName: 'Jasur Karimov', schoolClass: '8-sinf', groupId: 'g2', speakingDebt: 0, audioSubmissions: [] },
+    { id: 's4', fullName: 'Dilnoza Qodirova', schoolClass: '10-sinf', groupId: 'g2', speakingDebt: 0, audioSubmissions: [] },
+    { id: 's5', fullName: 'Malika Yusupova', schoolClass: '11-sinf', groupId: 'g1', speakingDebt: 0, audioSubmissions: [] },
+    { id: 's6', fullName: 'Bekzod Alimov', schoolClass: '11-sinf', groupId: 'g1', speakingDebt: 0, audioSubmissions: [] }
   ],
 
   /* Kirish tizimi (login + parol) */
@@ -69,7 +69,7 @@ const APP_DATA = {
     s6: ['absent', 'present', 'present', 'absent', 'present']
   },
 
-  /* ---- Speaking (1-on-1) slotlari — sana ishga tushganda qo'yiladi ---- */
+  /* ---- Speaking (1-on-1) slotlari ---- */
   speakingSeed: [
     { start: '14:00', end: '14:20', studentId: 's5' },
     { start: '14:20', end: '14:40', studentId: 's6' },

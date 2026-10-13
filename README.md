@@ -1,7 +1,8 @@
 # English Tutor — Telegram Mini App
 
 Ingliz tili offline ustozlari uchun boshqaruv paneli va o'quvchi kabineti.
-**Butun interfeys o'zbek tilida.** Moliyaviy ma'lumotlar (narx, to'lov, qarz) butunlay yo'q — faqat o'quv jarayoni.
+**Butun interfeys o'zbek tilida.** Moliyaviy ma'lumotlar (narx, to'lov) butunlay yo'q — faqat o'quv jarayoni.
+Telefon raqamlari ham olib tashlangan; sinflar **faqat 5–11-sinf**; **Speaking qarzi** va **ovozli topshirish** mavjud.
 
 ## Nima bor
 
@@ -35,6 +36,41 @@ Guruh + sana (bugun) → [✓ Keldi] [✕ Kelmadi] [? Sababli] → "Davomatni sa
 **Ustoz:** guruhlar, o'quvchilar ro'yxati, telefonlar, davomat, jurnal, speaking.
 **O'quvchi (kabinet):** faqat o'zi — ism, sinf, guruh, o'z baholari + o'rtacha, o'z davomati, o'z speaking vaqti, parol o'zgartirish.
 Boshqa o'quvchilarning ismlari/telefonlari hech qachon ko'rinmaydi; boshqa ekranlarga urinish `canAccess()` bilan bloklanadi.
+
+### 7. Telefon raqamlari yo'q
+Ro'yxat, forma va kartalarda telefon maydoni **umuman yo'q**. Majburiy maydonlar:
+**Ism familiya, Maktab sinfi, Login, Parol** (guruh — ixtiyoriy).
+
+### 8. Sinflar faqat 5–11
+Barcha sinf variantlari va filtrlari qat'iy: `5-sinf, 6-sinf, 7-sinf, 8-sinf, 9-sinf, 10-sinf, 11-sinf`.
+
+### 9. Speaking qarzi (counter)
+- **Ustoz:** o'quvchilar ro'yxatida va Speaking ekranida har biri uchun **[ − ] / [ + ]** nazorat
+- **O'quvchi:** kabinetda **"Speaking qarzingiz: X ta"** badge (yoki "qarzingiz yo'q")
+
+### 10. Ovozli topshirish (ovoz yozish)
+- **O'quvchi kabinetida:** "🎙 Ovoz yozish" → tinglash → "📤 Yuborish" (brauzer `MediaRecorder`)
+- **Ustoz (Speaking → Ovozli topshiriklar):** ijrochini eshitadi, **1–10 ball** va izoh qoldiradi
+- **Baholash avtomatik ravishda Speaking qarzini 1 ga kamaytiradi** va ball o'quvchi
+  baholar jurnaliga (kategoriyasi "Speaking") yoziladi
+
+### 11. Ko'p qurilmali bulut sinxronizatsiyasi (Supabase)
+Barcha ma'lumotlar (hisoblar, guruhlar, o'quvchilar, baholar, davomat, speaking, audio)
+markaziy bulut bazasiga yoziladi — boshqa telefonda **bir xil login/parol** bilan kirilsa,
+o'sha ma'lumotlar tiklanadi.
+
+**Sozlash (3 qadam):**
+1. [supabase.com](https://supabase.com) → yangi loyiha → SQL Editor'da yarating:
+   ```sql
+   create table app_state (key text primary key, value jsonb, updated_at timestamptz);
+   alter table app_state enable row level security;
+   create policy "rw" on app_state for all using (true) with check (true);
+   ```
+   (Demo uchun `anon` kaliti bilan; haqiqiy xavfsizlik uchun RLS qat'iyroq bo'lsin.)
+2. `index.html` ichidagi `window.SUPABASE_URL` va `window.SUPABASE_ANON_KEY` qiymatlarini kiriting.
+3. Sahifani yangilang — `CloudSync` avtomatik ishga tushadi.
+
+> ⚠️ Konfiguratsiya kiritilmasa ilova **localStorage** rejimida ishlayveradi (graceful fallback).
 
 ## Telegram bot (aiogram 3.x)
 
@@ -78,7 +114,7 @@ HTML uchun xavfsiz escaped qilinadi.
 
 ```bash
 npm install      # test uchun (jsdom)
-npm test         # interaktiv smoke-test (114 tekshiruv)
+npm test         # interaktiv smoke-test (149 tekshiruv)
 npm start        # http://localhost:3000
 ```
 
@@ -96,7 +132,7 @@ requirements.txt  — aiogram>=3.13.0, aiohttp>=3.9.0
 .nojekyll         — GitHub Pages uchun
 ```
 
-Ma'lumotlar brauzer `localStorage`'ida saqlanadi (demo uchun).
+Ma'lumotlar avval brauzer `localStorage`'ida saqlanadi; **Supabase konfiguratsiya qilinsa** bulutga sinxronlanadi.
 
 ## GitHub Pages
 

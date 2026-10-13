@@ -672,3 +672,15 @@ body.auth-mode .toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
 .login-demo { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 5px; }
 
 .strong-label { font-weight: 800; font-size: 15px; }
+
+/* Recorder & Audio */
+.recorder { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:10px 0 6px; }
+.recorder__status { color:var(--muted); font-size:12px; }
+.audio-list { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+.audio-item { border:1px solid var(--card-border); border-radius:10px; padding:10px; background:rgba(255,255,255,.02); }
+.audio-item__meta { font-size:12px; color:var(--muted); margin-bottom:6px; }
+.audio-player { width:100%; }
+.grade-row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:8px; }
+.debt-badge { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; background:rgba(255,107,107,.18); color:#ff6b6b; font-weight:600; font-size:12px; }
+.debt-controls { display:flex; gap:6px; align-items:center; }
+.debt-num { min-width:20px; text-align:center; font-weight:600; }

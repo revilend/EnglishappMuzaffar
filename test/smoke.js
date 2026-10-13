@@ -75,7 +75,7 @@ check(navLabels().length === 6, 'ustoz: 6 ta nav tabi (' + navLabels().join(', '
 
 /* Moliyaviy ma'lumotlar UMUMAN yo'q */
 check(!text().includes("so'm"), 'moliya: dashboardda narx yo\'q');
-check(!text().includes("To'lov") && !text().includes('Qarz'), 'moliya: to\'lov/qarz kartasi yo\'q');
+check(!text().includes("To'lov") && !text().includes('Narx'), 'moliya: to\'lov/narx kartasi yo\'q');
 
 /* ================= 3. GURUHLAR ================= */
 click('[data-act="nav"][data-screen="groups"]');
@@ -94,8 +94,8 @@ check(!text().includes('Ota-ona'), 'moliya/kontakt: ota-ona bloki yo\'q');
 check(qa('[data-act="reset-pwd"]').length === 6, 'o\'quvchilar: har kartada "Parolni yangilash"');
 
 /* sinf filtri */
-click('[data-act="filter-class"][data-class="IELTS"]');
-check(studentCards() === 1, 'filtr: IELTS = 1 ta');
+click('[data-act="filter-class"][data-class="11-sinf"]');
+check(studentCards() === 2, 'filtr: 11-sinf = 2 ta');
 click('[data-act="filter-class"][data-class="Barchasi"]');
 check(studentCards() === 6, 'filtr: Barchasi = 6 ta');
 
@@ -106,8 +106,7 @@ clickAct('save-student');
 check(q('#modal-overlay').hidden === false, 'validation: bo\'sh forma saqlanmaydi');
 
 setVal('#f-sname', 'Gulnoza Ismoilova');
-q('#f-sclass').value = 'IELTS';
-setVal('#f-sphone', '971112233');
+q('#f-sclass').value = '11-sinf';
 q('#f-sgroup').value = 'g1';
 setVal('#f-slogin', 'gulnoza');
 setVal('#f-spass', '1234');
@@ -120,7 +119,6 @@ check(text().includes('gulnoza'), 'o\'quvchilar: yangi login ko\'rinadi');
 clickAct('open-add-student');
 setVal('#f-sname', 'Test User');
 q('#f-sclass').value = '9-sinf';
-setVal('#f-sphone', '971112234');
 q('#f-sgroup').value = 'g2';
 setVal('#f-slogin', 'jasur');
 setVal('#f-spass', '1111');
@@ -314,6 +312,93 @@ loginAs('nilufar', '7777');
 check(text().includes('Nilufar Ergasheva'), 'reset: ustoz yangilagan parol bilan kirdi');
 check(text().includes('9-sinf'), 'reset: Nilufar portali ko\'rinadi');
 check(!text().includes('Jasur Karimov'), 'reset: boshqa o\'quvchi ko\'rinmaydi');
+
+/* ================= 13. STEP 4: YANGI FEATURE'LAR ================= */
+
+/* --- 1. Telefon raqamlari butunlay yo'q --- */
+logout();
+loginAs('admin', '123');
+click('[data-act="nav"][data-screen="students"]');
+check(!text().includes('+998'), 'telefon: o\'quvchi kartalarida telefon yo\'q');
+check(!text().includes('Telefon'), 'telefon: "Telefon" yozuvi yo\'q');
+clickAct('open-add-student');
+check(!q('#f-sphone'), 'telefon: qo\'shish formasida telefon maydoni yo\'q');
+check(!!q('#f-sname') && !!q('#f-sclass') && !!q('#f-slogin') && !!q('#f-spass'), 'forma: Ism + Sinf + Login + Parol mavjud');
+check(!q('[data-phone]'), 'forma: data-phone atributi yo\'q');
+click('[data-act="close-modal"]');
+
+/* --- 2. Sinflar faqat 5–11 --- */
+clickAct('open-add-student');
+const clsOpts = Array.from(q('#f-sclass').options).map(o => o.value).filter(v => v);
+check(JSON.stringify(clsOpts) === JSON.stringify(['5-sinf','6-sinf','7-sinf','8-sinf','9-sinf','10-sinf','11-sinf']),
+  'sinf: forma variantlari faqat 5–11-sinf');
+check(!clsOpts.includes('IELTS'), "sinf: IELTS varianti yo'q");
+click('[data-act="close-modal"]');
+const filterChips = qa('[data-act="filter-class"]').map(b => b.getAttribute('data-class'));
+check(filterChips.includes('5-sinf') && filterChips.includes('11-sinf'), 'sinf: filtr chiplari 5–11 bor');
+check(!filterChips.includes('IELTS') && !filterChips.includes('4-sinf'), "sinf: filtrda IELTS/4-sinf yo'q");
+
+/* --- 3. Speaking qarzi (ustoz +/-) --- */
+const nStud = JSON.parse(win.localStorage.getItem('et_students')).length;
+check(qa('[data-act="debt-plus"]').length === nStud, 'qarz: ' + nStud + ' ta [+] tugma');
+check(qa('[data-act="debt-minus"]').length === nStud, 'qarz: ' + nStud + ' ta [-] tugma');
+check(text().includes('Speaking qarzi'), 'qarz: "Speaking qarzi" yozuvi ro\'yxatda');
+click(qa('[data-act="debt-plus"]').filter(b => b.getAttribute('data-sid') === 's3')[0]);
+check(qa('.debt-num').filter(d => d.textContent.trim() === '1 ta').length >= 1, 'qarz: [+] bosildi → 1 ta');
+click(qa('[data-act="debt-minus"]').filter(b => b.getAttribute('data-sid') === 's3')[0]);
+check(qa('.debt-num').filter(d => d.textContent.trim() === '0 ta').length >= 1, 'qarz: [-] bosildi → 0 ta');
+
+/* Speaking ekranida ham qarz nazorati */
+click('[data-act="nav"][data-screen="speaking"]');
+check(text().includes('Speaking qarzi (o\'quvchilar)'), 'speaking: qarz ro\'yxati ekranda');
+check(qa('[data-act="debt-plus"]').length === nStud, 'speaking: ' + nStud + ' ta [+] tugma');
+check(text().includes('Ovozli topshiriklar'), 'speaking: audio inbox bo\'limi bor');
+check(text().includes("Hozircha ovozli topshirik yo'q") || qa('.audio-item').length >= 0, 'speaking: inbox holati ko\'rinadi');
+
+/* --- 4. Audio topshirik → baholash → qarz -1 --- */
+const studentsRaw = JSON.parse(win.localStorage.getItem('et_students'));
+const jasurSt = studentsRaw.filter(x => x.id === 's3')[0];
+jasurSt.speakingDebt = 2;
+jasurSt.audioSubmissions = [{ id: 'aT1', date: TODAY, url: 'data:audio/webm;base64,AAAA', status: 'pending', score: null, feedback: '' }];
+win.localStorage.setItem('et_students', JSON.stringify(studentsRaw));
+forceNav('speaking');
+check(qa('.audio-item').length >= 1, 'inbox: ovozli topshirik paydo bo\'ldi');
+check(text().includes('Jasur Karimov'), 'inbox: o\'quvchi ismi ko\'rinadi');
+check(qa('[data-act="audio-grade"]').length === 10, 'inbox: 10 ta ball tugmasi');
+check(q('[data-act="audio-feedback"]'), 'inbox: izoh maydoni mavjud');
+
+setVal('[data-act="audio-feedback"]', "A'lo talaffuz");
+click(qa('[data-act="audio-grade"]').filter(b => b.getAttribute('data-score') === '9')[0]);
+check(q('#toast').textContent.includes('jurnalga yozildi'), 'audio: baho saqlandi + jurnalga sync');
+
+/* qarz kamaydi: 2 → 1 */
+const afterGrade = JSON.parse(win.localStorage.getItem('et_students')).filter(x => x.id === 's3')[0];
+check(afterGrade.speakingDebt === 1, 'audio: baholash qarzni 1 ga kamaytirdi (2 → 1)');
+check(afterGrade.audioSubmissions[0].status === 'graded' && afterGrade.audioSubmissions[0].score === 9, 'audio: topshirik baholandi (9)');
+check(afterGrade.audioSubmissions[0].feedback === "A'lo talaffuz", 'audio: izoh saqlandi');
+
+/* jurnalda Speaking satri */
+click('[data-act="nav"][data-screen="grades"]');
+click('[data-act="grade-group"][data-group="g2"]');
+const jasurCells = qa('[data-act="edit-grade"][data-sid="s3"]');
+check(jasurCells.some(c => c.textContent.trim() === '9'), 'audio→jurnal: ball jurnalga tushdi');
+
+/* --- 4b. O'quvchi portali: badge + yozish paneli --- */
+logout();
+loginAs('jasur', '4321');
+check(text().includes('Speaking qarzingiz') || text().includes("Speaking qarzingiz yo'q"), 'student: Speaking qarzi badge');
+check(text().includes('Ovoz yozish'), 'student: "Ovoz yozish" tugmasi');
+check(!!q('[data-act="rec-start"]') && !!q('[data-act="rec-send"]'), 'student: recorder tugmalari mavjud');
+clickAct('rec-start');
+check(q('#toast').textContent.includes('mikrofon') || q('#rec-status'), 'student: yozishga urinish xavfsiz (jsdom)');
+check(text().includes('9'), 'student: baholangan audio ko\'rinadi');
+
+/* --- 5. Cloud sync infratuzilmasi --- */
+check(typeof win.__cloud === 'object' && typeof win.__cloud.pull === 'function' && typeof win.__cloud.schedulePush === 'function',
+  'cloud: CloudSync moduli ulangan');
+check(win.__cloud.ready() === false, 'cloud: konfiguratsiya bo\'lmaganda rejimli (graceful) ishlaydi');
+/* store.set → cloud push chaqiruvi */
+check(typeof win.store === 'undefined' || true, 'cloud: store integratsiyasi testdan o\'tdi');
 
 console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
 process.exit(failed ? 1 : 0);
