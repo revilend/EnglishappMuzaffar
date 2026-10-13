@@ -158,8 +158,8 @@ click(qa('.cat-wrap .chip-btn')[2]);
 click(q('[data-act="close-grade"]'));
 const newCell = q('[data-act="edit-grade"][data-sid="' + tSid + '"][data-date="' + tDate + '"]');
 check(newCell && newCell.textContent.trim() === want, 'jurnal: baho saqlandi (' + want + ')');
-const wantCls = Number(want) >= 8 ? 'g-a' : (Number(want) >= 6 ? 'g-b' : 'g-c');
-check(newCell && newCell.classList.contains(wantCls), 'jurnal: rang kodlash to\'g\'ri (' + wantCls + ')');
+check(newCell && newCell.classList.contains('g-num'), "jurnal: neytral g-num klassi (rangli badge yo'q)");
+check(newCell && !newCell.classList.contains('g-a') && !newCell.classList.contains('g-b') && !newCell.classList.contains('g-c'), "jurnal: eski rangli klasslar (g-a/g-b/g-c) qolmagan");
 
 /* sinf filtri jurnalda */
 const rowsBefore = qa('tbody tr').length;
@@ -393,12 +393,114 @@ clickAct('rec-start');
 check(q('#toast').textContent.includes('mikrofon') || q('#rec-status'), 'student: yozishga urinish xavfsiz (jsdom)');
 check(text().includes('9'), 'student: baholangan audio ko\'rinadi');
 
-/* --- 5. Cloud sync infratuzilmasi --- */
-check(typeof win.__cloud === 'object' && typeof win.__cloud.pull === 'function' && typeof win.__cloud.schedulePush === 'function',
-  'cloud: CloudSync moduli ulangan');
-check(win.__cloud.ready() === false, 'cloud: konfiguratsiya bo\'lmaganda rejimli (graceful) ishlaydi');
-/* store.set → cloud push chaqiruvi */
-check(typeof win.store === 'undefined' || true, 'cloud: store integratsiyasi testdan o\'tdi');
+/* ================= 14. CHAT (Ustoz ↔ O'quvchi) ================= */
+check(text().includes('Ustoz bilan Chat'), "chat: o'quvchi portali bo'limi bor");
+check(!!q('#chat-list') && !!q('#chat-input'), "chat: portalda xabarlashuv (ro'yxat + input)");
+setVal('#chat-input', 'Tayyor ustoz');
+clickAct('send-chat');
+check(q('#chat-list').textContent.includes('Tayyor ustoz'), "chat: o'quvchi xabar yubordi");
+check(!!q('#chat-list .chat-msg.mine'), "chat: o'quvchi xabari o'zi tomonida (mine)");
+
+logout();
+loginAs('admin', '123');
+click('[data-act="nav"][data-screen="students"]');
+check(qa('[data-act="open-chat"]').length === studentCards(), "chat: har o'quvchi kartasida 'Xabar yozish' tugmasi");
+click(qa('[data-act="open-chat"]').filter(b => b.getAttribute('data-sid') === 's3')[0]);
+check(q('#modal-overlay').hidden === false, "chat: ustoz xabar modali ochildi");
+check(!!q('#chat-list') && !!q('#chat-input'), "chat: modaldagi ro'yxat + input mavjud");
+check(q('#chat-list').textContent.includes('Tayyor ustoz'), "chat: ustoz o'quvchi xabarini kordi");
+setVal('#chat-input', 'Assalom Jasur');
+clickAct('send-chat');
+check(q('#chat-list').textContent.includes('Assalom Jasur'), "chat: ustoz xabar yozdi");
+click('[data-act="close-modal"]');
+check(q('#modal-overlay').hidden === true, 'chat: modal yopildi');
+
+/* o'quvchi ustoz xabarini ko'radi */
+logout();
+loginAs('jasur', '4321');
+check(q('#chat-list') && q('#chat-list').textContent.includes('Assalom Jasur'), "chat: o'quvchi ustoz xabarini kordi");
+
+/* ================= 15. NEYTRAL GRADEBOOK (CSS) ================= */
+const cssText = fs.readFileSync(path.join(root, 'css', 'styles.css'), 'utf8');
+const appText = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
+check(cssText.includes('.g-num'), 'neytral: .g-num klassi mavjud');
+check(!/\.g-a\s*\{/.test(cssText) && !/\.g-b\s*\{/.test(cssText) && !/\.g-c\s*\{/.test(cssText),
+  "neytral: eski rangli baho klasslari o'chirilgan");
+check(!/\.score-btn\.sel\.g-(a|b|c)/.test(cssText), "neytral: rangli ball tugmalari yo'q");
+check(!appText.includes('background:#1f9d5b') && !appText.includes('background:#2f8fef') && !appText.includes('background:#e5484d'),
+  "neytral: legendadagi rangli nuqtalar olib tashlangan");
+
+/* ================= 16. CLOUD SYNC (Supabase API) ================= */
+check(typeof win.__cloud === 'object' && typeof win.__cloud.pullAll === 'function' && typeof win.__cloud.pushGrade === 'function',
+  'cloud: CloudSync moduli ulangan (pullAll/pushGrade)');
+check(typeof win.__cloud.sendMessage === 'function' && typeof win.__cloud.pushAttendance === 'function' && typeof win.__cloud.pushDebt === 'function',
+  'cloud: messages/attendance/debt API mavjud');
+check(String(win.__cloud.url).indexOf('mvjoeqyqaylfccqcnwwe.supabase.co') >= 0, 'cloud: haqiqiy Supabase URL ulangan');
+check(win.__cloud.ready() === false, "cloud: jsdom da klient yo'q — lokal rejim (graceful) ishlaydi");
+check(win.__cloud.messagesAvailable() === false, "cloud: klient yo'qken messages lokal rejimda");
+
+/* ================= 17. O'QUVCHINI O'CHIRISH (tasdiq bilan) ================= */
+logout();
+loginAs('admin', '123');
+click('[data-act="nav"][data-screen="students"]');
+const nStudBeforeDel = studentCards();
+check(qa('[data-act="del-student"]').length === nStudBeforeDel, "o'chirish: har o'quvchi kartasida '🗑 O'chirish' tugmasi");
+let delCard = qa('.student-card').filter(c => c.textContent.includes('Gulnoza Ismoilova'))[0];
+check(!!delCard, "o'chirish: Gulnoza kartasi topildi");
+const delSid = delCard.querySelector('[data-act="del-student"]').getAttribute('data-sid');
+
+/* tasdiq modali — bekor qilish */
+click(delCard.querySelector('[data-act="del-student"]'));
+check(q('#modal-overlay').hidden === false, "o'chirish: tasdiq modali ochildi");
+check(q('#modal-sheet').textContent.includes("Haqiqatan ham") && q('#modal-sheet').textContent.includes("Gulnoza Ismoilovani o'chirmoqchimisiz"),
+  "o'chirish: ism bilan tasdiq savoli");
+check(q('#modal-sheet').textContent.includes('baholari va davomat tarixi ham o\'chiriladi'),
+  "o'chirish: ogohlantirish matni to'liq");
+check(!!q('.confirm-actions [data-act="close-modal"]') && q('.confirm-actions [data-act="close-modal"]').textContent.includes('Bekor qilish'),
+  "o'chirish: 'Bekor qilish' tugmasi");
+check(!!q('[data-act="do-del-student"]') && q('[data-act="do-del-student"]').textContent.includes("Ha, o'chirish"),
+  "o'chirish: 'Ha, o'chirish' tugmasi");
+click('.confirm-actions [data-act="close-modal"]');
+check(q('#modal-overlay').hidden === true, 'o\'chirish: bekor qilindi');
+check(studentCards() === nStudBeforeDel, "o'chirish: bekor qilingach o'quvchi saqlanib qoldi");
+
+/* tasdiq → o'chirish */
+click(qa('.student-card').filter(c => c.textContent.includes('Gulnoza Ismoilova'))[0].querySelector('[data-act="del-student"]'));
+click('[data-act="do-del-student"]');
+check(q('#modal-overlay').hidden === true, 'o\'chirish: modal yopildi');
+check(studentCards() === nStudBeforeDel - 1, "o'chirish: o'quvchi ro'yxatdan yo'qoldi");
+check(q('#toast').textContent.includes("O'quvchi muvaffaqiyatli o'chirildi"), "o'chirish: success toast");
+const studentsAfterDel = JSON.parse(win.localStorage.getItem('et_students'));
+check(!studentsAfterDel.some(x => x.id === delSid), "o'chirish: lokal studentsdan o'chirildi");
+check(!JSON.parse(win.localStorage.getItem('et_grades'))[delSid], "o'chirish: baholari o'chirildi");
+check(!JSON.parse(win.localStorage.getItem('et_accounts'))['gulnoza'], "o'chirish: login hisobi o'chirildi");
+const attAfterDel = JSON.parse(win.localStorage.getItem('et_attendance'));
+check(Object.keys(attAfterDel).every(dk => !attAfterDel[dk] || !attAfterDel[dk][delSid]), "o'chirish: davomati o'chirildi");
+check(!qa('.student-card').some(c => c.textContent.includes('Gulnoza')), "o'chirish: karta ham yo'qoldi");
+
+/* ================= 18. GURUHNI O'CHIRISH (tasdiq bilan) ================= */
+click('[data-act="nav"][data-screen="groups"]');
+const nGrpBeforeDel = groupCards();
+check(qa('[data-act="del-group"]').length === nGrpBeforeDel, "guruh: har kartada '🗑 O'chirish' tugmasi");
+const grpCard = qa('.group-card').filter(c => c.textContent.includes('IELTS Band 7.0'))[0];
+const grpId = grpCard.querySelector('[data-act="del-group"]').getAttribute('data-gid');
+
+click(grpCard.querySelector('[data-act="del-group"]'));
+check(q('#modal-overlay').hidden === false, "guruh: tasdiq modali ochildi");
+check(q('#modal-sheet').textContent.includes('IELTS Band 7.0 guruhini o\'chirmoqchimisiz?'),
+  "guruh: nom bilan tasdiq savoli");
+check(!!q('.confirm-actions [data-act="close-modal"]') && !!q('[data-act="do-del-group"]'), "guruh: Bekor/Ha tugmalari");
+click('.confirm-actions [data-act="close-modal"]');
+check(groupCards() === nGrpBeforeDel, "guruh: bekor qilingach saqlanib qoldi");
+
+click(qa('.group-card').filter(c => c.textContent.includes('IELTS Band 7.0'))[0].querySelector('[data-act="del-group"]'));
+click('[data-act="do-del-group"]');
+check(groupCards() === nGrpBeforeDel - 1, "guruh: ro'yxatdan yo'qoldi");
+check(q('#toast').textContent.includes('Guruh muvaffaqiyatli o\'chirildi'), "guruh: success toast");
+check(!JSON.parse(win.localStorage.getItem('et_groups')).some(g => g.id === grpId), "guruh: lokal groupsdan o'chirildi");
+const studentsAfterGrpDel = JSON.parse(win.localStorage.getItem('et_students'));
+check(studentsAfterGrpDel.filter(x => x.groupId === null).length === 2, "guruh: o'quvchilari guruhsiz qoldi (group_id = null)");
+check(!JSON.parse(win.localStorage.getItem('et_grades'))['x'], "guruh: boshqa ma'lumotlar o'zgarmadi");
 
 console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
 process.exit(failed ? 1 : 0);

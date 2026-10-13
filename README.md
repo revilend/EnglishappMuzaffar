@@ -22,7 +22,8 @@ Guruh + sana (bugun) → [✓ Keldi] [✕ Kelmadi] [? Sababli] → "Davomatni sa
 ### 4. 10 ballik baholar jurnali
 - Guruh va sinf tanlagichlari
 - Qatorlar: o'quvchilar (sinf badge), ustunlar: dars sanalari (02.10, 05.10 …)
-- Ranglar: **8–10 yashil (A'lo)**, **6–7 ko'k (Yaxshi)**, **1–5 qizil (Qoniqarsiz)**
+- **Neytral dizayn:** rangli badge'lar yo'q — toza dark-slate raqam, yumshoq kulrang
+  fon va nozik ramka; legendada faqat matn (`8–10 / 6–7 / 1–5`)
 - Oxirida avtomatik **"O'rtacha baho"** va **Jami ball**
 - Katakchaga bosib **1-tap** baho: 1–10 tugmalari + vazifa turi (Darsdagi javob / Lug'at / Uyga vazifa) + izoh
 - Jadval gorizontal siljiydi, birinchi ustun `sticky`
@@ -54,23 +55,50 @@ Barcha sinf variantlari va filtrlari qat'iy: `5-sinf, 6-sinf, 7-sinf, 8-sinf, 9-
 - **Baholash avtomatik ravishda Speaking qarzini 1 ga kamaytiradi** va ball o'quvchi
   baholar jurnaliga (kategoriyasi "Speaking") yoziladi
 
-### 11. Ko'p qurilmali bulut sinxronizatsiyasi (Supabase)
-Barcha ma'lumotlar (hisoblar, guruhlar, o'quvchilar, baholar, davomat, speaking, audio)
-markaziy bulut bazasiga yoziladi — boshqa telefonda **bir xil login/parol** bilan kirilsa,
-o'sha ma'lumotlar tiklanadi.
+### 11. Ko'p qurilmali bulut sinxronizatsiyasi (Supabase) ✅ JOYIDA ULANGAN
+Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 
-**Sozlash (3 qadam):**
-1. [supabase.com](https://supabase.com) → yangi loyiha → SQL Editor'da yarating:
-   ```sql
-   create table app_state (key text primary key, value jsonb, updated_at timestamptz);
-   alter table app_state enable row level security;
-   create policy "rw" on app_state for all using (true) with check (true);
-   ```
-   (Demo uchun `anon` kaliti bilan; haqiqiy xavfsizlik uchun RLS qat'iyroq bo'lsin.)
-2. `index.html` ichidagi `window.SUPABASE_URL` va `window.SUPABASE_ANON_KEY` qiymatlarini kiriting.
-3. Sahifani yangilang — `CloudSync` avtomatik ishga tushadi.
+| Jadval | Nima saqlanadi |
+|---|---|
+| `students` | ism, sinf, guruh, login, parol, **speaking qarz** |
+| `groups` | guruh nomi, kunlar, vaqt |
+| `attendance` | sana + o'quvchi + holat (Keldi/Kelmadi/Sababli) |
+| `grades` | sana, ball (1–10), kategoriya, izoh |
+| `messages` | ustoz ↔ o'quvchi chati (real-time) |
+| `audio_submissions` | ovozli topshiriklar (ixtiyoriy, `supabase.sql`) |
 
-> ⚠️ Konfiguratsiya kiritilmasa ilova **localStorage** rejimida ishlayveradi (graceful fallback).
+- **Loyiha ulanishi** `index.html` ichida: `window.SUPABASE_URL` +
+  `window.SUPABASE_ANON_KEY` (publishable kalit).
+- **Login paytida** barcha jadvallar tortib olinadi → boshqa telefonda/PC da
+  **bir xil login/parol** bilan kirilsa o'sha ma'lumotlar to'liq tiklanadi.
+- Har bir o'zgarish (o'quvchi, baho, davomat, qarz, xabar) **darhol** bulutga yoziladi.
+- Birinchi marta jadvallar bo'sh bo'lsa, demo ma'lumot avtomatik seed qilinadi.
+
+**Sozlash (1 qadam):** `supabase.sql` faylini Supabase Dashboard → SQL Editor'da
+**Run** bosing (messages allaqachon bor — qayta yaratish xavfsiz).
+
+> ⚠️ Konfiguratsiya olib tashlansa ilova **localStorage** rejimida ishlayveradi
+> (graceful fallback). Publishing kaliti xavfsiz (faqat o'qish/yozish uchun;
+> production'da RLS qat'iylashtirish shart).
+
+### 12. O'chirish (tasdiq bilan)
+- **O'quvchi:** har kartada **🗑 O'chirish** → tasdiq modali
+  ("Haqiqatan ham [Ism]ni o'chirmoqchimisiz? Uning barcha baholari va davomat
+  tarixi ham o'chiriladi.") → **[Bekor qilish] / [Ha, o'chirish]**.
+  Tasdiqlansa: lokal va Supabase'dan **o'quvchi + baholar + davomat + xabarlar +
+  audio** o'chiriladi, login hisobi ham tozalanadi → toast "O'quvchi muvaffaqiyatli
+  o'chirildi".
+- **Guruh:** har kartada **🗑 O'chirish** → tasdiq modali → Supabase `groups`
+  jadvalidan o'chiriladi, o'quvchilari `group_id = null` bo'ladi → toast
+  "Guruh muvaffaqiyatli o'chirildi".
+
+### 13. To'g'ridan-to'g'ri chat (Ustoz ↔ O'quvchi)
+- **Ustoz:** har bir o'quvchi kartasida **"💬 Xabar yozish"** → modaldagi suhbat:
+  xabar yozish, Enter bilan yuborish, xabarlar `messages` jadvaliga yoziladi.
+- **O'quvchi:** kabinetida **"Ustoz bilan Chat"** bo'limi — ustoz xabarlarini o'qiydi
+  va javob yozadi (faqat o'z suhbati, boshqa o'quvchilarniki ko'rinmaydi).
+- **Real-time:** supabase realtime obunasi + ochiq chat 5 sekundda bir avtomatik
+  yangilanadi.
 
 ## Telegram bot (aiogram 3.x)
 
@@ -114,7 +142,7 @@ HTML uchun xavfsiz escaped qilinadi.
 
 ```bash
 npm install      # test uchun (jsdom)
-npm test         # interaktiv smoke-test (149 tekshiruv)
+npm test         # interaktiv smoke-test (194 tekshiruv)
 npm start        # http://localhost:3000
 ```
 
@@ -125,7 +153,8 @@ index.html        — ilova qobigi
 css/styles.css    — Telegram tema o'zgaruvchilari bilan (yorug'/qorong'i)
 js/data.js        — mock ma'lumotlar (hisoblar, baholar, davomat, speaking)
 js/app.js         — kirish, rollar, kabinet, jurnal, davomat, speaking
-test/smoke.js     — jsdom asosida butun oqimni sinovdan o'tkazadi
+test/smoke.js     — jsdom asosida butun oqimni sinovdan o'tkazadi (194 tekshiruv)
+supabase.sql      — messages/audio_submissions jadvallari (SQL Editor'da Run)
 bot.py            — Telegram bot (aiogram 3.x): /start + xabar funksiyalari
 config.py         — BOT_TOKEN, WEBAPP_URL, ADMIN_ID
 requirements.txt  — aiogram>=3.13.0, aiohttp>=3.9.0

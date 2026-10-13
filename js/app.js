@@ -20,11 +20,9 @@ const store = {
   },
   set(key, value) {
     try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
-    if (window.__cloud) window.__cloud.schedulePush(key, value);
   },
   del(key) {
     try { localStorage.removeItem(key); } catch (e) {}
-    if (window.__cloud) window.__cloud.schedulePush(key, null);
   }
 };
 
@@ -35,7 +33,8 @@ const K = {
   students: 'et_students',
   grades: 'et_grades',
   attendance: 'et_attendance',
-  speaking: 'et_speaking'
+  speaking: 'et_speaking',
+  messages: 'et_messages'
 };
 
 function seedIfEmpty(key, data) { if (store.get(key, null) === null) store.set(key, data); }
@@ -69,7 +68,8 @@ const state = {
   attDraftFor: '',
   speakDate: '',
   slotMode: 'create',
-  slotId: ''
+  slotId: '',
+  chatSid: null
 };
 
 const AUTH_SCREENS = ['login'];
@@ -157,9 +157,8 @@ function journalDates(groupId, count) {
 
 /* ---- Baholar hisobi ---- */
 function gradeClassOf(v) {
-  if (v >= 8) return 'g-a';
-  if (v >= 6) return 'g-b';
-  return 'g-c';
+  /* Neytral 10-ballik: rang ierarxiyasi yo'q — toza, minimalistik ko'rinish */
+  return v == null ? 'g-empty' : 'g-num';
 }
 function scoresFor(sid, dates) {
   const rec = getGrades()[sid] || {};
@@ -172,60 +171,423 @@ function avgOf(nums) {
 function totalOf(nums) { return nums.reduce((a, b) => a + b, 0); }
 function fmtAvg(v) { return v == null ? '—' : v.toFixed(1); }
 
-/* ==================== CLOUD SYNC (Supabase) ==================== */
-const CLOUD_KEYS = [K.accounts, K.groups, K.students, K.grades, K.attendance, K.speaking];
+/* ==================== CLOUD SYNC (Supabase — real jadvallar) ==================== */
+const TEACHER_LOGIN = 'admin';
+const TEACHER_PASSWORD = '123';
 
 const CloudSync = (function () {
-  const url = window.SUPABASE_URL || '';
-  const key = window.SUPABASE_ANON_KEY || '';
-  const enabled = !!(url && key && window.supabase);
+  const url = window.SUPABASE_URL || 'https://mvjoeqyqaylfccqcnwwe.supabase.co';
+  const key = window.SUPABASE_ANON_KEY || 'sb_publishable_PHMC_kfQfu5BLFgDOzHsjw_B0VO2xDI';
   let client = null;
-  let pushTimer = null;
-  const pending = {};
-
-  if (enabled) {
+  if (window.supabase && typeof window.supabase.createClient === 'function') {
     try { client = window.supabase.createClient(url, key); } catch (e) { client = null; }
   }
 
-  function ready() { return enabled && !!client; }
+  const ready = function () { return !!client; };
+  /* PGRST205/404 — jadval hali yaratilmagan: lokal rejimda davom etamiz */
+  const missing = function (e) {
+    return !!e && (e.code === 'PGRST205' || /could not find the table|does not exist/i.test(String(e.message || '')));
+  };
+  let hasMessages = true;
+  let hasAudio = true;
+  let seeded = false;
+  let subscribed = false;
+  const gradeTimers = {};
 
-  function schedulePush(k, v) {
-    if (!ready()) return;
-    pending[k] = v;
-    clearTimeout(pushTimer);
-    pushTimer = setTimeout(flush, 700);
+  function bg(p, tag) {
+    Promise.resolve(p).catch(function (e) { console.warn('[cloud] ' + tag + ':', (e && e.message) || e); });
+  }
+  const dbOfSid = function (sid) { const s = studentById(sid); return s && s.dbId != null ? s.dbId : null; };
+  const accOfSid = function (sid) {
+    return Object.keys(accounts).map(function (k) { return accounts[k]; }).filter(function (a) { return a.studentId === sid; })[0] || null;
+  };
+
+  function payloadOf(s) {
+    const g = groupById(s.groupId);
+    const acc = accOfSid(s.id) || {};
+    return {
+      name: s.fullName,
+      school_class: s.schoolClass,
+      group_id: g && g.dbId != null ? g.dbId : null,
+      login: acc.login || s.login || '',
+      password: acc.password || s.password || '',
+      speaking_debt: Number(s.speakingDebt) || 0
+    };
   }
 
-  async function flush() {
-    if (!ready()) return;
-    const rows = Object.keys(pending).map(k => ({
-      key: k,
-      value: pending[k] === null ? null : JSON.stringify(pending[k]),
-      updated_at: new Date().toISOString()
-    }));
-    for (const key of rows) delete pending[key.key];
-    if (!rows.length) return;
-    try {
-      await client.from('app_state').upsert(rows, { onConflict: 'key' });
-    } catch (e) { /* offline — keyingi o'zgarishda qayta uriniladi */ }
-  }
+  /* --- Birinchi kirish: lokal demo ma'lumotni jadvallarga ko'chirish --- */
+  async function seedDemo() {
+    const localGroups = getGroups();
+    const gDb = [];
+    for (let i = 0; i < localGroups.length; i++) {
+      const g = localGroups[i];
+      const res = await client.from('groups').insert({ name: g.name, days: g.days, time: g.time }).select();
+      if (res.error) throw res.error;
+      g.dbId = res.data[0].id;
+      gDb.push(res.data[0].id);
+    }
+    store.set(K.groups, localGroups);
 
-  async function pull() {
-    if (!ready()) return false;
-    try {
-      const { data, error } = await client.from('app_state').select('key, value');
-      if (error || !data) return false;
-      data.forEach(row => {
-        if (row.value == null) { store.del(row.key); return; }
-        try { localStorage.setItem(row.key, row.value); } catch (e) {}
+    const localStudents = getStudents();
+    for (let i = 0; i < localStudents.length; i++) {
+      const st = localStudents[i];
+      const gi = localGroups.findIndex(function (g) { return g.id === st.groupId; });
+      const payload = payloadOf(st);
+      if (gi >= 0) payload.group_id = gDb[gi];
+      const res = await client.from('students').insert(payload).select();
+      if (res.error) throw res.error;
+      st.dbId = res.data[0].id;
+    }
+    store.set(K.students, localStudents);
+
+    /* Baholar va davomat seedlari */
+    const grades = getGrades();
+    const att = getAttendance();
+    const gRows = [], aRows = [];
+    localStudents.forEach(function (st) {
+      if (st.dbId == null) return;
+      const recs = grades[st.id] || {};
+      Object.keys(recs).forEach(function (dk) {
+        const r = recs[dk];
+        gRows.push({ student_id: st.dbId, date: dk, grade: r.score, category: r.category || 'Darsdagi javob', note: r.note || '' });
       });
-      /* hisoblar lokalda ham yangilanishi kerak */
-      accounts = store.get(K.accounts, accounts);
+      Object.keys(att).forEach(function (dk) {
+        if (att[dk] && att[dk][st.id]) aRows.push({ student_id: st.dbId, date: dk, status: att[dk][st.id] });
+      });
+    });
+    if (gRows.length) { const res = await client.from('grades').insert(gRows); if (res.error) throw res.error; }
+    if (aRows.length) { const res = await client.from('attendance').insert(aRows); if (res.error) throw res.error; }
+  }
+
+  /* --- Xabarlar (messages jadvali) --- */
+  async function fetchMessages(sid) {
+    if (!ready() || !hasMessages) return false;
+    try {
+      let query = client.from('messages').select('id, student_id, sender, text, created_at').order('created_at', { ascending: true });
+      if (sid != null) {
+        const dbId = dbOfSid(sid);
+        if (dbId == null) return false;
+        query = query.eq('student_id', dbId);
+      }
+      const res = await query;
+      if (res.error) { if (missing(res.error)) hasMessages = false; return false; }
+      const cache = store.get(K.messages, []).filter(function (m) { return sid == null || m.sid === sid; });
+      res.data.forEach(function (r) {
+        cache.push({
+          id: 'm' + r.id,
+          sid: sid == null ? 's' + r.student_id : sid,
+          sender: r.sender,
+          text: r.text,
+          createdAt: r.created_at
+        });
+      });
+      store.set(K.messages, cache);
       return true;
     } catch (e) { return false; }
   }
 
-  return { ready, schedulePush, flush, pull };
+  /* --- Ovozli topshiriklar (audio_submissions jadvali, bo'lmasa lokal) --- */
+  async function pullAudio() {
+    if (!ready() || !hasAudio) return;
+    const res = await client.from('audio_submissions').select('*').order('created_at', { ascending: true });
+    if (res.error) { if (missing(res.error)) hasAudio = false; return; }
+    const list = getStudents();
+    let changed = false;
+    res.data.forEach(function (r) {
+      const st = list.filter(function (x) { return x.dbId === r.student_id; })[0];
+      if (!st) return;
+      st.audioSubmissions = st.audioSubmissions || [];
+      if (st.audioSubmissions.some(function (a) { return a.rid === r.id; })) return;
+      st.audioSubmissions.push({ id: 'a' + r.id, rid: r.id, date: r.date, url: r.url, status: r.status, score: r.score, feedback: r.feedback || '' });
+      changed = true;
+    });
+    if (changed) store.set(K.students, list);
+  }
+
+  /* --- Barcha jadvallarni tortib, lokal modelni qayta qurish --- */
+  async function pullAll() {
+    if (!ready()) return false;
+    try {
+      let gRes = await client.from('groups').select('*');
+      let sRes = await client.from('students').select('*');
+      if (gRes.error || sRes.error) return false;
+      if (!gRes.data.length && !sRes.data.length) {
+        if (!seeded) { await seedDemo(); seeded = true; }
+        gRes = await client.from('groups').select('*');
+        sRes = await client.from('students').select('*');
+        if (gRes.error || sRes.error) return false;
+      }
+      const grRes = await client.from('grades').select('id, student_id, date, grade, category, note');
+      const atRes = await client.from('attendance').select('student_id, date, status');
+      if (grRes.error || atRes.error) return false;
+
+      const prev = getStudents();
+      const newIdByOld = {}, oldIdByDb = {}, audioByOld = {};
+      prev.forEach(function (st) {
+        if (st.dbId == null) return;
+        newIdByOld[st.id] = 's' + st.dbId;
+        oldIdByDb[st.dbId] = st.id;
+        if (st.audioSubmissions && st.audioSubmissions.length) audioByOld[st.id] = st.audioSubmissions;
+      });
+
+      const groups = gRes.data.map(function (r) {
+        return { id: 'g' + r.id, dbId: r.id, name: r.name, days: r.days, time: r.time };
+      });
+      const students = sRes.data.map(function (r) {
+        return {
+          id: 's' + r.id,
+          dbId: r.id,
+          fullName: r.name,
+          schoolClass: r.school_class,
+          groupId: r.group_id != null ? 'g' + r.group_id : null,
+          login: r.login || '',
+          password: r.password || '',
+          speakingDebt: Number(r.speaking_debt) || 0,
+          audioSubmissions: (audioByOld[oldIdByDb[r.id]] || []).slice()
+        };
+      });
+
+      const grades = {};
+      grRes.data.forEach(function (r) {
+        const sid = 's' + r.student_id;
+        grades[sid] = grades[sid] || {};
+        grades[sid][r.date] = { score: r.grade, category: r.category || 'Darsdagi javob', note: r.note || '' };
+      });
+      const attendance = {};
+      atRes.data.forEach(function (r) {
+        attendance[r.date] = attendance[r.date] || {};
+        attendance[r.date]['s' + r.student_id] = r.status;
+      });
+
+      store.set(K.groups, groups);
+      store.set(K.students, students);
+      store.set(K.grades, grades);
+      store.set(K.attendance, attendance);
+
+      /* speaking slotlari: eski lokal id → yangi id */
+      const slots = getSpeaking();
+      let slotChanged = false;
+      slots.forEach(function (x) {
+        if (x.studentId && newIdByOld[x.studentId] && newIdByOld[x.studentId] !== x.studentId) {
+          x.studentId = newIdByOld[x.studentId];
+          slotChanged = true;
+        }
+      });
+      if (slotChanged) store.set(K.speaking, slots);
+
+      /* hisoblar: ustoz (admin/123) + jadvaldagi login/parollar */
+      const next = {};
+      next[TEACHER_LOGIN] = { login: TEACHER_LOGIN, password: TEACHER_PASSWORD, role: 'teacher', name: 'Ustoz', studentId: null };
+      students.forEach(function (st) {
+        if (st.login) next[st.login] = { login: st.login, password: st.password || '', role: 'student', studentId: st.id, name: st.fullName };
+      });
+      accounts = next;
+      persistAccounts();
+
+      await fetchMessages(null);
+      try { await pullAudio(); } catch (e) { /* audio jadvali yo'q — lokal qoladi */ }
+      return true;
+    } catch (e) {
+      console.warn('[cloud] pull:', (e && e.message) || e);
+      return false;
+    }
+  }
+
+  /* --- Yozish: guruh / o'quvchi / qarz / baho / davomat / audio / xabar --- */
+  async function pushGroup(g) {
+    if (!ready()) return;
+    try {
+      if (g.dbId == null) {
+        const res = await client.from('groups').insert({ name: g.name, days: g.days, time: g.time }).select();
+        if (res.error) throw res.error;
+        g.dbId = res.data[0].id;
+      } else {
+        const res = await client.from('groups').update({ name: g.name, days: g.days, time: g.time }).eq('id', g.dbId);
+        if (res.error) throw res.error;
+      }
+      const list = getGroups();
+      const t = list.filter(function (x) { return x.id === g.id; })[0];
+      if (t) { t.dbId = g.dbId; store.set(K.groups, list); }
+    } catch (e) { console.warn('[cloud] group:', (e && e.message) || e); }
+  }
+
+  async function pushStudent(sid) {
+    if (!ready()) return;
+    const st = studentById(sid);
+    if (!st) return;
+    try {
+      const payload = payloadOf(st);
+      if (st.dbId == null) {
+        const res = await client.from('students').insert(payload).select();
+        if (res.error) throw res.error;
+        const list = getStudents();
+        const t = list.filter(function (x) { return x.id === sid; })[0];
+        if (t) { t.dbId = res.data[0].id; store.set(K.students, list); }
+      } else {
+        const res = await client.from('students').update(payload).eq('id', st.dbId);
+        if (res.error) throw res.error;
+      }
+    } catch (e) { console.warn('[cloud] student:', (e && e.message) || e); }
+  }
+
+  async function pushDebt(sid) {
+    if (!ready()) return;
+    const dbId = dbOfSid(sid);
+    const st = studentById(sid);
+    if (dbId == null || !st) return;
+    const res = await client.from('students').update({ speaking_debt: Number(st.speakingDebt) || 0 }).eq('id', dbId);
+    if (res.error) throw res.error;
+  }
+
+  async function doPushGrade(sid, date) {
+    const dbId = dbOfSid(sid);
+    if (dbId == null) return;
+    const rec = (getGrades()[sid] || {})[date];
+    const del = await client.from('grades').delete().eq('student_id', dbId).eq('date', date);
+    if (del.error) throw del.error;
+    if (!rec) return;
+    const ins = await client.from('grades').insert({
+      student_id: dbId, date: date, grade: rec.score,
+      category: rec.category || 'Darsdagi javob', note: rec.note || ''
+    });
+    if (ins.error) throw ins.error;
+  }
+
+  function pushGrade(sid, date) {
+    if (!ready()) return;
+    /* izoh yozilganda har harf uchun so'ralmasligi uchun debounce */
+    const k = sid + '|' + date;
+    clearTimeout(gradeTimers[k]);
+    gradeTimers[k] = setTimeout(function () { bg(doPushGrade(sid, date), 'grade'); }, 500);
+  }
+
+  async function pushAttendance(date, sids) {
+    if (!ready()) return;
+    const ids = [], rows = [];
+    /* takroriy sidlar dublikat qatorlar keltirmasligi uchun unique qilamiz */
+    Array.from(new Set(sids || [])).forEach(function (sid) {
+      const st = studentById(sid);
+      if (!st || st.dbId == null) return;
+      ids.push(st.dbId);
+      const status = (getAttendance()[date] || {})[sid];
+      if (status) rows.push({ student_id: st.dbId, date: date, status: status });
+    });
+    if (!ids.length) return;
+    const del = await client.from('attendance').delete().eq('date', date).in('student_id', ids);
+    if (del.error) throw del.error;
+    if (rows.length) {
+      const ins = await client.from('attendance').insert(rows);
+      if (ins.error) throw ins.error;
+    }
+  }
+
+  async function pushAudio(sid, sub) {
+    if (!ready() || !hasAudio) return;
+    const dbId = dbOfSid(sid);
+    if (dbId == null) return;
+    if (!sub.url || String(sub.url).length > 900000) return; /* juda katta — lokalda qoladi */
+    const res = await client.from('audio_submissions').insert({
+      student_id: dbId, date: sub.date, url: sub.url,
+      status: sub.status || 'pending',
+      score: sub.score == null ? null : sub.score,
+      feedback: sub.feedback || ''
+    }).select();
+    if (res.error) { if (missing(res.error)) hasAudio = false; throw res.error; }
+    sub.rid = res.data[0].id;
+  }
+
+  async function pushAudioGrade(sid, sub) {
+    if (!ready() || !hasAudio) return;
+    if (sub.rid == null) return pushAudio(sid, sub);
+    const res = await client.from('audio_submissions').update({
+      status: sub.status, score: sub.score, feedback: sub.feedback || ''
+    }).eq('id', sub.rid);
+    if (res.error) { if (missing(res.error)) hasAudio = false; throw res.error; }
+  }
+
+  async function sendMessage(sid, sender, text) {
+    const msg = { id: 'l' + Date.now() + Math.random().toString(36).slice(2, 7), sid: sid, sender: sender, text: text, createdAt: new Date().toISOString() };
+    const cache = store.get(K.messages, []);
+    cache.push(msg);
+    store.set(K.messages, cache);
+    if (!ready() || !hasMessages) return msg;
+    const dbId = dbOfSid(sid);
+    if (dbId == null) return msg;
+    try {
+      const res = await client.from('messages').insert({ student_id: dbId, sender: sender, text: text }).select();
+      if (res.error) { if (missing(res.error)) hasMessages = false; return msg; }
+      const c = store.get(K.messages, []);
+      const i = c.findIndex(function (m) { return m.id === msg.id; });
+      if (i >= 0) {
+        c[i] = { id: 'm' + res.data[0].id, sid: sid, sender: sender, text: text, createdAt: res.data[0].created_at };
+        store.set(K.messages, c);
+      }
+      updateChatView();
+    } catch (e) { console.warn('[cloud] msg:', (e && e.message) || e); }
+    return msg;
+  }
+
+  /* --- O'chirish: bog'liq qatorlar bilan birga --- */
+  async function deleteStudent(dbId) {
+    if (!ready() || dbId == null) return;
+    /* bog'liq qatorlar avval (FK cascade bo'lmasa ham xavfsiz) */
+    if (hasMessages) {
+      const r = await client.from('messages').delete().eq('student_id', dbId);
+      if (r.error) { if (missing(r.error)) hasMessages = false; else throw r.error; }
+    }
+    if (hasAudio) {
+      const r = await client.from('audio_submissions').delete().eq('student_id', dbId);
+      if (r.error) { if (missing(r.error)) hasAudio = false; else throw r.error; }
+    }
+    const g = await client.from('grades').delete().eq('student_id', dbId);
+    if (g.error) throw g.error;
+    const a = await client.from('attendance').delete().eq('student_id', dbId);
+    if (a.error) throw a.error;
+    const st = await client.from('students').delete().eq('id', dbId);
+    if (st.error) throw st.error;
+  }
+
+  async function deleteGroup(dbId) {
+    if (!ready() || dbId == null) return;
+    /* avval o'quvchilarni guruhdan uzamiz (FK) */
+    const up = await client.from('students').update({ group_id: null }).eq('group_id', dbId);
+    if (up.error) throw up.error;
+    const del = await client.from('groups').delete().eq('id', dbId);
+    if (del.error) throw del.error;
+  }
+
+  /* Real-time: messages jadvaliga obuna (publication yo'l qo'ysa) */
+  function subscribe() {
+    if (!ready() || !hasMessages || subscribed) return;
+    try {
+      const ch = client.channel('messages-live');
+      ch.on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, function () { refreshChat(); })
+        .subscribe(function (status) {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') subscribed = false;
+        });
+      subscribed = true;
+    } catch (e) { subscribed = false; }
+  }
+
+  return {
+    ready: ready,
+    pullAll: pullAll,
+    fetchMessages: fetchMessages,
+    pushGroup: pushGroup,
+    pushStudent: pushStudent,
+    pushDebt: pushDebt,
+    pushGrade: pushGrade,
+    pushAttendance: pushAttendance,
+    pushAudio: pushAudio,
+    pushAudioGrade: pushAudioGrade,
+    sendMessage: sendMessage,
+    subscribe: subscribe,
+    deleteStudent: deleteStudent,
+    deleteGroup: deleteGroup,
+    messagesAvailable: function () { return ready() && hasMessages; },
+    audioAvailable: function () { return ready() && hasAudio; },
+    url: url
+  };
 })();
 
 window.__cloud = CloudSync;
@@ -249,10 +611,10 @@ function startSession(login) {
   store.set(K.session, { login: login, role: accounts[login].role });
   state.screen = 'home';
   render();
-  /* Boshqa qurilmadan kirgan bo'lsak — bulutdan ma'lumotni tiklaymiz */
-  if (CloudSync.ready()) {
-    CloudSync.pull().then(ok => { if (ok) render(); });
-  }
+  /* Boshqa qurilmadan kirgan bo'lsak — bulutdan ma'lumotni tiklandi (doLogin) */
+  CloudSync.subscribe();
+  refreshChat();
+  updateChatPoll();
 }
 function go(screen) { state.screen = screen; render(); }
 
@@ -553,6 +915,16 @@ function studentPortal() {
     <div id="my-submissions" class="audio-list">${mySubs}</div>
   </div>
 
+  <div class="section-title">Ustoz bilan Chat</div>
+  <div class="card chat-card">
+    ${chatHint()}
+    <div class="chat-list" id="chat-list">${chatListHTML(st.id, 'student')}</div>
+    <div class="chat-input-row">
+      <input class="input" id="chat-input" placeholder="Ustozga xabar yozing..." autocomplete="off" />
+      <button type="button" class="btn btn-primary" data-act="send-chat">Yuborish</button>
+    </div>
+  </div>
+
   <div class="section-title">Sozlamalar</div>
   <div class="card">
     <div class="list-row"><span>Login</span><code>${esc(u.login || '')}</code></div>
@@ -579,6 +951,7 @@ function groupCard(g, students) {
     <div class="row g8" style="margin-top:11px">
       <button type="button" class="btn btn-ghost btn-sm" data-act="grade-group-go" data-group="${g.id}">📊 Baholar</button>
       <button type="button" class="btn btn-ghost btn-sm" data-act="open-attendance" data-group="${g.id}">🗓️ Davomat</button>
+      <button type="button" class="btn btn-danger btn-sm" data-act="del-group" data-gid="${g.id}">🗑 O'chirish</button>
     </div>
   </div>`;
 }
@@ -624,7 +997,9 @@ function studentCard(s) {
           </div>
         </div>
         <div class="row g8" style="margin-top:10px">
+          <button type="button" class="btn btn-xs ghost" data-act="open-chat" data-sid="${s.id}">💬 Xabar yozish</button>
           <button type="button" class="btn btn-xs ghost" data-act="reset-pwd" data-sid="${s.id}">🔑 Parolni yangilash</button>
+          <button type="button" class="btn btn-xs danger" data-act="del-student" data-sid="${s.id}">🗑 O'chirish</button>
         </div>
       </div>
     </div>
@@ -713,6 +1088,8 @@ function closeModal() {
   state.editor = null;
   state.slotMode = 'create';
   state.slotId = '';
+  state.chatSid = null;
+  updateChatPoll();
 }
 
 function openAddGroup() {
@@ -790,6 +1167,7 @@ function saveGroup() {
   const groups = getGroups();
   groups.push({ id: 'g' + Date.now(), name, days: days.join(', '), time });
   store.set(K.groups, groups);
+  CloudSync.pushGroup(groups[groups.length - 1]);
   closeModal();
   render();
   toast("Guruh qo'shildi ✓");
@@ -816,6 +1194,7 @@ function saveStudent() {
 
   accounts[login] = { login, password: pass, role: 'student', studentId: id, name };
   persistAccounts();
+  CloudSync.pushStudent(id);
 
   closeModal();
   render();
@@ -865,6 +1244,7 @@ function saveResetPwd(sid) {
     accounts[login] = { login, password: pass, role: 'student', studentId: sid, name: st.fullName };
   }
   persistAccounts();
+  CloudSync.pushStudent(sid);
   closeModal();
   render();
   toast("Parol yangilandi ✓");
@@ -911,9 +1291,107 @@ function saveChangePwd() {
   if (n1 !== n2) { toast("Parollar mos kelmadi", 'error'); return; }
   u.password = n1;
   persistAccounts();
+  if (u.role === 'student' && u.studentId) CloudSync.pushStudent(u.studentId);
   closeModal();
   render();
   toast("Parol o'zgartirildi ✓");
+}
+
+/* ==================== O'CHIRISH (tasdiq bilan, faqat ustoz) ==================== */
+function openDeleteStudent(sid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const st = studentById(sid);
+  if (!st) return;
+  openModal(`
+    <div class="modal-head">
+      <h3>O'chirish</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+    <div class="confirm-body">
+      <div class="confirm-emoji">🗑</div>
+      <p class="confirm-text">Haqiqatan ham <strong>${esc(st.fullName)}ni</strong> o'chirmoqchimisiz? Uning barcha baholari va davomat tarixi ham o'chiriladi.</p>
+    </div>
+    <div class="confirm-actions">
+      <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
+      <button type="button" class="btn btn-danger" data-act="do-del-student" data-sid="${sid}">Ha, o'chirish</button>
+    </div>
+  `);
+}
+
+function doDeleteStudent(sid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const st = studentById(sid);
+  if (!st) return;
+
+  /* kirish hisobi (login) + cloud id (lokal o'chirishdan OLDIN!) */
+  const acc = Object.keys(accounts).map(k => accounts[k]).filter(a => a.studentId === sid)[0];
+  const dbId = st.dbId;
+
+  /* lokal ma'lumotlarni tozalash */
+  store.set(K.students, getStudents().filter(x => x.id !== sid));
+  const grades = getGrades();
+  delete grades[sid];
+  store.set(K.grades, grades);
+  const att = getAttendance();
+  Object.keys(att).forEach(dk => {
+    if (!att[dk]) return;
+    delete att[dk][sid];
+    if (!Object.keys(att[dk]).length) delete att[dk];
+  });
+  store.set(K.attendance, att);
+  store.set(K.speaking, getSpeaking().map(x => x.studentId === sid
+    ? Object.assign({}, x, { studentId: null, score: null }) : x));
+  store.set(K.messages, store.get(K.messages, []).filter(m => m.sid !== sid));
+  if (acc) { delete accounts[acc.login]; persistAccounts(); }
+
+  /* bulutdan: messages, audio, grades, attendance → students */
+  CloudSync.deleteStudent(dbId).catch(e => console.warn('[cloud] del student:', (e && e.message) || e));
+
+  closeModal();
+  render();
+  toast("O'quvchi muvaffaqiyatli o'chirildi ✓");
+}
+
+function openDeleteGroup(gid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const g = groupById(gid);
+  if (!g) return;
+  openModal(`
+    <div class="modal-head">
+      <h3>O'chirish</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+    <div class="confirm-body">
+      <div class="confirm-emoji">🗑</div>
+      <p class="confirm-text">Haqiqatan ham <strong>${esc(g.name)}</strong> guruhini o'chirmoqchimisiz?</p>
+    </div>
+    <div class="confirm-actions">
+      <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
+      <button type="button" class="btn btn-danger" data-act="do-del-group" data-gid="${gid}">Ha, o'chirish</button>
+    </div>
+  `);
+}
+
+function doDeleteGroup(gid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const g = groupById(gid);
+  if (!g) return;
+  const dbId = g.dbId;
+
+  store.set(K.groups, getGroups().filter(x => x.id !== gid));
+  store.set(K.students, getStudents().map(st =>
+    st.groupId === gid ? Object.assign({}, st, { groupId: null }) : st));
+
+  CloudSync.deleteGroup(dbId).catch(e => console.warn('[cloud] del group:', (e && e.message) || e));
+
+  if (state.gradeGroup === gid) state.gradeGroup = '';
+  if (state.attGroup === gid) state.attGroup = '';
+  state.attDraft = null;
+  state.attDraftFor = '';
+
+  closeModal();
+  render();
+  toast("Guruh muvaffaqiyatli o'chirildi ✓");
 }
 
 /* ==================== 10 BALLIK BAHOLAR JURNALI (faqat ustoz) ==================== */
@@ -1004,9 +1482,9 @@ function gradesScreen() {
   </div>
 
   <div class="legend">
-    <span><i style="background:#1f9d5b"></i> 8–10 A'lo</span>
-    <span><i style="background:#2f8fef"></i> 6–7 Yaxshi</span>
-    <span><i style="background:#e5484d"></i> 1–5 Qoniqarsiz</span>
+    <span>8–10 A'lo</span>
+    <span>6–7 Yaxshi</span>
+    <span>1–5 Qoniqarsiz</span>
   </div>
   <p class="muted small" style="margin-top:10px">Baho qo'yish uchun katakchaga bosing.</p>
   `;
@@ -1078,6 +1556,7 @@ function persistEditor(silent) {
   all[e.sid] = all[e.sid] || {};
   all[e.sid][e.date] = { score: e.score, category: e.category, note: e.note || '' };
   store.set(K.grades, all);
+  CloudSync.pushGrade(e.sid, e.date);
   if (!silent) toast('Baho saqlandi ✓');
 }
 
@@ -1390,6 +1869,7 @@ function saveSlotScore(id, score) {
     note: 'Speaking 1-on-1'
   };
   store.set(K.grades, all);
+  CloudSync.pushGrade(x.studentId, x.date);
 
   closeModal();
   render();
@@ -1428,7 +1908,7 @@ function doLogin() {
     if (loginEl.disabled) return;
     loginEl.disabled = true;
     const done = () => { loginEl.disabled = false; validate(); };
-    CloudSync.pull().then(done, done);
+    CloudSync.pullAll().then(done, done);
   } else {
     validate();
   }
@@ -1521,6 +2001,108 @@ function render() {
   if (scr === 'grades') ensureGradeState();
   if (scr === 'attendance') ensureAttState();
   if (scr === 'speaking') ensureSpeakState();
+  if (scr === 'home' && !isTeacher()) refreshChat();
+  updateChatPoll();
+}
+
+/* ==================== CHAT (Ustoz ↔ O'quvchi) ==================== */
+function fmtHM(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+function messagesFor(sid) {
+  return store.get(K.messages, [])
+    .filter(m => m.sid === sid)
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+}
+function chatListHTML(sid, viewer) {
+  const msgs = messagesFor(sid);
+  if (!msgs.length) return `<div class="empty"><span class="emoji">💬</span>Hozircha xabar yo'q</div>`;
+  return msgs.map(m => `<div class="chat-msg ${m.sender === viewer ? 'mine' : 'theirs'}">
+      <div class="chat-text">${esc(m.text)}</div>
+      <div class="chat-time">${fmtHM(m.createdAt)}</div>
+    </div>`).join('');
+}
+function chatHint() {
+  if (CloudSync.messagesAvailable()) return '';
+  return `<div class="chat-hint">⚠️ Supabase'da <code>messages</code> jadvali topilmadi — xabarlar shu qurilmada saqlanadi (<code>supabase.sql</code> ni ishga tushiring).</div>`;
+}
+function activeChat() {
+  if (state.chatSid) return { sid: state.chatSid, viewer: 'teacher' };
+  const st = linkedStudent();
+  return st ? { sid: st.id, viewer: 'student' } : null;
+}
+function updateChatView() {
+  const list = $('#chat-list');
+  const c = activeChat();
+  if (!list || !c) return;
+  list.innerHTML = chatListHTML(c.sid, c.viewer);
+  list.scrollTop = list.scrollHeight;
+}
+function refreshChat() {
+  const c = activeChat();
+  if (!c) return Promise.resolve(false);
+  return CloudSync.fetchMessages(c.sid).then(function () { updateChatView(); return true; });
+}
+function openChat(sid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const st = studentById(sid);
+  if (!st) return;
+  state.chatSid = sid;
+  openModal(`
+    <div class="modal-head">
+      <h3>💬 Xabar yozish</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+    <div class="editor-info">
+      <div class="avatar">${esc(initials(st.fullName))}</div>
+      <div class="col">
+        <div class="s-name">${esc(st.fullName)}</div>
+        <div class="muted small">${esc(st.schoolClass)} • ${groupById(st.groupId) ? esc(groupById(st.groupId).name) : "Guruh taylanmagan"}</div>
+      </div>
+    </div>
+    ${chatHint()}
+    <div class="chat-list" id="chat-list">${chatListHTML(sid, 'teacher')}</div>
+    <div class="chat-input-row">
+      <input class="input" id="chat-input" placeholder="Xabar yozing..." autocomplete="off" />
+      <button type="button" class="btn btn-primary" data-act="send-chat">Yuborish</button>
+    </div>`);
+  updateChatView();
+  refreshChat();
+  setTimeout(function () { const el = $('#chat-input'); if (el) el.focus(); }, 60);
+}
+function sendChat() {
+  const c = activeChat();
+  const input = $('#chat-input');
+  if (!c || !input) return;
+  const text = (input.value || '').trim();
+  if (!text) { toast('Xabar matnini kiriting', 'error'); return; }
+  input.value = '';
+  CloudSync.sendMessage(c.sid, c.viewer, text);
+  updateChatView();
+}
+
+/* Chat ochiq bo'lganda 5 sekundda bir marta yangilaymiz (real-time fallback) */
+let chatPollTimer = null;
+function chatPollActive() {
+  if ($('#modal-overlay').hidden === false && !!$('#chat-list')) return true;
+  return state.screen === 'home' && !isTeacher() && !!$('#chat-list');
+}
+function updateChatPoll() {
+  if (chatPollActive()) {
+    if (!chatPollTimer) {
+      chatPollTimer = setTimeout(function () {
+        chatPollTimer = null;
+        if (!chatPollActive()) return;
+        refreshChat();
+        updateChatPoll();
+      }, 5000);
+    }
+  } else if (chatPollTimer) {
+    clearTimeout(chatPollTimer);
+    chatPollTimer = null;
+  }
 }
 
 /* ==================== Hodisalar ==================== */
@@ -1532,6 +2114,7 @@ function changeDebt(sid, delta) {
   if (!st) return;
   st.speakingDebt = Math.max(0, (Number(st.speakingDebt) || 0) + delta);
   store.set(K.students, list);
+  CloudSync.pushDebt(sid);
   render();
   toast("Speaking qarzi: " + st.speakingDebt + " ta");
 }
@@ -1623,6 +2206,8 @@ async function sendRecording() {
     /* Har bir topshirik = +1 speaking qarzi (ustoz baholaydi) */
     target.speakingDebt = (Number(target.speakingDebt) || 0) + 1;
     store.set(K.students, list);
+    CloudSync.pushDebt(st.id);
+    CloudSync.pushAudio(st.id, target.audioSubmissions[target.audioSubmissions.length - 1]);
     render();
     toast("Ovoz yuborildi ✓ Ustozga yuborildi");
     recBlobUrl = '';
@@ -1653,6 +2238,9 @@ function gradeAudio(sid, idx, score) {
   store.set(K.grades, grades);
 
   store.set(K.students, list);
+  CloudSync.pushDebt(sid);
+  CloudSync.pushGrade(sid, sub.date);
+  CloudSync.pushAudioGrade(sid, sub);
   render();
   toast("Baho saqlandi ✓ (jurnalga yozildi, qarz kamaydi)");
 }
@@ -1680,6 +2268,12 @@ document.addEventListener('click', function (e) {
     'save-student': saveStudent,
     'reset-pwd': function () { openResetPwd(btn.getAttribute('data-sid')); },
     'save-reset': function () { saveResetPwd(btn.getAttribute('data-sid')); },
+
+    /* --- O'chirish (tasdiq bilan) --- */
+    'del-student': function () { openDeleteStudent(btn.getAttribute('data-sid')); },
+    'do-del-student': function () { doDeleteStudent(btn.getAttribute('data-sid')); },
+    'del-group': function () { openDeleteGroup(btn.getAttribute('data-gid')); },
+    'do-del-group': function () { doDeleteGroup(btn.getAttribute('data-gid')); },
     'open-change-pwd': openChangePwd,
     'save-change-pwd': saveChangePwd,
 
@@ -1723,6 +2317,7 @@ document.addEventListener('click', function (e) {
       if (all[state.editor.sid]) {
         delete all[state.editor.sid][state.editor.date];
         store.set(K.grades, all);
+        CloudSync.pushGrade(state.editor.sid, state.editor.date);
       }
       state.editor.score = null;
       renderGradeEditor();
@@ -1732,6 +2327,10 @@ document.addEventListener('click', function (e) {
       closeModal();
       render();
     },
+
+    /* --- Chat --- */
+    'open-chat': function () { openChat(btn.getAttribute('data-sid')); },
+    'send-chat': sendChat,
 
     /* --- Speaking qarzi --- */
     'debt-plus': function () { changeDebt(btn.getAttribute('data-sid'), +1); },
@@ -1770,8 +2369,10 @@ document.addEventListener('click', function (e) {
     'att-save': function () {
       if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
       const all = getAttendance();
+      const beforeIds = Object.keys(all[state.attDate] || {});
       all[state.attDate] = Object.assign({}, state.attDraft || {});
       store.set(K.attendance, all);
+      CloudSync.pushAttendance(state.attDate, beforeIds.concat(Object.keys(state.attDraft || {})));
       state.attDraftFor = state.attDate;
       const n = Object.keys(all[state.attDate]).length;
       toast(n ? "Davomat saqlandi ✓ (" + n + " ta)" : "Davomat saqlandi (bo'sh)");
@@ -1826,6 +2427,10 @@ document.addEventListener('keydown', function (e) {
     const btn = $('[data-act="do-login"]');
     if (btn) btn.click();
   }
+  if (e.key === 'Enter' && e.target.id === 'chat-input') {
+    e.preventDefault();
+    sendChat();
+  }
 });
 
 $('#modal-overlay').addEventListener('click', function (e) {
@@ -1842,4 +2447,12 @@ $('#modal-overlay').addEventListener('click', function (e) {
   if (!s || !accounts[s.login]) store.del(K.session);
   state.screen = currentUser() ? 'home' : 'login';
   render();
+  /* Avval bulutdan ma'lumotni tiklaymiz (multi-device sync), keyin qayta chizamiz */
+  if (CloudSync.ready()) {
+    CloudSync.pullAll().then(function (ok) {
+      if (ok && currentUser()) render();
+      CloudSync.subscribe();
+      refreshChat();
+    });
+  }
 })();
