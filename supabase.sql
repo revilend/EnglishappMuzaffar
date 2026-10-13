@@ -34,12 +34,29 @@ create table if not exists public.messages (
 create index if not exists messages_student_idx
   on public.messages (student_id, created_at);
 
--- 3) RLS — demo uchun ochiq (anon kalit bilan to'liq o'qish/yozish)
+-- 3) Telegram bot speaking topshiriklari (voice/video fayl IDlari)
+create table if not exists public.speaking_submissions (
+  id               bigint generated always as identity primary key,
+  media_type       text not null check (media_type in ('voice', 'video_note', 'video')),
+  telegram_file_id text not null,
+  status           text not null default 'kutilmoqda',
+  created_at       timestamptz not null default now()
+);
+
+create index if not exists speaking_submissions_status_idx
+  on public.speaking_submissions (status, created_at);
+
+-- 4) RLS — demo uchun ochiq (anon kalit bilan to'liq o'qish/yozish)
 alter table public.audio_submissions enable row level security;
+alter table public.speaking_submissions enable row level security;
 alter table public.messages enable row level security;
 
 drop policy if exists "demo audio all" on public.audio_submissions;
 create policy "demo audio all" on public.audio_submissions
+  for all using (true) with check (true);
+
+drop policy if exists "demo speaking_submissions all" on public.speaking_submissions;
+create policy "demo speaking_submissions all" on public.speaking_submissions
   for all using (true) with check (true);
 
 drop policy if exists "demo messages all" on public.messages;

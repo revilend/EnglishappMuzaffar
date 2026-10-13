@@ -1,183 +1,213 @@
-"""
-English Tutor — Telegram bot (aiogram 3.x).
-
-Vazifalari:
-  * /start — doimiy pastki chap menyu tugmasini (Menu Button) WebApp ga
-    sozlash va xush kelib bildirishnoma yuborish;
-  * 4 ta xabar yuborish funksiyasi: davomat, speaking eslatmasi, baho
-    va kirish ma'lumotlari.
-"""
-
-from __future__ import annotations
-
 import asyncio
 import html
 import logging
-import sys
-from typing import Optional
-
-from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+import os
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.types import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    MenuButtonWebApp,
-    Message,
-    WebAppInfo,
+    InlineKeyboardMarkup, 
+    InlineKeyboardButton, 
+    WebAppInfo, 
+    MenuButtonWebApp
 )
-
+from supabase import create_client, Client
 import config
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    stream=sys.stdout,
-)
-logger = logging.getLogger("english-tutor")
+logging.basicConfig(level=logging.INFO)
 
+try:
+    bot = Bot(token=config.BOT_TOKEN)  # aiogram invalid tokenni shu yerda rad etadi
+except Exception as _e:  # placeholder/yaroqsiz token: import va start toza qoladi
+    bot = None
+    logging.error(f"BOT_TOKEN yaroqsiz: {_e}")
 dp = Dispatcher()
-_bot: Optional[Bot] = None
+supabase: Client = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
 
-MENU_BUTTON_TEXT = "📱 Ilovani ochish"
-ENTER_BUTTON_TEXT = "🚀 Ilovaga kirish"
-
-
-# ============================================================
-# Yordamchilar
-# ============================================================
-def get_bot() -> Bot:
-    """Bot instansiyasini yaratadi (kichik daqiqada takrorlanmaydi)."""
-    global _bot
-    if _bot is None:
-        _bot = Bot(
-            token=config.BOT_TOKEN,
-            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-        )
-    return _bot
-
-
-def webapp_keyboard() -> InlineKeyboardMarkup:
-    """WebApp ga ochuvchi inline tugma."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=ENTER_BUTTON_TEXT, web_app=WebAppInfo(url=config.WEBAPP_URL))]
-    ])
-
-
-async def _send(chat_id: int, text: str) -> bool:
-    """Xabarni yuborish — xatolik logga yoziladi, bot to'xtamaydi."""
-    try:
-        await get_bot().send_message(chat_id=chat_id, text=text)
-        return True
-    except Exception as exc:  # noqa: BLE001 — bot ishlashda davom etishi kerak
-        logger.error("Xabar yuborilmadi (chat_id=%s): %s", chat_id, exc)
-        return False
-
-
-def _e(value) -> str:
-    """HTML uchun xavfsiz matn (ism, fan nomi va h.k.)."""
-    return html.escape(str(value))
-
-
-# ============================================================
-# 1) /start — menu button + xush kelish
-# ============================================================
+# /start command
 @dp.message(CommandStart())
-async def cmd_start(message: Message) -> None:
-    bot = get_bot()
+async def cmd_start(message: types.Message):
+    user_id = message.from_user.id
+    user_name = message.from_user.first_name
 
-    # Pastki chapdagi doimiy menyu tugmasini WebApp ga sozlash
+    # Teacher check
+    if user_id == config.ADMIN_ID:
+        try:
+            await bot.set_chat_menu_button(
+                chat_id=user_id,
+                menu_button=MenuButtonWebApp(text="📱 Ustoz Paneli", web_app=WebAppInfo(url=config.WEBAPP_URL))
+            )
+        except Exception as e:  # Mini App BotFather'da ulanmagan bo'lsa ham /start ishlayveradi
+            logging.warning(f"set_chat_menu_button (teacher): {e}")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 Ustoz Panelini ochish", web_app=WebAppInfo(url=config.WEBAPP_URL))]
+        ])
+        await message.answer(f"Xush kelibsiz, Ustoz!\nBarcha guruhlar, jurnallar va topshiriqlar boshqaruvi sizda.", reply_markup=keyboard)
+        return
+
+    # Student
     try:
         await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(
-                text=MENU_BUTTON_TEXT,
-                web_app=WebAppInfo(url=config.WEBAPP_URL),
-            )
+            chat_id=user_id,
+            menu_button=MenuButtonWebApp(text="📱 O'quvchi Kabineti", web_app=WebAppInfo(url=config.WEBAPP_URL))
         )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Menu button o'rnatilmadi (Main Mini App sozlanmagan bo'lishi mumkin): %s", exc)
-
-    await message.answer(
-        "Assalomu alaykum! 👋\n\n"
-        "Men <b>English Tutor</b> botiman. Bu yerda dars jadvali, baholar, "
-        "davomat va Speaking eslatmalari haqida xabarlar olasiz.\n\n"
-        "Ilovani ochish uchun quyidagi tugmani bosing:",
-        reply_markup=webapp_keyboard(),
+    except Exception as e:
+        logging.warning(f"set_chat_menu_button (student): {e}")
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🚀 Shaxsiy Kabinetga kirish", web_app=WebAppInfo(url=config.WEBAPP_URL))]
+    ])
+    text = (
+        f"Assalomu alaykum, <b>{user_name}</b>!\n\n"
+        f"Ingliz tili darslari botiga xush kelibsiz.\n"
+        f"🎙 <b>Speaking topshirish uchun:</b> shunchaki shu yerga ovozli xabar (voice) yoki dumaloq video xabar yuboring!"
     )
-    logger.info("/start — %s (chat_id=%s)", message.from_user.id if message.from_user else "?", message.chat.id)
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+# Voice & Video Speaking Submissions
+@dp.message(F.voice | F.video_note | F.video)
+async def handle_speaking_submission(message: types.Message):
+    user = message.from_user
+    media_type = "voice" if message.voice else ("video_note" if message.video_note else "video")
+    file_id = message.voice.file_id if message.voice else (message.video_note.file_id if message.video_note else message.video.file_id)
+
+    # Save to Supabase
+    try:
+        supabase.table("speaking_submissions").insert({
+            "media_type": media_type,
+            "telegram_file_id": file_id,
+            "status": "kutilmoqda"
+        }).execute()
+    except Exception as e:
+        logging.error(f"Supabase error: {e}")
+
+    # Forward to Teacher
+    caption = (
+        f"🎙 <b>YANGI SPEAKING TOPSHIRILDI!</b>\n\n"
+        f"👤 <b>Yuboruvchi:</b> {user.full_name} (@{user.username or 'yoʻq'})\n"
+        f"🆔 <b>Telegram ID:</b> <code>{user.id}</code>\n"
+        f"📹 <b>Turi:</b> {media_type.upper()}"
+    )
+    eval_btn = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📝 Mini App'da Baholash", web_app=WebAppInfo(url=config.WEBAPP_URL))]
+    ])
+
+    if message.voice:
+        await bot.send_voice(chat_id=config.ADMIN_ID, voice=file_id, caption=caption, reply_markup=eval_btn, parse_mode="HTML")
+    elif message.video_note:
+        await bot.send_video_note(chat_id=config.ADMIN_ID, video_note=file_id, reply_markup=eval_btn)
+        await bot.send_message(chat_id=config.ADMIN_ID, text=caption, parse_mode="HTML")
+    else:
+        await bot.send_video(chat_id=config.ADMIN_ID, video=file_id, caption=caption, reply_markup=eval_btn, parse_mode="HTML")
+
+    await message.reply(
+        "✅ <b>Qabul qilindi!</b>\nSpeaking vazifangiz ustozga yuborildi. Ustoz tekshirib baho qo'yishi bilan sizga xabar beriladi.", 
+        parse_mode="HTML"
+    )
+
+# Notification function for grades
+async def notify_student_grade(student_chat_id: int, subject: str, grade: int, note: str = ""):
+    text = (
+        f"📝 <b>Speaking natijangiz chiqdi!</b>\n\n"
+        f"Topshiriq: <b>{subject}</b>\n"
+        f"Baho: <b>{grade} / 10 ball</b>\n"
+        f"Ustoz izohi: <i>{note or 'Yaxshi!'}</i>\n\n"
+        f"🎉 Speaking qarzingiz 1 taga kamaytirildi!"
+    )
+    try:
+        await bot.send_message(chat_id=student_chat_id, text=text, parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"Notify error: {e}")
 
 
 # ============================================================
-# 2) Xabar yuborish funksiyalari
+# Qo'shimcha xabar yuborish funksiyalari (davomat/eslatma/parol)
 # ============================================================
+def _e(value) -> str:
+    return html.escape(str(value if value is not None else ""))
+
+
 async def send_absence_alert(chat_id: int, student_name: str, date: str) -> bool:
     """Davomat: darsga kelmaganlik haqida xabar."""
-    return await _send(
-        chat_id,
-        "⚠️ <b>Davomat xabarnomasi:</b> Hurmatli ota-ona / o'quvchi, "
-        f"<b>{_e(student_name)}</b> bugun (<b>{_e(date)}</b>) darsda qatnashmadi. "
-        "Biron uzrli sabab bo'lsa ustozga xabar bering.",
-    )
+    try:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "⚠️ <b>Davomat xabarnomasi:</b> Hurmatli ota-ona / o'quvchi, "
+                f"<b>{_e(student_name)}</b> bugun (<b>{_e(date)}</b>) darsda qatnashmadi. "
+                "Biron uzrli sabab bo'lsa ustozga xabar bering."
+            ),
+            parse_mode="HTML",
+        )
+        return True
+    except Exception as e:
+        logging.error(f"Absence alert error: {e}")
+        return False
 
 
 async def send_speaking_reminder(chat_id: int, student_name: str, time: str) -> bool:
     """Speaking: yakkama-yakka dars eslatmasi."""
-    return await _send(
-        chat_id,
-        "🎙 <b>Speaking eslatmasi:</b> Salom <b>{name}</b>! "
-        "Bugun soat <b>{time}</b> da yakkama-yakka Speaking darsingiz bor. "
-        "O'z vaqtingizda tayyor bo'ling!".format(name=_e(student_name), time=_e(time)),
-    )
+    try:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "🎙 <b>Speaking eslatmasi:</b> Salom <b>{name}</b>! "
+                "Bugun soat <b>{time}</b> da yakkama-yakka Speaking darsingiz bor. "
+                "O'z vaqtingizda tayyor bo'ling!"
+            ).format(name=_e(student_name), time=_e(time)),
+            parse_mode="HTML",
+        )
+        return True
+    except Exception as e:
+        logging.error(f"Speaking reminder error: {e}")
+        return False
 
 
 async def send_grade_alert(chat_id: int, subject: str, grade) -> bool:
     """Yangi baho qo'yilgani haqida xabar."""
-    return await _send(
-        chat_id,
-        "📝 <b>Yangi baho:</b> Sizga <b>{subject}</b> uchun "
-        "<b>{grade}</b>/10 ball qo'yildi! Batafsil ilovada ko'ring.".format(
-            subject=_e(subject), grade=_e(grade)
-        ),
-    )
+    try:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "📝 <b>Yangi baho:</b> Sizga <b>{subject}</b> uchun "
+                "<b>{grade}</b>/10 ball qo'yildi! Batafsil ilovada ko'ring."
+            ).format(subject=_e(subject), grade=_e(grade)),
+            parse_mode="HTML",
+        )
+        return True
+    except Exception as e:
+        logging.error(f"Grade alert error: {e}")
+        return False
 
 
 async def send_credentials(chat_id: int, student_name: str, login: str, password: str) -> bool:
     """Tizimga kirish ma'lumotlari."""
-    return await _send(
-        chat_id,
-        "🔑 <b>Tizimga kirish ma'lumotlari:</b> Salom <b>{name}</b>! "
-        "Tizimga kirish loginingiz: <code>{login}</code>, parolingiz: <code>{password}</code>. "
-        "Ilovaga kirib parolni o'zgartirishingiz mumkin.".format(
-            name=_e(student_name), login=_e(login), password=_e(password)
-        ),
-    )
+    try:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "🔑 <b>Tizimga kirish ma'lumotlari:</b> Salom <b>{name}</b>! "
+                "Tizimga kirish loginingiz: <code>{login}</code>, parolingiz: <code>{password}</code>. "
+                "Ilovaga kirib parolni o'zgartirishingiz mumkin."
+            ).format(name=_e(student_name), login=_e(login), password=_e(password)),
+            parse_mode="HTML",
+        )
+        return True
+    except Exception as e:
+        logging.error(f"Credentials error: {e}")
+        return False
 
 
-# ============================================================
-# 3) Ishga tushirish
-# ============================================================
-async def main() -> None:
-    if not config.BOT_TOKEN or config.BOT_TOKEN.startswith("YOUR_"):
-        logger.error(
+async def main():
+    if bot is None or not config.BOT_TOKEN or config.BOT_TOKEN.startswith("YOUR_"):
+        logging.error(
             "BOT_TOKEN o'rnatilmagan.\n"
             "  1) @BotFather dan token oling;\n"
-            "  2) config.py dagi BOT_TOKEN ni almashtiring "
-            "yoki `export BOT_TOKEN=...` bering;\n"
+            "  2) Render'da BOT_TOKEN environment variable qo'shing "
+            "(yoki local: export BOT_TOKEN=...);\n"
             "  3) qayta ishga tushiring: python3 bot.py"
         )
         return
-
-    bot = get_bot()
-    me = await bot.get_me()
-    logger.info("Bot ishga tushdi: @%s (id=%s)", me.username, me.id)
-
-    await bot.delete_webhook(drop_pending_updates=True)
+    logging.info("Bot starting with polling...")
     await dp.start_polling(bot)
 
-
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Bot to'xtatildi.")
+    asyncio.run(main())

@@ -106,12 +106,35 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 doimiy menyu tugmasini WebApp ga sozlaydi ("📱 Ilovani ochish") va inline tugma
 bilan xush kelib bildirishnoma yuboradi.
 
-**O'rnatish — 3 qadam:**
+**Telegram'da gaplashish (voice/video):** o'quvchi botga **ovozli (voice)** yoki
+**dumaloq video (video_note)** xabar yuboradi → fayl `speaking_submissions`
+jadvaliga yoziladi va ustozga (**ADMIN_ID**) **"🎙 YANGI SPEAKING TOPSHIRILDI!"**
+xabari "📝 Mini App'da Baholash" tugmasi bilan tushadi.
+
+**Render.com'da 24/7 ishga tushirish (Background Worker):**
+
+1. Repo'ni **Render** ga ulang → **New → Background Worker**
+   (yoki CLI: `render.yaml` o'rniga Manual: Docker/Python environment).
+2. **Environment** qo'shing (hammasi `config.py` dagi env nomlari bilan bir xil):
+
+   | Variable | Qiymat |
+   |---|---|
+   | `BOT_TOKEN` | @BotFather tokeni |
+   | `ADMIN_ID` | Ustozning Telegram ID raqami |
+   | `WEBAPP_URL` | `https://revilend.github.io/EnglishappMuzaffar/` |
+   | `SUPABASE_URL` | `https://mvjoeqyqaylfccqcnwwe.supabase.co` |
+   | `SUPABASE_KEY` | Supabase publishable kalit |
+
+3. **Build Command:** `pip install -r requirements.txt`
+   **Start Command:** `python bot.py`
+4. Deploy — worker doimiy polling rejimida ishlaydi (24/7).
+
+**Lokal ishga tushirish — 3 qadam:**
 
 1. Telegram'da **@BotFather** ga kiring → `/newbot` → bot nomini yozing va
    berilgan **tokenni** nusxalang.
-2. Tokenni `config.py` ichidagi `BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"` o'rniga
-   joylang (yoki `export BOT_TOKEN="123456:AAH..."` bering — env qiymat ustunlik qiladi).
+2. Tokenni muhit o'zgaruvchisi qiling: `export BOT_TOKEN="123456:AAH..."`
+   (yoki `config.py` ni vaqtincha almashtiring — env qiymat ustunlik qiladi).
 3. Bog'lab ishga tushiring:
 
 ```bash

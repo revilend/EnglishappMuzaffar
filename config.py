@@ -1,19 +1,9 @@
-"""English Tutor bot — konfiguratsiya."""
-
 import os
 
-# 1) @BotFather dan olingan bot tokeni.
-#    (Ko'rsatilgan qiymat — faqat namuna. Uni almashtiring.)
-BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+# Render environment variables with fallback
+BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))  # Teacher Telegram ID
 
-# 2) Telegram Mini App manzili
-WEBAPP_URL = "https://revilend.github.io/EnglishappMuzaffar/"
-
-# 3) Ustozning Telegram ID raqami (masalan, @userinfobot orqali bilib oling)
-ADMIN_ID = 123456789  # Teacher's Telegram ID
-
-# Xavfsizlik: repozitoriy ochiq va GitHub Pages orqali fayllar ommaga ko'rinadi,
-# shuning uchun tokenni faylga yozish o'rniga muhit o'zgaruvchisi orqali berish
-# tavsiya etiladi (env qiymat yuqoridagini qoplaydi):
-#   export BOT_TOKEN="123456789:AAH..."
-BOT_TOKEN = os.environ.get("BOT_TOKEN") or BOT_TOKEN
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://revilend.github.io/EnglishappMuzaffar/")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://mvjoeqyqaylfccqcnwwe.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_publishable_PHMC_kfQfu5BLFgDOzHsjw_B0VO2xDI")
