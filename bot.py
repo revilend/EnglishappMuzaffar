@@ -2,6 +2,7 @@ import asyncio
 import html
 import logging
 import os
+from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.types import (
@@ -16,12 +17,32 @@ import config
 logging.basicConfig(level=logging.INFO)
 
 try:
-    bot = Bot(token=config.BOT_TOKEN)  # aiogram invalid tokenni shu yerda rad etadi
-except Exception as _e:  # placeholder/yaroqsiz token: import va start toza qoladi
+    bot = Bot(token=config.BOT_TOKEN)
+except Exception as _e:
     bot = None
     logging.error(f"BOT_TOKEN yaroqsiz: {_e}")
+
 dp = Dispatcher()
 supabase: Client = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
+
+
+# ============================================================
+# Render uchun kichik Web Server (Port scan xatosini oldini oladi)
+# ============================================================
+async def handle_ping(request):
+    return web.Response(text="Bot is running 24/7 on Render!")
+
+async def start_dummy_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    app.router.add_get("/health", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logging.info(f"Dummy health-check web server started on port {port}")
+
 
 # /start command
 @dp.message(CommandStart())
@@ -36,7 +57,7 @@ async def cmd_start(message: types.Message):
                 chat_id=user_id,
                 menu_button=MenuButtonWebApp(text="📱 Ustoz Paneli", web_app=WebAppInfo(url=config.WEBAPP_URL))
             )
-        except Exception as e:  # Mini App BotFather'da ulanmagan bo'lsa ham /start ishlayveradi
+        except Exception as e:
             logging.warning(f"set_chat_menu_button (teacher): {e}")
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🚀 Ustoz Panelini ochish", web_app=WebAppInfo(url=config.WEBAPP_URL))]
@@ -62,6 +83,7 @@ async def cmd_start(message: types.Message):
     )
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
+
 # Voice & Video Speaking Submissions
 @dp.message(F.voice | F.video_note | F.video)
 async def handle_speaking_submission(message: types.Message):
@@ -71,7 +93,7 @@ async def handle_speaking_submission(message: types.Message):
 
     # Save to Supabase
     try:
-        supabase.table("speaking_submissions").insert({
+        supabase.table("audio_submissions").insert({
             "media_type": media_type,
             "telegram_file_id": file_id,
             "status": "kutilmoqda"
@@ -103,6 +125,7 @@ async def handle_speaking_submission(message: types.Message):
         parse_mode="HTML"
     )
 
+
 # Notification function for grades
 async def notify_student_grade(student_chat_id: int, subject: str, grade: int, note: str = ""):
     text = (
@@ -118,15 +141,11 @@ async def notify_student_grade(student_chat_id: int, subject: str, grade: int, n
         logging.error(f"Notify error: {e}")
 
 
-# ============================================================
-# Qo'shimcha xabar yuborish funksiyalari (davomat/eslatma/parol)
-# ============================================================
 def _e(value) -> str:
     return html.escape(str(value if value is not None else ""))
 
 
 async def send_absence_alert(chat_id: int, student_name: str, date: str) -> bool:
-    """Davomat: darsga kelmaganlik haqida xabar."""
     try:
         await bot.send_message(
             chat_id=chat_id,
@@ -144,7 +163,6 @@ async def send_absence_alert(chat_id: int, student_name: str, date: str) -> bool
 
 
 async def send_speaking_reminder(chat_id: int, student_name: str, time: str) -> bool:
-    """Speaking: yakkama-yakka dars eslatmasi."""
     try:
         await bot.send_message(
             chat_id=chat_id,
@@ -162,7 +180,6 @@ async def send_speaking_reminder(chat_id: int, student_name: str, time: str) -> 
 
 
 async def send_grade_alert(chat_id: int, subject: str, grade) -> bool:
-    """Yangi baho qo'yilgani haqida xabar."""
     try:
         await bot.send_message(
             chat_id=chat_id,
@@ -179,7 +196,6 @@ async def send_grade_alert(chat_id: int, subject: str, grade) -> bool:
 
 
 async def send_credentials(chat_id: int, student_name: str, login: str, password: str) -> bool:
-    """Tizimga kirish ma'lumotlari."""
     try:
         await bot.send_message(
             chat_id=chat_id,
@@ -196,18 +212,18 @@ async def send_credentials(chat_id: int, student_name: str, login: str, password
         return False
 
 
+# Asosiy ishga tushirish
 async def main():
     if bot is None or not config.BOT_TOKEN or config.BOT_TOKEN.startswith("YOUR_"):
-        logging.error(
-            "BOT_TOKEN o'rnatilmagan.\n"
-            "  1) @BotFather dan token oling;\n"
-            "  2) Render'da BOT_TOKEN environment variable qo'shing "
-            "(yoki local: export BOT_TOKEN=...);\n"
-            "  3) qayta ishga tushiring: python3 bot.py"
-        )
+        logging.error("BOT_TOKEN o'rnatilmagan.")
         return
+
+    # Render portini ochish
+    await start_dummy_web_server()
+
     logging.info("Bot starting with polling...")
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
