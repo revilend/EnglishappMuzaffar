@@ -6,12 +6,20 @@ Telefon raqamlari ham olib tashlangan; sinflar **faqat 5–11-sinf**; **Speaking
 
 ## Nima bor
 
+### 0. Brending (Muzaffar Amirov) va toza start
+- Ustoz nomi ilova va botda bir xil: **Muzaffar Amirov** — salom *"Xush kelibsiz,
+  Muzaffar Amirov!"*, menyu tugmasi *"📱 Muzaffar Amirov Paneli"*.
+- Ustoz logini qat'iy **`m_amirov`**. Login ekranida demo kartalar/chiplar/badgelar
+  **yo'q** — faqat **Login**, **Parol (👁)** va **"Kirish"**.
+- **Demo ma'lumot avtomatik SEED qilinmaydi** — ilova toza boshlanadi va faqat
+  Supabase'dagi haqiqiy guruh/o'quvchi ma'lumotlaridan ishlaydi.
+
 ### 1. Moliya yo'q
 Guruhlarda, dashboardda va o'quvchi profilida narx/to'lov/qarz kartalari **olib tashlangan**.
 
 ### 2. Ustoz boshqaradigan login/parol tizimi
-- Kirish ekrani: **Login** + **Parol** + "Kirish"
-- Ustoz: `admin` / `123` — O'quvchi: `jasur` / `123`
+- Kirish ekrani: **Login** + **Parol (👁 ko'zgusi)** + "Kirish" — ortiqcha hech narsa yo'q
+- Ustoz (Muzaffar Amirov): `m_amirov` / `123` — O'quvchi: Supabase'dagi login/parol (masalan `jasur` / `123`)
 - O'quvchi qo'shishda ustoz **Login** va **Dastlabki parol** belgilaydi (masalan `jasur09` / `1234`)
 - O'quvchi: profilda **"Parolni o'zgartirish"** modali
 - Ustoz: har bir o'quvchi kartasida **"Parolni yangilash"** (parolni unutgan uchun qayta tiklash)
@@ -45,6 +53,12 @@ Ro'yxat, forma va kartalarda telefon maydoni **umuman yo'q**. Majburiy maydonlar
 ### 8. Sinflar faqat 5–11
 Barcha sinf variantlari va filtrlari qat'iy: `5-sinf, 6-sinf, 7-sinf, 8-sinf, 9-sinf, 10-sinf, 11-sinf`.
 
+### 8b. Jonli qidiruv va guruh → o'quvchi filtri
+- O'quvchilar ekranida **🔍 O'quvchi ismini kiriting...** — har harf yozilishi bilan
+  darhol filtr (Enter bosish shart emas).
+- Guruhlar ekranida **guruh kartasini bosish** → darhol faqat shu guruh o'quvchilari;
+  **[Barcha o'quvchilar]** tugmasi bilan filtr bir zumda tozalanadi.
+
 ### 9. Speaking qarzi (counter)
 - **Ustoz:** o'quvchilar ro'yxatida va Speaking ekranida har biri uchun **[ − ] / [ + ]** nazorat
 - **O'quvchi:** kabinetda **"Speaking qarzingiz: X ta"** badge (yoki "qarzingiz yo'q")
@@ -54,7 +68,7 @@ Barcha sinf variantlari va filtrlari qat'iy: `5-sinf, 6-sinf, 7-sinf, 8-sinf, 9-
   (voice), 📹 krujok (video note) yoki MP4 yuboradi.
 - **Ustoz ruxsati:** har bir o'quvchi kartasida **"🎙 Ovozli topshirishga ruxsat"**
   kaliti → `students.voice_allowed`. Yopiq bo'lsa bot rad etadi:
-  *"⛔ Kechirasiz! Ustoz hozircha sizga ovozli topshirishga ruxsat bermagan..."*
+  *"⛔ Kechirasiz! Muzaffar Amirov hozircha sizga ovozli topshirishga ruxsat bermagan..."*
 - **Bot qabul qilganda:** `speaking_submissions` jadvaliga yoziladi, qarz +1 va
   ustozga **[📝 Mini App'da Baholash]** tugmasi bilan forward qilinadi.
 - **Ustoz (Speaking → Telegram topshiriklari):** **1–10 ball** + izoh qo'yadi —
@@ -81,7 +95,8 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 - Har bir o'zgarish (o'quvchi, baho, davomat, qarz, xabar, uyga vazifa) **darhol**
   bulutga yoziladi; **5 soniyalik polling loop olib tashlangan** — real-time obuna
   va login/ekran ochilgandagi bir martalik pull ishlatiladi (cheksiz yangilanish yo'q).
-- Birinchi marta jadvallar bo'sh bo'lsa, demo ma'lumot avtomatik seed qilinadi.
+- Toza start: demo guruh/o'quvchi **avtomatik SEED qilinmaydi** — jadvallar bo'sh
+  bo'lsa ilova bo'sh boshlanadi, ma'lumotni ustoz o'zi qo'shadi.
 
 **Sozlash (1 qadam):** `supabase.sql` faylini Supabase Dashboard → SQL Editor'da
 **Run** bosing (hammasi idempotent — qayta ishga tushirish xavfsiz). Yangi qo'shimcha:
@@ -105,7 +120,7 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 ### 13. To'g'ridan-to'g'ri chat (Ustoz ↔ O'quvchi)
 - **Ustoz:** har bir o'quvchi kartasida **"💬 Xabar yozish"** → modaldagi suhbat:
   xabar yozish, Enter bilan yuborish, xabarlar `messages` jadvaliga yoziladi.
-- **O'quvchi:** kabinetida **"Ustoz bilan Chat"** bo'limi — ustoz xabarlarini o'qiydi
+- **O'quvchi:** kabinetida **"Muzaffar Amirov bilan Chat"** bo'limi — ustoz xabarlarini o'qiydi
   va javob yozadi (faqat o'z suhbati, boshqa o'quvchilarniki ko'rinmaydi).
 - **Real-time:** supabase realtime obunasi + ochiq chat 5 sekundda bir avtomatik
   yangilanadi.
@@ -127,10 +142,13 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 
 **Telegram botda (faqat ADMIN_ID):**
 
-- `/backup` — barcha jadvallar JSON fayl sifatida ustozga yuboriladi
-  (`backup_english_app.json`).
+- **`/start`** — ustozga inline tugma: **[📥 Barcha ma'lumotlarni yuklab olish (Backup)]**.
+- **`/backup`** — barcha jadvallar (`groups`, `students`, `attendance`, `grades`,
+  `messages`, `speaking_submissions`, ...) timestamped fayl sifatida ustozga
+  yuboriladi: `english_crm_backup_YYYY-MM-DD.json` + kaptorda o'quvchi/guruh/baho
+  soni ko'rsatiladi.
 - Zaxira faylini botga yuboring (yoki avval `/restore` yozing) → bot tasdiq
-  tugmalarini ko'rsatadi: **[✅ Ha, tiklash] [❌ Bekor qilish]** → tasdiqdan
+  tugmalarini ko'rsatadi: **[✅ Bazani qayta tiklash] [❌ Bekor qilish]** → tasdiqdan
   keyin baza qayta tiklanadi va natija hisoboti yuboriladi.
 - Barcha backup/restore buyruqlari **faqat ustoz** uchun (boshqalariga rad etiladi).
 
@@ -208,9 +226,10 @@ python3 bot.py
 | Buyruq | Vazifasi |
 |---|---|
 | `/login <login> <parol>` | O'quvchini Telegram hisobiga ulaydi (broadcast + speaking uchun) |
-| `/backup` | Barcha jadvallarni `backup_english_app.json` fayl sifatida ADMIN_ID ga yuboradi |
+| `/start` (ustoz) | Menyu: **[🚀 Muzaffar Amirov Panelini ochish]** + **[📥 Barcha ma'lumotlarni yuklab olish (Backup)]** |
+| `/backup` | Barcha jadvallarni `english_crm_backup_YYYY-MM-DD.json` fayl sifatida ADMIN_ID ga yuboradi (sonlar kaptorda) |
 | `/restore` | Zaxira faylini yuborishni so'raydi (keyin tasdiq tugmalari chiqadi) |
-| JSON fayl (document) | *"Haqiqatan ham bazani ushbu fayldan qayta tiklamoqchimisiz?"* → [✅ Ha, tiklash] [❌ Bekor qilish] |
+| JSON fayl (document) | *"Haqiqatan ham bazani ushbu fayldan qayta tiklamoqchimisiz?"* → [✅ Bazani qayta tiklash] [❌ Bekor qilish] |
 
 **Xabar yuborish funksiyalari** (`bot.py`):
 
@@ -228,7 +247,7 @@ HTML uchun xavfsiz escaped qilinadi.
 
 ```bash
 npm install      # test uchun (jsdom)
-npm test         # interaktiv smoke-test (263 tekshiruv)
+npm test         # interaktiv smoke-test (278 tekshiruv)
 npm start        # http://localhost:3000
 ```
 
@@ -237,9 +256,9 @@ npm start        # http://localhost:3000
 ```
 index.html        — ilova qobigi
 css/styles.css    — Telegram tema o'zgaruvchilari bilan (yorug'/qorong'i)
-js/data.js        — mock ma'lumotlar (hisoblar, baholar, davomat, speaking)
+js/data.js        — statik konfiguratsiya (sinflar, kunlar, kategoriyalar — demo ma'lumot YO'Q)
 js/app.js         — kirish, rollar, kabinet, jurnal, davomat, speaking
-test/smoke.js     — jsdom asosida butun oqimni sinovdan o'tkazadi (263 tekshiruv)
+test/smoke.js     — jsdom asosida butun oqimni sinovdan o'tkazadi (278 tekshiruv)
 supabase.sql      — messages/homework/speaking_submissions + telegram_chat_id (SQL Editor'da Run)
 bot.py            — Telegram bot (aiogram 3.x): /start + xabar funksiyalari
 config.py         — BOT_TOKEN, WEBAPP_URL, ADMIN_ID

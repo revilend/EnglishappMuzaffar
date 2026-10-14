@@ -14,12 +14,140 @@ function check(cond, msg) {
   else { failed++; console.error('FAIL - ' + msg); }
 }
 
+const dataJs = fs.readFileSync(path.join(root, 'js', 'data.js'), 'utf8');
+const appJs = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
+
+/* ============ TEST FIXTURE (faqat test uchun — ilovada demo seed YO'Q) ============ */
+const F_DAYS = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'];
+const F_GROUPS = [
+  { id: 'g1', name: 'IELTS Band 7.0', days: 'Dushanba, Chorshanba, Juma', time: '18:00' },
+  { id: 'g2', name: 'General English (8–10-sinf)', days: 'Seshanba, Payshanba', time: '17:00' }
+];
+const F_STUDENTS = [
+  { id: 's1', fullName: 'Aziz Rahimov', schoolClass: '9-sinf', groupId: 'g2', speakingDebt: 0, audioSubmissions: [] },
+  { id: 's2', fullName: 'Nilufar Ergasheva', schoolClass: '9-sinf', groupId: 'g2', speakingDebt: 0, audioSubmissions: [] },
+  { id: 's3', fullName: 'Jasur Karimov', schoolClass: '8-sinf', groupId: 'g2', speakingDebt: 0, audioSubmissions: [] },
+  { id: 's4', fullName: 'Dilnoza Qodirova', schoolClass: '10-sinf', groupId: 'g2', speakingDebt: 0, audioSubmissions: [] },
+  { id: 's5', fullName: 'Malika Yusupova', schoolClass: '11-sinf', groupId: 'g1', speakingDebt: 0, audioSubmissions: [] },
+  { id: 's6', fullName: 'Bekzod Alimov', schoolClass: '11-sinf', groupId: 'g1', speakingDebt: 0, audioSubmissions: [] }
+];
+const F_ACCOUNTS = [
+  { login: 'm_amirov', password: '123', role: 'teacher', name: 'Muzaffar Amirov' },
+  { login: 'aziz', password: '123', role: 'student', studentId: 's1', name: 'Aziz Rahimov' },
+  { login: 'nilufar', password: '123', role: 'student', studentId: 's2', name: 'Nilufar Ergasheva' },
+  { login: 'jasur', password: '123', role: 'student', studentId: 's3', name: 'Jasur Karimov' },
+  { login: 'dilnoza', password: '123', role: 'student', studentId: 's4', name: 'Dilnoza Qodirova' },
+  { login: 'malika', password: '123', role: 'student', studentId: 's5', name: 'Malika Yusupova' },
+  { login: 'bekozd', password: '123', role: 'student', studentId: 's6', name: 'Bekzod Alimov' }
+];
+const F_GRADE_SEEDS = {
+  s1: [10, 9, 8, 10, 9], s2: [9, 8, 9, 7, 8], s3: [6, 7, 5, 8, 7],
+  s4: [8, 9, 10, 9, 10], s5: [9, 10, 9, 10, 8], s6: [7, 6, 8, 7, 9]
+};
+const F_ATT_SEEDS = {
+  s1: ['present', 'present', 'present', 'present', 'present'],
+  s2: ['present', 'present', 'excused', 'present', 'present'],
+  s3: ['present', 'absent', 'present', 'present', 'absent'],
+  s4: ['present', 'present', 'present', 'present', 'present'],
+  s5: ['present', 'excused', 'present', 'present', 'present'],
+  s6: ['absent', 'present', 'present', 'absent', 'present']
+};
+const fpad2 = n => String(n).padStart(2, '0');
+const dkey = d => d.getFullYear() + '-' + fpad2(d.getMonth() + 1) + '-' + fpad2(d.getDate());
+
+function fixtureLessonDates(group, count) {
+  const names = String(group.days).split(',').map(x => x.trim());
+  const jsDays = names.map(n => F_DAYS.indexOf(n)).filter(i => i >= 0).map(i => (i + 1) % 7);
+  const out = [];
+  const cur = new Date();
+  cur.setHours(0, 0, 0, 0);
+  let guard = 0;
+  while (out.length < count && guard++ < 400) {
+    if (jsDays.indexOf(cur.getDay()) >= 0) out.push(dkey(cur));
+    cur.setDate(cur.getDate() - 1);
+  }
+  return out.reverse();
+}
+
+function seedFixture(w) {
+  const grades = {}, att = {};
+  F_STUDENTS.forEach(st => {
+    const g = F_GROUPS.filter(x => x.id === st.groupId)[0];
+    const dates = fixtureLessonDates(g, 5);
+    const scores = F_GRADE_SEEDS[st.id] || [];
+    const attSeed = F_ATT_SEEDS[st.id] || [];
+    const cats = ['Darsdagi javob', "Lug'at", 'Uyga vazifa'];
+    dates.forEach((dk, i) => {
+      if (i < scores.length) {
+        grades[st.id] = grades[st.id] || {};
+        grades[st.id][dk] = { score: scores[i], category: cats[i % cats.length], note: '' };
+      }
+      if (i < attSeed.length) {
+        att[dk] = att[dk] || {};
+        att[dk][st.id] = attSeed[i];
+      }
+    });
+  });
+  const today = dkey(new Date());
+  const speaking = [
+    { id: 'spseed1', date: today, start: '14:00', end: '14:20', studentId: 's5', score: null },
+    { id: 'spseed2', date: today, start: '14:20', end: '14:40', studentId: 's6', score: null },
+    { id: 'spseed3', date: today, start: '14:40', end: '15:00', studentId: null, score: null }
+  ];
+  const accounts = {};
+  F_ACCOUNTS.forEach(a => { accounts[a.login] = Object.assign({}, a, { studentId: a.studentId || null }); });
+  w.localStorage.setItem('et_groups', JSON.stringify(F_GROUPS));
+  w.localStorage.setItem('et_students', JSON.stringify(F_STUDENTS));
+  w.localStorage.setItem('et_accounts', JSON.stringify(accounts));
+  w.localStorage.setItem('et_grades', JSON.stringify(grades));
+  w.localStorage.setItem('et_attendance', JSON.stringify(att));
+  w.localStorage.setItem('et_speaking', JSON.stringify(speaking));
+}
+
+/* ============ 0. TOZA START — demo seed YO'qligi (yangi, bo'sh qurilma) ============ */
+{
+  const fdom = new JSDOM(html, { url: 'http://localhost:3000/', runScripts: 'outside-only', pretendToBeVisual: true });
+  const fwin = fdom.window;
+  const fdoc = fwin.document;
+  const fq = s => fdoc.querySelector(s);
+  const fqa = s => Array.from(fdoc.querySelectorAll(s));
+  const ftext = () => fq('#screen').textContent;
+  fwin.eval(dataJs + '\nwindow.APP_DATA = APP_DATA;');
+  fwin.eval(appJs);
+  const fclick = el => el.dispatchEvent(new fwin.MouseEvent('click', { bubbles: true, cancelable: true }));
+  const fset = (s, v) => { const el = fq(s); el.value = v; el.dispatchEvent(new fwin.Event('input', { bubbles: true })); };
+  const fnav = scr => {
+    const b = fdoc.createElement('button');
+    b.setAttribute('data-act', 'nav');
+    b.setAttribute('data-screen', scr);
+    fdoc.body.appendChild(b);
+    fclick(b);
+    b.remove();
+  };
+
+  check(!fq('.hint-card') && !ftext().includes('Demo') && !fq('.login-demo'),
+    'toza start: login ekranida demo kart/chiplar YO\'Q');
+  fset('#login-input', 'm_amirov');
+  fset('#password-input', '123');
+  fclick(fq('[data-act="do-login"]'));
+  check(ftext().includes('Xush kelibsiz') && ftext().includes('Muzaffar Amirov'),
+    'toza start: "Xush kelibsiz, Muzaffar Amirov!" salomi');
+  fnav('groups');
+  check(fqa('.group-card').length === 0 && ftext().includes("Hozircha guruh yo'q"),
+    "toza start: demo guruhlar avtomatik SEED qilinmaydi (0 ta)");
+  fnav('students');
+  check(fqa('.student-card').length === 0 && !ftext().includes('Aziz Rahimov'),
+    "toza start: demo o'quvchilar avtomatik SEED qilinmaydi (0 ta)");
+}
+
+/* ============ Asosiy qurilma (test fixture bilan) ============ */
 const dom = new JSDOM(html, { url: 'http://localhost:3000/', runScripts: 'outside-only', pretendToBeVisual: true });
 const win = dom.window;
 const doc = win.document;
 
-win.eval(fs.readFileSync(path.join(root, 'js', 'data.js'), 'utf8') + '\nwindow.APP_DATA = APP_DATA;');
-win.eval(fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8'));
+win.eval(dataJs + '\nwindow.APP_DATA = APP_DATA;');
+seedFixture(win);
+win.eval(appJs);
 
 const q = sel => doc.querySelector(sel);
 const qa = sel => Array.from(doc.querySelectorAll(sel));
@@ -57,7 +185,10 @@ check(!!q('#password-input'), 'login: Parol inputi mavjud');
 check(text().includes('Kirish'), 'login: "Kirish" tugmasi');
 check(q('#app-header').textContent.includes('English Tutor'), 'header: ilova nomi');
 check(qa('.nav-item').length === 0, 'login rejimida bottom nav yo\'q');
-check(!q('.hint-card') && !text().includes('Demo kirish'), "login: demo credentials kartasi olib tashlandi");
+check(!q('.hint-card') && !text().includes('Demo kirish') && !text().includes('Demo') && !q('.login-demo'), "login: demo credentials kartasi/chiplari olib tashlandi");
+check(q('#login-input').placeholder === 'Login' && q('#login-input').placeholder.indexOf('admin') < 0,
+  "login: placeholder'da demo logini yo'q");
+check(!text().includes('Ustoz Paneli') && !text().includes('Ustoz:'), "login: 'Ustoz Paneli'/demo yozuvlari yo'q");
 check(!text().includes('Ustoz: admin') && !text().includes("O'quvchi: jasur"), "login: login/parollar endi ko'rinmaydi");
 const pwBtnLogin = q('[data-act="toggle-pw"][data-target="password-input"]');
 check(!!pwBtnLogin, "login: parol ko'zgusi tugmasi (👁) mavjud");
@@ -73,14 +204,14 @@ clickAct('do-login');
 check(q('#login-error').classList.contains('show'), 'login: bo\'sh forma rad etildi');
 
 /* noto\'g\'ri parol */
-loginAs('admin', '999');
+loginAs('m_amirov', '999');
 check(q('#login-error').textContent.includes("noto'g'ri"), 'login: noto\'g\'ri parol xabar bermoqda');
 check(q('#password-input').value === '', 'login: noto\'g\'ri parol tozalanadi');
 
 /* ================= 2. USTOZ (admin/123) ================= */
-loginAs('admin', '123');
-check(text().includes('Assalomu alaykum'), 'ustoz: dashboard ochildi');
-check(q('#app-header').textContent.includes('Ustoz'), 'ustoz: headerda "Ustoz" roli');
+loginAs('m_amirov', '123');
+check(text().includes('Xush kelibsiz') && text().includes('Muzaffar Amirov'), 'ustoz: dashboard salomi "Xush kelibsiz, Muzaffar Amirov!"');
+check(q('#app-header').textContent.includes('Muzaffar Amirov'), 'ustoz: headerda "Muzaffar Amirov" brendi');
 check(navLabels().length === 6, 'ustoz: 6 ta nav tabi (' + navLabels().join(', ') + ')');
 
 /* Moliyaviy ma'lumotlar UMUMAN yo'q */
@@ -93,6 +224,17 @@ check(text().includes('Guruhlar'), 'guruhlar: ekran');
 check(groupCards() === 2, 'guruhlar: 2 ta guruh');
 check(text().includes('IELTS Band 7.0') && text().includes('18:00'), 'guruhlar: nom + dars vaqti');
 check(!text().includes("so'm"), 'moliya: guruh kartasida narx yo\'q');
+
+/* --- Guruh kartasini bosish → faqat shu guruh o'quvchilari --- */
+click(qa('.group-card').filter(c => c.textContent.includes('IELTS Band 7.0'))[0]);
+check(text().includes("O'quvchilar"), "guruh→o'quvchi: guruh kartasi bosilganda o'quvchilar ekrani ochildi");
+check(studentCards() === 2, "guruh→o'quvchi: faqat IELTS guruhidagi 2 ta o'quvchi ko'rinadi");
+check(!!q('[data-act="filter-group-all"]') && text().includes('Barcha o\'quvchilar'),
+  "guruh→o'quvchi: 'Barcha o'quvchilar' reset tugmasi bor");
+check(text().includes('IELTS Band 7.0 guruhidagi'), "guruh→o'quvchi: aktiv guruh nomi ko'rinadi");
+clickAct('filter-group-all');
+check(studentCards() === 6 && !q('[data-act="filter-group-all"]'),
+  "guruh→o'quvchi: 'Barcha o'quvchilar' bosildi → filtr tozalandi (6 ta)");
 
 /* ================= 4. O'QUVCHILAR ================= */
 click('[data-act="nav"][data-screen="students"]');
@@ -108,6 +250,15 @@ click('[data-act="filter-class"][data-class="11-sinf"]');
 check(studentCards() === 2, 'filtr: 11-sinf = 2 ta');
 click('[data-act="filter-class"][data-class="Barchasi"]');
 check(studentCards() === 6, 'filtr: Barchasi = 6 ta');
+
+/* --- Jonli qidiruv (harf yozilishi bilan, Enter'siz) --- */
+check(q('#s-search').placeholder === "🔍 O'quvchi ismini kiriting...", "qidiruv: spec placeholder (jonli qidiruv)");
+setVal('#s-search', 'Jas');
+check(studentCards() === 1 && text().includes('Jasur Karimov'), "qidiruv: 1 ta harf yozildi → darhol filtr (Enter'siz)");
+setVal('#s-search', 'ma');
+check(text().includes('Malika Yusupova') && studentCards() >= 1, "qidiruv: davomiy qidiruv ishlaydi");
+setVal('#s-search', '');
+check(studentCards() === 6, "qidiruv: tozalandi → barcha o'quvchilar qaytdi");
 
 /* ================= 5. YANGI O'QUVCHI + LOGIN/PAROL ================= */
 clickAct('open-add-student');
@@ -314,7 +465,7 @@ check(text().includes('Jasur Karimov'), 'change: yangi parol bilan kirdi');
 
 /* ================= 12. USTOZ QAYTA KIRIB, YANGILANGAN PAROLNI TEKSHIRADI ================= */
 logout();
-loginAs('admin', '123');
+loginAs('m_amirov', '123');
 click('[data-act="nav"][data-screen="students"]');
 check(text().includes('Nilufar Ergasheva'), 'ustoz: qayta kirdi');
 logout();
@@ -328,7 +479,7 @@ check(!text().includes('Jasur Karimov'), 'reset: boshqa o\'quvchi ko\'rinmaydi')
 
 /* --- 1. Telefon raqamlari butunlay yo'q --- */
 logout();
-loginAs('admin', '123');
+loginAs('m_amirov', '123');
 click('[data-act="nav"][data-screen="students"]');
 check(!text().includes('+998'), 'telefon: o\'quvchi kartalarida telefon yo\'q');
 check(!text().includes('Telefon'), 'telefon: "Telefon" yozuvi yo\'q');
@@ -418,7 +569,7 @@ check(q('#modal-overlay').hidden === false && q('#modal-sheet').textContent.incl
 click('[data-act="close-modal"]');
 
 /* ================= 14. CHAT (Ustoz ↔ O'quvchi) ================= */
-check(text().includes('Ustoz bilan Chat'), "chat: o'quvchi portali bo'limi bor");
+check(text().includes('Muzaffar Amirov bilan Chat'), "chat: o'quvchi portali bo'limi bor");
 check(!!q('#chat-list') && !!q('#chat-input'), "chat: portalda xabarlashuv (ro'yxat + input)");
 setVal('#chat-input', 'Tayyor ustoz');
 clickAct('send-chat');
@@ -426,7 +577,7 @@ check(q('#chat-list').textContent.includes('Tayyor ustoz'), "chat: o'quvchi xaba
 check(!!q('#chat-list .chat-msg.mine'), "chat: o'quvchi xabari o'zi tomonida (mine)");
 
 logout();
-loginAs('admin', '123');
+loginAs('m_amirov', '123');
 click('[data-act="nav"][data-screen="students"]');
 check(qa('[data-act="open-chat"]').length === studentCards(), "chat: har o'quvchi kartasida 'Xabar yozish' tugmasi");
 click(qa('[data-act="open-chat"]').filter(b => b.getAttribute('data-sid') === 's3')[0]);
@@ -465,7 +616,7 @@ check(win.__cloud.messagesAvailable() === false, "cloud: klient yo'qken messages
 
 /* ================= 17. O'QUVCHINI O'CHIRISH (tasdiq bilan) ================= */
 logout();
-loginAs('admin', '123');
+loginAs('m_amirov', '123');
 click('[data-act="nav"][data-screen="students"]');
 const nStudBeforeDel = studentCards();
 check(qa('[data-act="del-student"]').length === nStudBeforeDel, "o'chirish: har o'quvchi kartasida '🗑 O'chirish' tugmasi");
@@ -613,8 +764,8 @@ const until = async (fn, ms) => {
     stAfter[0].audioSubmissions[0].status === 'graded',
     'zaxira: ovozli topshiriklar tiklandi (audio_submissions)');
   const accAfter = JSON.parse(win.localStorage.getItem('et_accounts') || '{}');
-  check(!!accAfter['restore1'] && accAfter['restore1'].password === '9876' && !!accAfter['admin'],
-    'zaxira: hisoblar qayta qurildi (admin + restore1)');
+  check(!!accAfter['restore1'] && accAfter['restore1'].password === '9876' && !!accAfter['m_amirov'],
+    'zaxira: hisoblar qayta qurildi (m_amirov + restore1)');
 
   /* UI jonli yangilandi */
   forceNav('groups');
@@ -632,7 +783,7 @@ const until = async (fn, ms) => {
 
   /* ================= 20. UYGA VAZIFA (ustoz → o'quvchi portali) ================= */
   logout();
-  loginAs('admin', '123');
+  loginAs('m_amirov', '123');
   click('[data-act="nav"][data-screen="home"]');
   check(!!q('[data-act="open-hw"]'), "uyga vazifa: '+ Uyga vazifa' tugmasi (Bosh)");
   check(text().includes('Uyga vazifalar'), "uyga vazifa: bo'lim sarlavhasi");
@@ -663,7 +814,7 @@ const until = async (fn, ms) => {
 
   /* ================= 21. VOICE RUXSAT KALITI (kartada) ================= */
   logout();
-  loginAs('admin', '123');
+  loginAs('m_amirov', '123');
   click('[data-act="nav"][data-screen="students"]');
   const swEl = q('[data-act="voice-toggle"]');
   check(!!swEl, "voice: o'quvchi kartasida ruxsat kaliti bor");

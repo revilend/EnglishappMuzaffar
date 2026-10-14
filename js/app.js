@@ -39,14 +39,10 @@ const K = {
   tgsubs: 'et_tg_subs'
 };
 
-function seedIfEmpty(key, data) { if (store.get(key, null) === null) store.set(key, data); }
-seedIfEmpty(K.groups, APP_DATA.groups);
-seedIfEmpty(K.students, APP_DATA.students);
-seedIfEmpty(K.attendance, null);
-seedIfEmpty(K.homework, []);
-seedIfEmpty(K.tgsubs, []);
+/* Toza start: demo guruh/o'quvchi seedlari YO'Q — barcha ma'lumot Supabase'dan keladi.
+   Kalitlar bo'sh bo'lsa getterlar [] bilan ishlaydi (getGroups/getStudents/...). */
 
-/* Kirish hisoblari (login → ma'lumot) */
+/* Kirish hisoblari (login → ma'lumot): faqat ustoz; o'quvchilar pullAll'dan quriladi */
 let accounts = store.get(K.accounts, null);
 if (!accounts || !Object.keys(accounts).length) {
   accounts = {};
@@ -55,11 +51,17 @@ if (!accounts || !Object.keys(accounts).length) {
   });
   store.set(K.accounts, accounts);
 }
+/* Eski demo ustoz hisobi (admin) butunlay olib tashlanadi — yagona ustoz logini: m_amirov */
+if (accounts['admin'] && accounts['admin'].role === 'teacher') {
+  delete accounts['admin'];
+  store.set(K.accounts, accounts);
+}
 function persistAccounts() { store.set(K.accounts, accounts); }
 
 const state = {
   screen: 'login',
   filterClass: 'Barchasi',
+  filterGroup: null,
   search: '',
   toastTimer: null,
   editor: null,
@@ -178,8 +180,9 @@ function totalOf(nums) { return nums.reduce((a, b) => a + b, 0); }
 function fmtAvg(v) { return v == null ? '—' : v.toFixed(1); }
 
 /* ==================== CLOUD SYNC (Supabase — real jadvallar) ==================== */
-const TEACHER_LOGIN = 'admin';
+const TEACHER_LOGIN = 'm_amirov';
 const TEACHER_PASSWORD = '123';
+const TEACHER_NAME = 'Muzaffar Amirov';
 
 const CloudSync = (function () {
   const url = window.SUPABASE_URL || 'https://mvjoeqyqaylfccqcnwwe.supabase.co';
@@ -196,7 +199,6 @@ const CloudSync = (function () {
   };
   let hasMessages = true;
   let hasAudio = true;
-  let seeded = false;
   let subscribed = false;
   const gradeTimers = {};
 
@@ -220,50 +222,6 @@ const CloudSync = (function () {
       speaking_debt: Number(s.speakingDebt) || 0,
       voice_allowed: s.voiceAllowed !== false
     };
-  }
-
-  /* --- Birinchi kirish: lokal demo ma'lumotni jadvallarga ko'chirish --- */
-  async function seedDemo() {
-    const localGroups = getGroups();
-    const gDb = [];
-    for (let i = 0; i < localGroups.length; i++) {
-      const g = localGroups[i];
-      const res = await client.from('groups').insert({ name: g.name, days: g.days, time: g.time }).select();
-      if (res.error) throw res.error;
-      g.dbId = res.data[0].id;
-      gDb.push(res.data[0].id);
-    }
-    store.set(K.groups, localGroups);
-
-    const localStudents = getStudents();
-    for (let i = 0; i < localStudents.length; i++) {
-      const st = localStudents[i];
-      const gi = localGroups.findIndex(function (g) { return g.id === st.groupId; });
-      const payload = payloadOf(st);
-      if (gi >= 0) payload.group_id = gDb[gi];
-      const res = await client.from('students').insert(payload).select();
-      if (res.error) throw res.error;
-      st.dbId = res.data[0].id;
-    }
-    store.set(K.students, localStudents);
-
-    /* Baholar va davomat seedlari */
-    const grades = getGrades();
-    const att = getAttendance();
-    const gRows = [], aRows = [];
-    localStudents.forEach(function (st) {
-      if (st.dbId == null) return;
-      const recs = grades[st.id] || {};
-      Object.keys(recs).forEach(function (dk) {
-        const r = recs[dk];
-        gRows.push({ student_id: st.dbId, date: dk, grade: r.score, category: r.category || 'Darsdagi javob', note: r.note || '' });
-      });
-      Object.keys(att).forEach(function (dk) {
-        if (att[dk] && att[dk][st.id]) aRows.push({ student_id: st.dbId, date: dk, status: att[dk][st.id] });
-      });
-    });
-    if (gRows.length) { const res = await client.from('grades').insert(gRows); if (res.error) throw res.error; }
-    if (aRows.length) { const res = await client.from('attendance').insert(aRows); if (res.error) throw res.error; }
   }
 
   /* --- Xabarlar (messages jadvali) --- */
@@ -391,15 +349,10 @@ const CloudSync = (function () {
   async function pullAll() {
     if (!ready()) return false;
     try {
-      let gRes = await client.from('groups').select('*');
-      let sRes = await client.from('students').select('*');
+      /* Toza start: bo'sh bazaga demo ma'lumot SEED QILINMAYDI — ustoz o'zi qo'shadi */
+      const gRes = await client.from('groups').select('*');
+      const sRes = await client.from('students').select('*');
       if (gRes.error || sRes.error) return false;
-      if (!gRes.data.length && !sRes.data.length) {
-        if (!seeded) { await seedDemo(); seeded = true; }
-        gRes = await client.from('groups').select('*');
-        sRes = await client.from('students').select('*');
-        if (gRes.error || sRes.error) return false;
-      }
       const grRes = await client.from('grades').select('id, student_id, date, grade, category, note');
       const atRes = await client.from('attendance').select('student_id, date, status');
       if (grRes.error || atRes.error) return false;
@@ -459,9 +412,9 @@ const CloudSync = (function () {
       });
       if (slotChanged) store.set(K.speaking, slots);
 
-      /* hisoblar: ustoz (admin/123) + jadvaldagi login/parollar */
+      /* hisoblar: ustoz (m_amirov) + jadvaldagi login/parollar */
       const next = {};
-      next[TEACHER_LOGIN] = { login: TEACHER_LOGIN, password: TEACHER_PASSWORD, role: 'teacher', name: 'Ustoz', studentId: null };
+      next[TEACHER_LOGIN] = { login: TEACHER_LOGIN, password: TEACHER_PASSWORD, role: 'teacher', name: TEACHER_NAME, studentId: null };
       students.forEach(function (st) {
         if (st.login) next[st.login] = { login: st.login, password: st.password || '', role: 'student', studentId: st.id, name: st.fullName };
       });
@@ -861,7 +814,7 @@ function renderHeader() {
       <span class="brand">English Tutor</span>
       <span class="brand-sub">${esc(scrLabel(scr))}</span>
     </div>
-    <span class="role-badge ${u.role === 'teacher' ? 'is-teacher' : 'is-student'}">${u.role === 'teacher' ? 'Ustoz' : "O'quvchi"}</span>
+    <span class="role-badge ${u.role === 'teacher' ? 'is-teacher' : 'is-student'}">${u.role === 'teacher' ? 'Muzaffar Amirov' : "O'quvchi"}</span>
   </div>`;
 }
 function navItems() {
@@ -894,12 +847,12 @@ function loginScreen() {
   return `<div class="auth">
     <div class="auth-logo">🎓</div>
     <h1 class="auth-title">English Tutor</h1>
-    <p class="auth-sub">Ingliz tili darslari — ustoz paneli va o'quvchi kabineti</p>
+    <p class="auth-sub">Ingliz tili darslari — Muzaffar Amirov paneli va o'quvchi kabineti</p>
 
     <div class="card auth-card">
       <label class="field-label" for="login-input">Login</label>
       <input class="input" id="login-input" type="text" autocapitalize="none" autocorrect="off"
-             autocomplete="username" placeholder="Masalan: admin" />
+             autocomplete="username" placeholder="Login" />
 
       <label class="field-label" for="password-input">Parol</label>
       <div class="pw-wrap">
@@ -999,7 +952,7 @@ function teacherHome() {
   const classSet = {};
   students.forEach(s => { classSet[s.schoolClass] = 1; });
   const u = currentUser() || {};
-  const name = u.name || 'Ustoz';
+  const name = u.name || TEACHER_NAME;
   const recent = students.slice(0, 3);
 
   return `
@@ -1007,9 +960,9 @@ function teacherHome() {
     <div class="greet-main">
       <div class="avatar avatar-lg">${esc(initials(name))}</div>
       <div class="col">
-        <div class="greet-hi">Assalomu alaykum!</div>
+        <div class="greet-hi">Xush kelibsiz,</div>
         <div class="greet-name">${esc(name)}</div>
-        <span class="role-badge is-teacher">Ustoz</span>
+        <span class="role-badge is-teacher">Muzaffar Amirov</span>
       </div>
     </div>
   </section>
@@ -1059,7 +1012,7 @@ function studentPortal() {
       <div style="margin-top:9px"><span class="role-badge is-student">O'quvchi</span></div>
     </section>
     <div class="section-title">Mening ma'lumotlarim</div>
-    <div class="card">${blockedScreen("Profilingiz guruhga biriktirilmagan. Ustoz bilan bog'laning.")}</div>
+    <div class="card">${blockedScreen("Profilingiz guruhga biriktirilmagan. Muzaffar Amirov bilan bog'laning.")}</div>
     `;
   }
 
@@ -1121,7 +1074,7 @@ function studentPortal() {
         ${t.mediaType === 'voice' ? '🎙 Ovozli xabar' : '📹 Video'} ·
         ${t.status === 'baholandi' || t.status === 'graded'
           ? `✅ Baho: ${t.score}/10`
-          : "⏳ Ustoz ko'rib chiqmoqda"}
+          : "⏳ Muzaffar Amirov ko'rib chiqmoqda"}
       </div>
     </div>`).join('') || `<div class="empty"><span class="emoji">🎙</span>Hozircha topshirilmagan</div>`;
 
@@ -1179,17 +1132,17 @@ function studentPortal() {
 
   <div class="section-title">Speaking topshirish (Telegram orqali)</div>
   <div class="card">
-    <div class="muted small">🎙 Ustozga <b>Telegram botga</b> ovozli xabar (voice) yoki dumaloq video (krujok) yuboring — brauzerda yozish shart emas.</div>
-    <div class="hw-item small" style="margin-top:8px">1) Telegramda botga kiring → 2) 🎙 ovozli xabar yuboring → 3) ustoz baholaydi</div>
+    <div class="muted small">🎙 Muzaffar Amirovga <b>Telegram botga</b> ovozli xabar (voice) yoki dumaloq video (krujok) yuboring — brauzerda yozish shart emas.</div>
+    <div class="hw-item small" style="margin-top:8px">1) Telegramda botga kiring → 2) 🎙 ovozli xabar yuboring → 3) Muzaffar Amirov baholaydi</div>
     <div id="my-submissions" class="audio-list">${mySubs}</div>
   </div>
 
-  <div class="section-title">Ustoz bilan Chat</div>
+  <div class="section-title">Muzaffar Amirov bilan Chat</div>
   <div class="card chat-card">
     ${chatHint()}
     <div class="chat-list" id="chat-list">${chatListHTML(st.id, 'student')}</div>
     <div class="chat-input-row">
-      <input class="input" id="chat-input" placeholder="Ustozga xabar yozing..." autocomplete="off" />
+      <input class="input" id="chat-input" placeholder="Muzaffar Amirovga xabar yozing..." autocomplete="off" />
       <button type="button" class="btn btn-primary" data-act="send-chat">Yuborish</button>
     </div>
   </div>
@@ -1208,7 +1161,7 @@ function homeScreen() { return isTeacher() ? teacherHome() : studentPortal(); }
 /* ==================== GURUHLAR (faqat ustoz) ==================== */
 function groupCard(g, students) {
   const cnt = students.filter(s => s.groupId === g.id).length;
-  return `<div class="card group-card">
+  return `<div class="card group-card" data-act="filter-group" data-gid="${g.id}" style="cursor:pointer" role="button" title="O'quvchilarni ko'rsatish">
     <div class="row between">
       <h3 class="card-h">${esc(g.name)}</h3>
       <span class="pill">${cnt} o'quvchi</span>
@@ -1217,6 +1170,7 @@ function groupCard(g, students) {
       <div class="meta-row">📅 <span>${esc(g.days)}</span></div>
       <div class="meta-row">🕒 <span>${esc(g.time)}</span></div>
     </div>
+    <div class="muted small" style="margin-top:7px">👆 Bosib, guruh o'quvchilarini ko'rish</div>
     <div class="row g8" style="margin-top:11px">
       <button type="button" class="btn btn-ghost btn-sm" data-act="grade-group-go" data-group="${g.id}">📊 Baholar</button>
       <button type="button" class="btn btn-ghost btn-sm" data-act="open-attendance" data-group="${g.id}">🗓️ Davomat</button>
@@ -1226,7 +1180,7 @@ function groupCard(g, students) {
 }
 
 function groupsScreen() {
-  if (!isTeacher()) return blockedScreen("Bu bo'lim faqat ustoz uchun");
+  if (!isTeacher()) return blockedScreen("Bu bo'lim faqat Muzaffar Amirov uchun");
   const groups = getGroups();
   const students = getStudents();
   return `
@@ -1284,8 +1238,9 @@ function filteredStudents() {
   const q = state.search.trim().toLowerCase();
   return getStudents().filter(s => {
     const byClass = state.filterClass === 'Barchasi' || s.schoolClass === state.filterClass;
+    const byGroup = !state.filterGroup || s.groupId === state.filterGroup;
     const byQuery = !q || String(s.fullName).toLowerCase().indexOf(q) >= 0;
-    return byClass && byQuery;
+    return byClass && byGroup && byQuery;
   });
 }
 function studentListHTML() {
@@ -1300,8 +1255,9 @@ function refreshStudentList() {
 }
 
 function studentsScreen() {
-  if (!isTeacher()) return blockedScreen("Bu bo'lim faqat ustoz uchun");
+  if (!isTeacher()) return blockedScreen("Bu bo'lim faqat Muzaffar Amirov uchun");
   const chips = ['Barchasi'].concat(APP_DATA.classes);
+  const gf = state.filterGroup ? groupById(state.filterGroup) : null;
   return `
   <div class="screen-head">
     <div>
@@ -1311,8 +1267,13 @@ function studentsScreen() {
     <button type="button" class="btn btn-primary btn-sm" data-act="open-add-student">+ Qo'shish</button>
   </div>
 
+  ${gf ? `<div class="card row between" style="margin-bottom:9px">
+    <span class="muted small">👥 <b>${esc(gf.name)}</b> guruhidagi o'quvchilar</span>
+    <button type="button" class="chip-btn" data-act="filter-group-all">Barcha o'quvchilar</button>
+  </div>` : ''}
+
   <div class="search-wrap">
-    <input class="input" id="s-search" type="search" placeholder="Ism bo'yicha qidirish" value="${esc(state.search)}" />
+    <input class="input" id="s-search" type="search" placeholder="🔍 O'quvchi ismini kiriting..." value="${esc(state.search)}" />
   </div>
 
   <div class="chips">
@@ -1334,7 +1295,7 @@ function profileScreen() {
     <div class="profile-name">${esc(st ? st.fullName : (u.name || ''))}</div>
     <div class="muted">${esc(u.login || '')}</div>
     <div style="margin-top:9px">
-      <span class="role-badge ${isTeacher() ? 'is-teacher' : 'is-student'}">${isTeacher() ? 'Ustoz' : "O'quvchi"}</span>
+      <span class="role-badge ${isTeacher() ? 'is-teacher' : 'is-student'}">${isTeacher() ? 'Muzaffar Amirov' : "O'quvchi"}</span>
       ${st ? `<span class="pill" style="margin-left:6px">${esc(st.schoolClass)}</span>` : ''}
     </div>
   </div>
@@ -1343,7 +1304,7 @@ function profileScreen() {
   <div class="card list-card">
     <div class="list-row"><span>Login</span><code>${esc(u.login || '')}</code></div>
     <div class="list-row"><span>Parol</span><span class="muted">••••</span></div>
-    <div class="list-row"><span>Ko'rinish</span><span class="muted">${isTeacher() ? 'Ustoz' : "O'quvchi"}</span></div>
+    <div class="list-row"><span>Ko'rinish</span><span class="muted">${isTeacher() ? 'Muzaffar Amirov' : "O'quvchi"}</span></div>
   </div>
   <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">🔑 Parolni o'zgartirish</button>
 
@@ -1928,9 +1889,9 @@ function restoreLocal(data) {
   store.set(K.attendance, attendance);
   store.set(K.messages, messages);
 
-  /* hisoblar: ustoz (admin/123) + zaxiradagi login/parollar */
+  /* hisoblar: ustoz (m_amirov) + zaxiradagi login/parollar */
   const next = {};
-  next[TEACHER_LOGIN] = { login: TEACHER_LOGIN, password: TEACHER_PASSWORD, role: 'teacher', name: 'Ustoz', studentId: null };
+  next[TEACHER_LOGIN] = { login: TEACHER_LOGIN, password: TEACHER_PASSWORD, role: 'teacher', name: TEACHER_NAME, studentId: null };
   students.forEach(st => {
     if (st.login) next[st.login] = { login: st.login, password: st.password || '', role: 'student', studentId: st.id, name: st.fullName };
   });
@@ -2034,7 +1995,7 @@ function gradeCellHTML(sid, dkey) {
 }
 
 function gradesScreen() {
-  if (!isTeacher()) return blockedScreen("Bu bo'lim faqat ustoz uchun");
+  if (!isTeacher()) return blockedScreen("Bu bo'lim faqat Muzaffar Amirov uchun");
   ensureGradeState();
   const groups = getGroups();
   if (!groups.length) {
@@ -2154,7 +2115,7 @@ function renderGradeEditor() {
 }
 
 function openGradeEditor(sid, dkey) {
-  if (!isTeacher()) { toast("Bahrani faqat ustoz qo'yadi", 'error'); return; }
+  if (!isTeacher()) { toast("Bahani faqat Muzaffar Amirov qo'yadi", 'error'); return; }
   const rec = (getGrades()[sid] || {})[dkey];
   state.gradeDate = dkey;
   state.editor = {
@@ -2192,7 +2153,7 @@ function ensureAttState() {
 }
 
 function attendanceScreen() {
-  if (!isTeacher()) return blockedScreen("Bu bo'lim faqat ustoz uchun");
+  if (!isTeacher()) return blockedScreen("Bu bo'lim faqat Muzaffar Amirov uchun");
   ensureAttState();
   const groups = getGroups();
   if (!groups.length) {
@@ -2283,7 +2244,7 @@ function speakRowHTML(x) {
 }
 
 function speakingScreen() {
-  if (!isTeacher()) return blockedScreen("Bu bo'lim faqat ustoz uchun");
+  if (!isTeacher()) return blockedScreen("Bu bo'lim faqat Muzaffar Amirov uchun");
   ensureSpeakState();
   const students = getStudents();
   const list = getSpeaking()
@@ -2533,52 +2494,13 @@ function logout() {
   state.attDraft = null;
   state.attDraftFor = '';
   state.editor = null;
+  state.filterGroup = null;
+  state.filterClass = 'Barchasi';
+  state.search = '';
   closeModal();
   state.screen = 'login';
   render();
   toast('Hisobdan chiqdingiz');
-}
-
-/* ==================== Seed (birinchi ishga tushirish) ==================== */
-function seedJournal() {
-  if (store.get(K.grades, null) !== null) return;
-  const grades = {};
-  const att = {};
-  getStudents().forEach(s => {
-    const dates = lessonDates(s.groupId, 5);
-    const scores = APP_DATA.gradeSeeds[s.id] || [];
-    const attSeed = APP_DATA.attendanceSeeds[s.id] || [];
-    const notes = APP_DATA.gradeNoteSeeds[s.id] || {};
-    dates.forEach((dk, i) => {
-      if (i < scores.length) {
-        grades[s.id] = grades[s.id] || {};
-        grades[s.id][dk] = {
-          score: scores[i],
-          category: APP_DATA.gradeCategories[i % APP_DATA.gradeCategories.length],
-          note: notes[i] || ''
-        };
-      }
-      if (i < attSeed.length) {
-        att[dk] = att[dk] || {};
-        att[dk][s.id] = attSeed[i];
-      }
-    });
-  });
-  store.set(K.grades, grades);
-  store.set(K.attendance, att);
-}
-
-function seedSpeaking() {
-  if (store.get(K.speaking, null) !== null) return;
-  const today = todayKey();
-  store.set(K.speaking, APP_DATA.speakingSeed.map((s, i) => ({
-    id: 'spseed' + (i + 1),
-    date: today,
-    start: s.start,
-    end: s.end,
-    studentId: s.studentId,
-    score: null
-  })));
 }
 
 /* ==================== Render ==================== */
@@ -2766,6 +2688,21 @@ document.addEventListener('click', function (e) {
       render();
     },
 
+    /* --- Guruh kartasini bosish → faqat shu guruh o'quvchilari --- */
+    'filter-group': function () {
+      if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+      state.filterGroup = btn.getAttribute('data-gid');
+      state.filterClass = 'Barchasi';
+      state.search = '';
+      go('students');
+    },
+    'filter-group-all': function () {
+      state.filterGroup = null;
+      state.filterClass = 'Barchasi';
+      state.search = '';
+      render();
+    },
+
     /* --- Guruhlar / o'quvchilar --- */
     'open-add-group': openAddGroup,
     'open-add-student': openAddStudent,
@@ -2804,7 +2741,7 @@ document.addEventListener('click', function (e) {
         <div class="confirm-body">
           <div class="confirm-emoji">📱</div>
           <p class="confirm-text">Ovozli topshirish uchun <b>Telegram botga</b> kiring va u yerga 🎙 ovozli xabar (voice) yoki 📹 krujok (video note) yuboring.</p>
-          <p class="muted small" style="margin-top:9px">Ustoz baholagach, natijani shu kabinetda ko'rasiz.</p>
+          <p class="muted small" style="margin-top:9px">Muzaffar Amirov baholagach, natijani shu kabinetda ko'rasiz.</p>
         </div>
         <div class="confirm-actions">
           <button type="button" class="btn btn-primary" data-act="close-modal">Tushunarli</button>
@@ -3008,8 +2945,6 @@ $('#modal-overlay').addEventListener('click', function (e) {
 (function init() {
   /* Eski (Step 1–2) kalitlarni tozalash */
   store.del('et_users');
-  seedJournal();
-  seedSpeaking();
   const s = getSession();
   if (!s || !accounts[s.login]) store.del(K.session);
   state.screen = currentUser() ? 'home' : 'login';

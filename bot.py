@@ -60,14 +60,15 @@ async def cmd_start(message: types.Message):
         try:
             await bot.set_chat_menu_button(
                 chat_id=user_id,
-                menu_button=MenuButtonWebApp(text="📱 Ustoz Paneli", web_app=WebAppInfo(url=config.WEBAPP_URL))
+                menu_button=MenuButtonWebApp(text="📱 Muzaffar Amirov Paneli", web_app=WebAppInfo(url=config.WEBAPP_URL))
             )
         except Exception as e:
             logging.warning(f"set_chat_menu_button (teacher): {e}")
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🚀 Ustoz Panelini ochish", web_app=WebAppInfo(url=config.WEBAPP_URL))]
+            [InlineKeyboardButton(text="🚀 Muzaffar Amirov Panelini ochish", web_app=WebAppInfo(url=config.WEBAPP_URL))],
+            [InlineKeyboardButton(text="📥 Barcha ma'lumotlarni yuklab olish (Backup)", callback_data="backup_req")],
         ])
-        await message.answer(f"Xush kelibsiz, Ustoz!\nBarcha guruhlar, jurnallar va topshiriqlar boshqaruvi sizda.", reply_markup=keyboard)
+        await message.answer(f"Xush kelibsiz, Muzaffar Amirov!\nBarcha guruhlar, jurnallar va topshiriqlar boshqaruvi sizda.", reply_markup=keyboard)
         return
 
     # Student
@@ -165,10 +166,10 @@ async def handle_speaking_submission(message: types.Message):
         )
         return
 
-    # 2) Ustoz ruxsat berganmi? (students.voice_allowed)
+    # 2) Muzaffar Amirov ruxsat berganmi? (students.voice_allowed)
     if student.get("voice_allowed") is False:
         await message.answer(
-            "⛔ Kechirasiz! Ustoz hozircha sizga ovozli topshirishga ruxsat bermagan. Darsda topshiring."
+            "⛔ Kechirasiz! Muzaffar Amirov hozircha sizga ovozli topshirishga ruxsat bermagan. Darsda topshiring."
         )
         return
 
@@ -210,7 +211,7 @@ async def handle_speaking_submission(message: types.Message):
         logging.error(f"forward to teacher: {e}")
 
     await message.reply(
-        "✅ <b>Qabul qilindi!</b>\nSpeaking vazifangiz ustozga yuborildi. Ustoz tekshirib baho qo'yishi bilan speaking qarzingiz kamayadi.",
+        "✅ <b>Qabul qilindi!</b>\nSpeaking vazifangiz Muzaffar Amirovga yuborildi. Muzaffar Amirov tekshirib baho qo'yishi bilan speaking qarzingiz kamayadi.",
         parse_mode="HTML",
     )
 
@@ -315,6 +316,22 @@ RESTORE_PLAN = [
 ]
 pending_restore_file = {}
 
+BACKUP_LABELS = {
+    "groups": "Guruhlar",
+    "students": "O'quvchilar",
+    "attendance": "Davomat",
+    "grades": "Baholar",
+    "messages": "Xabarlar",
+    "speaking_submissions": "Speaking topshiriklari",
+    "audio_submissions": "Ovozli topshiriklar",
+    "homework": "Uyga vazifalar",
+}
+
+
+def backup_filename() -> str:
+    """english_crm_backup_YYYY-MM-DD.json"""
+    return f"english_crm_backup_{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.json"
+
 
 def _to_int(v):
     """g1/s3 kabi lokal idlarni ham raqamga aylantiradi."""
@@ -395,12 +412,8 @@ def restore_backup(data: dict) -> dict:
     return counts
 
 
-@dp.message(Command("backup"))
-async def cmd_backup(message: types.Message):
-    """Zaxirani JSON fayl sifatida ADMIN_ID ga yuboradi (faqat ustoz)."""
-    if message.from_user.id != config.ADMIN_ID:
-        await message.answer("Kechirasiz, bu buyruq faqat ustoz uchun mavjud.")
-        return
+async def send_backup_document(chat_id: int):
+    """Barcha jadvallarni timestamped JSON fayl sifatida yuboradi (faqat ustoz)."""
     data = fetch_all_backup()
     payload = {
         "app": "english-tutor",
@@ -409,28 +422,62 @@ async def cmd_backup(message: types.Message):
     }
     payload.update(data)
     raw = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-    summary = "\n".join(f"• {t}: {len(data.get(t) or [])} ta" for t in BACKUP_TABLES)
+    fname = backup_filename()
+    counts = {t: len(data.get(t) or []) for t in BACKUP_TABLES}
+    summary = "\n".join(
+        f"• {BACKUP_LABELS.get(t, t)}: {counts.get(t, 0)} ta" for t in BACKUP_TABLES
+    )
+    caption = (
+        f"💾 <b>Zaxira tayyor — {fname}</b>\n\n"
+        f"👦 O'quvchilar: {counts.get('students', 0)} ta\n"
+        f"👥 Guruhlar: {counts.get('groups', 0)} ta\n"
+        f"⭐ Baholar: {counts.get('grades', 0)} ta\n\n"
+        f"{summary}\n\n"
+        "Qayta tiklash uchun shu faylni menga qayta yuboring "
+        "(yoki /restore yozing) — tasdiq tugmasini ko'rsataman."
+    )
     await bot.send_document(
-        chat_id=config.ADMIN_ID,
-        document=BufferedInputFile(raw, filename="backup_english_app.json"),
-        caption=(
-            "💾 <b>Zaxira tayyor — backup_english_app.json</b>\n\n"
-            f"{summary}\n\n"
-            "Qayta tiklash uchun shu faylni menga qayta yuboring "
-            "(/restore kaptisi bilan ham bo'ladi)."
-        ),
+        chat_id=chat_id,
+        document=BufferedInputFile(raw, filename=fname),
+        caption=caption,
         parse_mode="HTML",
     )
+
+
+@dp.message(Command("backup"))
+async def cmd_backup(message: types.Message):
+    """Zaxirani JSON fayl sifatida ADMIN_ID ga yuboradi (faqat ustoz)."""
+    if message.from_user.id != config.ADMIN_ID:
+        await message.answer("Kechirasiz, bu buyruq faqat Muzaffar Amirov uchun mavjud.")
+        return
+    await send_backup_document(config.ADMIN_ID)
+
+
+@dp.callback_query(F.data == "backup_req")
+async def on_backup_button(call: types.CallbackQuery):
+    """ /start dagi '📥 Barcha ma'lumotlarni yuklab olish (Backup)' tugmasi. """
+    if call.from_user.id != config.ADMIN_ID:
+        await call.answer("Ruxsat yo'q", show_alert=True)
+        return
+    await call.answer("Zaxira tayyorlanmoqda...")
+    try:
+        await send_backup_document(config.ADMIN_ID)
+    except Exception as e:
+        logging.error(f"Backup button error: {e}")
+        try:
+            await call.message.reply(f"❌ Zaxira tayyorlashda xatolik: {e}")
+        except Exception:
+            pass
 
 
 @dp.message(Command("restore"))
 async def cmd_restore(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
-        await message.answer("Kechirasiz, bu buyruq faqat ustoz uchun mavjud.")
+        await message.answer("Kechirasiz, bu buyruq faqat Muzaffar Amirov uchun mavjud.")
         return
     await message.answer(
         "📤 <b>Qayta tiklash</b>\n\n"
-        "backup_english_app.json faylini shu yerga yuboring "
+        f"<code>{backup_filename()}</code> faylini shu yerga yuboring "
         "(xohlasangiz kaptonga /restore yozing) — men tasdiq tugmasini ko'rsataman.",
         parse_mode="HTML",
     )
@@ -447,7 +494,7 @@ async def on_backup_file(message: types.Message):
     pending_restore_file["file_id"] = doc.file_id
     pending_restore_file["name"] = name
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Ha, tiklash", callback_data="restore_yes")],
+        [InlineKeyboardButton(text="✅ Bazani qayta tiklash", callback_data="restore_yes")],
         [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="restore_no")],
     ])
     await message.reply(
@@ -511,8 +558,8 @@ async def send_absence_alert(chat_id: int, student_name: str, date: str) -> bool
             chat_id=chat_id,
             text=(
                 "⚠️ <b>Davomat xabarnomasi:</b> Hurmatli ota-ona / o'quvchi, "
-                f"<b>{_e(student_name)}</b> bugun (<b>{_e(date)}</b>) darsda qatnashmadi. "
-                "Biron uzrli sabab bo'lsa ustozga xabar bering."
+            f"<b>{_e(student_name)}</b> bugun (<b>{_e(date)}</b>) darsda qatnashmadi. "
+            "Biron uzrli sabab bo'lsa Muzaffar Amirovga xabar bering."
             ),
             parse_mode="HTML",
         )

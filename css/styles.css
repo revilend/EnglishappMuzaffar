@@ -282,19 +282,6 @@ select.input {
   75% { transform: translateX(7px); }
 }
 
-.hint-card {
-  margin-top: 16px;
-  text-align: left;
-  background: rgba(47, 143, 239, 0.08);
-  border: 1px dashed rgba(47, 143, 239, 0.45);
-  border-radius: 14px;
-  padding: 12px 13px;
-  font-size: 13px;
-}
-.hint-card strong { display: block; margin-bottom: 4px; font-size: 13px; }
-.hint-card p { color: var(--muted); margin: 3px 0; }
-.hint-card p code { font-size: 12px; }
-
 /* ---------- Home ---------- */
 .greet-main { display: flex; gap: 13px; align-items: center; }
 .greet-hi { font-size: 13px; color: var(--muted); }
@@ -665,8 +652,6 @@ body.auth-mode .toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
 .btn-xs.primary { background: var(--accent); color: var(--accent-text); }
 .btn-xs.ghost { border: 1.5px solid var(--line); color: var(--text); background: var(--card); }
 .btn-xs.danger { background: rgba(229, 72, 77, 0.12); color: var(--danger); }
-
-.login-demo { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 5px; }
 
 .strong-label { font-weight: 800; font-size: 15px; }
 
