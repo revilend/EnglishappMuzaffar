@@ -738,3 +738,28 @@ body.auth-mode .toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
 .confirm-actions .btn-ghost:hover { background: var(--bg); }
 .confirm-actions .btn-danger:hover { background: rgba(229, 72, 77, 0.2); }
 .btn-danger { transition: background .18s ease, color .18s ease, transform .12s ease, filter .15s; }
+
+/* ==================== Step 7: Parol ko'zgusi + Zaxira ==================== */
+.pw-wrap { position: relative; }
+.pw-wrap .input { padding-right: 44px; }
+.pw-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 9px;
+  transition: background .15s ease, transform .12s ease;
+}
+.pw-toggle:hover { background: var(--bg); }
+.pw-toggle:active { transform: translateY(-50%) scale(0.92); }
+
+.backup-card { display: flex; flex-direction: column; gap: 10px; }
+.backup-card .btn-block { margin-top: 0; }
+.speak-cta { margin: 4px 0 10px; font-weight: 800; letter-spacing: .2px; }

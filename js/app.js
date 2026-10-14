@@ -556,6 +556,92 @@ const CloudSync = (function () {
     if (del.error) throw del.error;
   }
 
+  /* --- Zaxira: jadvallarni olish / qayta tiklash --- */
+  const BACKUP_TABLES = ['groups', 'students', 'attendance', 'grades', 'messages', 'speaking_submissions'];
+
+  async function fetchBackup() {
+    if (!ready()) return null;
+    const out = {};
+    for (let i = 0; i < BACKUP_TABLES.length; i++) {
+      const t = BACKUP_TABLES[i];
+      try {
+        const res = await client.from(t).select('*');
+        if (res.error) {
+          if (missing(res.error)) { out[t] = []; continue; }
+          console.warn('[cloud] backup ' + t + ':', res.error.message);
+          return null;
+        }
+        out[t] = res.data;
+      } catch (e) {
+        console.warn('[cloud] backup ' + t + ':', (e && e.message) || e);
+        return null;
+      }
+    }
+    return out;
+  }
+
+  /* ID satri (g1/s3 kabi lokal idlarni ham raqamga aylantiramiz) */
+  function toNumId(v) {
+    const n = Number(String(v == null ? '' : v).replace(/^[gs]/, ''));
+    return isFinite(n) ? n : null;
+  }
+
+  async function restoreBackup(data) {
+    if (!ready() || !data) return false;
+    try {
+      /* 1) avval bog'liq qatorlar, keyin asosiy jadvallar (FK uchun) */
+      const delOrder = ['messages', 'grades', 'attendance', 'speaking_submissions', 'students', 'groups'];
+      for (let i = 0; i < delOrder.length; i++) {
+        const res = await client.from(delOrder[i]).delete().gte('id', 0);
+        if (res.error && !missing(res.error)) throw res.error;
+      }
+      /* 2) zaxiradan qayta yozish (ID saqlanadi) */
+      const plan = [
+        ['groups', ['id', 'name', 'days', 'time']],
+        ['students', ['id', 'name', 'school_class', 'group_id', 'login', 'password', 'speaking_debt']],
+        ['attendance', ['id', 'student_id', 'date', 'status']],
+        ['grades', ['id', 'student_id', 'date', 'grade', 'category', 'note']],
+        ['messages', ['id', 'student_id', 'sender', 'text', 'created_at']],
+        ['speaking_submissions', ['id', 'media_type', 'telegram_file_id', 'status', 'created_at']]
+      ];
+      const groupIds = {};
+      (data.groups || []).forEach(g => { const n = toNumId(g && g.id); if (n != null) groupIds[n] = 1; });
+      const studentIds = {};
+      (data.students || []).forEach(x => { const n = toNumId(x && x.id); if (n != null) studentIds[n] = 1; });
+
+      for (let i = 0; i < plan.length; i++) {
+        const t = plan[i][0], cols = plan[i][1];
+        const rows = [];
+        (data[t] || []).forEach(r => {
+          if (!r || typeof r !== 'object') return;
+          const row = {};
+          cols.forEach(c => { if (r[c] !== undefined) row[c] = r[c]; });
+          if ('id' in row) { const n = toNumId(row.id); if (n == null) delete row.id; else row.id = n; }
+          if ('group_id' in row && row.group_id != null) {
+            const n = toNumId(row.group_id);
+            row.group_id = n != null && groupIds[n] ? n : null;
+          }
+          if ('student_id' in row) {
+            const n = toNumId(row.student_id);
+            if (n == null || !studentIds[n]) return; /* yo'q o'quvchiga bog'langan qator — tashlanadi */
+            row.student_id = n;
+          }
+          rows.push(row);
+        });
+        if (!rows.length) continue;
+        const res = await client.from(t).insert(rows);
+        if (res.error) {
+          if (missing(res.error)) continue;
+          throw res.error;
+        }
+      }
+      return true;
+    } catch (e) {
+      console.warn('[cloud] restore:', (e && e.message) || e);
+      return false;
+    }
+  }
+
   /* Real-time: messages jadvaliga obuna (publication yo'l qo'ysa) */
   function subscribe() {
     if (!ready() || !hasMessages || subscribed) return;
@@ -584,6 +670,8 @@ const CloudSync = (function () {
     subscribe: subscribe,
     deleteStudent: deleteStudent,
     deleteGroup: deleteGroup,
+    fetchBackup: fetchBackup,
+    restoreBackup: restoreBackup,
     messagesAvailable: function () { return ready() && hasMessages; },
     audioAvailable: function () { return ready() && hasAudio; },
     url: url
@@ -711,19 +799,14 @@ function loginScreen() {
              autocomplete="username" placeholder="Masalan: admin" />
 
       <label class="field-label" for="password-input">Parol</label>
-      <input class="input" id="password-input" type="password"
-             autocomplete="current-password" placeholder="••••" />
+      <div class="pw-wrap">
+        <input class="input" id="password-input" type="password"
+               autocomplete="current-password" placeholder="••••" />
+        <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="password-input" aria-label="Parolni ko'rsatish">👁</button>
+      </div>
 
       <div class="field-error" id="login-error"></div>
       <button type="button" class="btn btn-primary btn-block" data-act="do-login">Kirish</button>
-    </div>
-
-    <div class="hint-card">
-      <strong>Demo kirish ma'lumotlari</strong>
-      <div class="login-demo">
-        <span class="pill">Ustoz: <code>admin</code> / <code>123</code></span>
-        <span class="pill">O'quvchi: <code>jasur</code> / <code>123</code></span>
-      </div>
     </div>
   </div>`;
 }
@@ -898,6 +981,7 @@ function studentPortal() {
     ${Number(st.speakingDebt) > 0
       ? `<div class="debt-badge" style="margin-bottom:8px">⚠️ Speaking qarzingiz: ${Number(st.speakingDebt)} ta</div>`
       : `<div class="att-pill" style="margin-bottom:8px">✅ Speaking qarzingiz yo'q</div>`}
+    <button type="button" class="btn btn-primary btn-block speak-cta" data-act="speak-cta">🎙 Speaking topshirish</button>
     ${slotRows}
   </div>
 
@@ -1073,6 +1157,15 @@ function profileScreen() {
   </div>
   <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">🔑 Parolni o'zgartirish</button>
 
+  ${isTeacher() ? `
+  <div class="section-title">Ma'lumotlar Bazasi Zaxirasi</div>
+  <div class="card backup-card">
+    <div class="muted small">Guruhlar, o'quvchilar, davomat, baholar, xabarlar va speaking topshiriklari JSON faylda saqlanadi.</div>
+    <button type="button" class="btn btn-primary btn-block" data-act="backup-dl">📥 Bazani yuklab olish (Backup)</button>
+    <button type="button" class="btn btn-ghost btn-block" data-act="backup-pick">📤 Bazani qayta tiklash (Restore)</button>
+    <input type="file" id="backup-file" accept="application/json,.json" hidden />
+  </div>` : ''}
+
   <button type="button" class="btn btn-danger btn-block" data-act="logout">Hisobdan chiqish</button>
   `;
 }
@@ -1149,7 +1242,10 @@ function openAddStudent() {
     <input class="input" id="f-slogin" autocapitalize="none" autocorrect="off" placeholder="Masalan: jasur09" />
 
     <label class="field-label" for="f-spass">Dastlabki parol</label>
-    <input class="input" id="f-spass" type="text" inputmode="numeric" placeholder="Masalan: 1234" />
+    <div class="pw-wrap">
+      <input class="input" id="f-spass" type="password" inputmode="numeric" placeholder="Masalan: 1234" />
+      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="f-spass" aria-label="Parolni ko'rsatish">👁</button>
+    </div>
 
     <button type="button" class="btn btn-primary btn-block" data-act="save-student">Saqlash</button>
   `);
@@ -1222,7 +1318,10 @@ function openResetPwd(sid) {
     ${acc ? '' : `<label class="field-label" for="rp-login">Login</label>
       <input class="input" id="rp-login" autocapitalize="none" value="${esc(suggestLogin(st.fullName))}" />`}
     <label class="field-label" for="rp-pass">Yangi parol</label>
-    <input class="input" id="rp-pass" inputmode="numeric" placeholder="Masalan: 1234" />
+    <div class="pw-wrap">
+      <input class="input" id="rp-pass" type="password" inputmode="numeric" placeholder="Masalan: 1234" />
+      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="rp-pass" aria-label="Parolni ko'rsatish">👁</button>
+    </div>
     <button type="button" class="btn btn-primary btn-block" data-act="save-reset" data-sid="${sid}">Saqlash</button>
   `);
 }
@@ -1268,13 +1367,22 @@ function openChangePwd() {
     </div>
 
     <label class="field-label" for="cp-old">Joriy parol</label>
-    <input class="input" id="cp-old" type="password" autocomplete="current-password" placeholder="••••" />
+    <div class="pw-wrap">
+      <input class="input" id="cp-old" type="password" autocomplete="current-password" placeholder="••••" />
+      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="cp-old" aria-label="Parolni ko'rsatish">👁</button>
+    </div>
 
     <label class="field-label" for="cp-new">Yangi parol</label>
-    <input class="input" id="cp-new" type="password" autocomplete="new-password" placeholder="••••" />
+    <div class="pw-wrap">
+      <input class="input" id="cp-new" type="password" autocomplete="new-password" placeholder="••••" />
+      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="cp-new" aria-label="Parolni ko'rsatish">👁</button>
+    </div>
 
     <label class="field-label" for="cp-new2">Yangi parolni tasdiqlang</label>
-    <input class="input" id="cp-new2" type="password" autocomplete="new-password" placeholder="••••" />
+    <div class="pw-wrap">
+      <input class="input" id="cp-new2" type="password" autocomplete="new-password" placeholder="••••" />
+      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="cp-new2" aria-label="Parolni ko'rsatish">👁</button>
+    </div>
 
     <button type="button" class="btn btn-primary btn-block" data-act="save-change-pwd">Saqlash</button>
   `);
@@ -1392,6 +1500,237 @@ function doDeleteGroup(gid) {
   closeModal();
   render();
   toast("Guruh muvaffaqiyatli o'chirildi ✓");
+}
+
+/* ==================== ZAXIRA: BAZANI YUKLASH / QAYTA TIKLASH ==================== */
+function toNumId(v) {
+  const n = Number(String(v == null ? '' : v).replace(/^[gs]/, ''));
+  return isFinite(n) ? n : null;
+}
+function backupFilename() { return 'english_crm_backup_' + todayKey() + '.json'; }
+
+/* Lokal (cloudsiz) rejimda zaxira ma'lumotini cloud-sxemada yig'amiz */
+function localBackupData() {
+  const accBySid = {};
+  Object.keys(accounts).forEach(k => {
+    const a = accounts[k];
+    if (a.studentId) accBySid[a.studentId] = a;
+  });
+  const groups = getGroups().map(g => ({
+    id: toNumId(g.id), name: g.name, days: g.days, time: g.time
+  })).filter(g => g.id != null);
+
+  const students = getStudents().map(st => {
+    const acc = accBySid[st.id] || {};
+    return {
+      id: toNumId(st.id),
+      name: st.fullName,
+      school_class: st.schoolClass,
+      group_id: st.groupId == null ? null : toNumId(st.groupId),
+      login: acc.login || st.login || '',
+      password: acc.password || st.password || '',
+      speaking_debt: Number(st.speakingDebt) || 0
+    };
+  }).filter(x => x.id != null);
+
+  const grades = [];
+  const all = getGrades();
+  Object.keys(all).forEach(sid => {
+    const rec = all[sid] || {};
+    Object.keys(rec).forEach(dk => {
+      const r = rec[dk];
+      const student_id = toNumId(sid);
+      if (student_id == null) return;
+      grades.push({ student_id, date: dk, grade: r.score, category: r.category || 'Darsdagi javob', note: r.note || '' });
+    });
+  });
+
+  const attendance = [];
+  const att = getAttendance();
+  Object.keys(att).forEach(dk => {
+    Object.keys(att[dk] || {}).forEach(sid => {
+      const student_id = toNumId(sid);
+      if (student_id == null) return;
+      attendance.push({ student_id, date: dk, status: att[dk][sid] });
+    });
+  });
+
+  const messages = store.get(K.messages, [])
+    .filter(m => toNumId(m.sid) != null)
+    .map(m => ({ student_id: toNumId(m.sid), sender: m.sender, text: m.text, created_at: m.createdAt }));
+
+  return { groups, students, attendance, grades, messages, speaking_submissions: [] };
+}
+
+async function downloadBackup() {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  toast('Zaxira tayyorlanmoqda...');
+  let data = null;
+  if (CloudSync.ready()) data = await CloudSync.fetchBackup();
+  if (!data) data = localBackupData();
+
+  const payload = { app: 'english-tutor', version: 1, exported_at: new Date().toISOString() };
+  Object.keys(data).forEach(k => { payload[k] = data[k]; });
+
+  try {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = backupFilename();
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+    }
+    toast('Zaxira yuklab olindi ✓');
+  } catch (e) {
+    console.warn('[backup] download:', e);
+    toast("Zaxirani yuklab bo'lmadi", 'error');
+  }
+}
+
+/* Cloudsiz rejimda: backup (cloud sxema) → lokal ilova modeli */
+function restoreLocal(data) {
+  const groups = (data.groups || []).map(g => {
+    const n = toNumId(g.id);
+    if (n == null) return null;
+    return { id: 'g' + n, dbId: n, name: g.name || '', days: g.days || '', time: g.time || '' };
+  }).filter(Boolean);
+
+  const students = (data.students || []).map(st => {
+    const n = toNumId(st.id);
+    if (n == null) return null;
+    return {
+      id: 's' + n,
+      dbId: n,
+      fullName: st.name || '',
+      schoolClass: st.school_class || '',
+      groupId: st.group_id == null ? null : 'g' + toNumId(st.group_id),
+      login: st.login || '',
+      password: st.password || '',
+      speakingDebt: Number(st.speaking_debt) || 0,
+      audioSubmissions: []
+    };
+  }).filter(Boolean);
+
+  const grades = {};
+  (data.grades || []).forEach(r => {
+    const sid = toNumId(r.student_id);
+    if (sid == null || !r.date) return;
+    grades['s' + sid] = grades['s' + sid] || {};
+    grades['s' + sid][r.date] = {
+      score: Number(r.grade),
+      category: r.category || 'Darsdagi javob',
+      note: r.note || ''
+    };
+  });
+
+  const attendance = {};
+  (data.attendance || []).forEach(r => {
+    const sid = toNumId(r.student_id);
+    if (sid == null || !r.date || !r.status) return;
+    attendance[r.date] = attendance[r.date] || {};
+    attendance[r.date]['s' + sid] = r.status;
+  });
+
+  const messages = (data.messages || []).map((m, i) => ({
+    id: 'm' + (m.id != null ? m.id : i + 1),
+    sid: 's' + toNumId(m.student_id),
+    sender: m.sender,
+    text: m.text,
+    createdAt: m.created_at || new Date().toISOString()
+  })).filter(m => m.sid && m.sid !== 'snull');
+
+  store.set(K.groups, groups);
+  store.set(K.students, students);
+  store.set(K.grades, grades);
+  store.set(K.attendance, attendance);
+  store.set(K.messages, messages);
+
+  /* hisoblar: ustoz (admin/123) + zaxiradagi login/parollar */
+  const next = {};
+  next[TEACHER_LOGIN] = { login: TEACHER_LOGIN, password: TEACHER_PASSWORD, role: 'teacher', name: 'Ustoz', studentId: null };
+  students.forEach(st => {
+    if (st.login) next[st.login] = { login: st.login, password: st.password || '', role: 'student', studentId: st.id, name: st.fullName };
+  });
+  accounts = next;
+  persistAccounts();
+
+  /* speaking slotlari: mavjud bo'lmagan o'quvchini uzamiz */
+  const ids = {};
+  students.forEach(st => { ids[st.id] = 1; });
+  store.set(K.speaking, getSpeaking().map(x =>
+    x.studentId && !ids[x.studentId] ? Object.assign({}, x, { studentId: null, score: null }) : x));
+
+  /* sesiya hisobdan chiqqan bo'lsa tozalaymiz */
+  const sess = getSession();
+  if (sess && !accounts[sess.login]) store.del(K.session);
+}
+
+/* --- Faylni o'qish → tasdiq modali --- */
+let pendingRestore = null;
+
+function readBackupFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function () {
+    let data = null;
+    try { data = JSON.parse(String(reader.result)); } catch (e) { data = null; }
+    if (!data || !Array.isArray(data.groups) || !Array.isArray(data.students)) {
+      toast("Fayl noto'g'ri: bu mos kelmaydigan zaxira fayli", 'error');
+      return;
+    }
+    pendingRestore = data;
+    openRestoreConfirm(
+      file.name || backupFilename(),
+      (data.students || []).length,
+      (data.groups || []).length
+    );
+  };
+  reader.onerror = function () { toast("Faylni o'qib bo'lmadi", 'error'); };
+  reader.readAsText(file);
+}
+
+function openRestoreConfirm(fileName, nStudents, nGroups) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); pendingRestore = null; return; }
+  openModal(`
+    <div class="modal-head">
+      <h3>Bazani qayta tiklash</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+    <div class="confirm-body">
+      <div class="confirm-emoji">📤</div>
+      <p class="confirm-text">Haqiqatan ham bazani ushbu fayldan qayta tiklamoqchimisiz? Hozirgi ma'lumotlar yangilanadi.</p>
+      <p class="muted small" style="margin-top:9px">📄 ${esc(fileName)} • ${nGroups} guruh, ${nStudents} o'quvchi</p>
+    </div>
+    <div class="confirm-actions">
+      <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
+      <button type="button" class="btn btn-danger" data-act="do-restore">Ha, tiklash</button>
+    </div>
+  `);
+}
+
+async function doRestoreBackup() {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); pendingRestore = null; return; }
+  const data = pendingRestore;
+  pendingRestore = null;
+  if (!data) { toast('Zaxira fayli topilmadi', 'error'); return; }
+  closeModal();
+  toast('Baza qayta tiklanmoqda...');
+
+  if (CloudSync.ready()) {
+    const ok = await CloudSync.restoreBackup(data);
+    if (!ok) { toast('Bazani qayta tiklashda xatolik', 'error'); return; }
+    await CloudSync.pullAll();
+    render();
+    toast('Baza qayta tiklandi ✓');
+  } else {
+    restoreLocal(data);
+    render();
+    toast('Baza qayta tiklandi ✓ (lokal rejim)');
+  }
 }
 
 /* ==================== 10 BALLIK BAHOLAR JURNALI (faqat ustoz) ==================== */
@@ -2269,6 +2608,34 @@ document.addEventListener('click', function (e) {
     'reset-pwd': function () { openResetPwd(btn.getAttribute('data-sid')); },
     'save-reset': function () { saveResetPwd(btn.getAttribute('data-sid')); },
 
+    /* --- Zaxira (backup/restore) --- */
+    'backup-dl': function () { downloadBackup(); },
+    'backup-pick': function () {
+      const el = $('#backup-file');
+      if (el) el.click();
+      else toast('Zaxira maydoni topilmadi', 'error');
+    },
+    'do-restore': function () { doRestoreBackup(); },
+
+    /* --- Parol ko'zgusi --- */
+    'toggle-pw': function () {
+      const inp = document.getElementById(btn.getAttribute('data-target'));
+      if (!inp) return;
+      const show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      btn.textContent = show ? '🙈' : '👁';
+      btn.setAttribute('aria-label', show ? "Parolni yashirish" : "Parolni ko'rsatish");
+    },
+
+    /* --- Portal: Speaking topshirish (CTA) --- */
+    'speak-cta': function () {
+      const rec = $('#recorder');
+      if (rec && typeof rec.scrollIntoView === 'function') {
+        try { rec.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+      }
+      startRecording();
+    },
+
     /* --- O'chirish (tasdiq bilan) --- */
     'del-student': function () { openDeleteStudent(btn.getAttribute('data-sid')); },
     'do-del-student': function () { doDeleteStudent(btn.getAttribute('data-sid')); },
@@ -2420,6 +2787,10 @@ document.addEventListener('change', function (e) {
   if (!t) return;
   if (t.id === 'att-date' && t.value) { state.attDate = t.value; render(); }
   if (t.id === 'sp-date' && t.value) { state.speakDate = t.value; render(); }
+  if (t.id === 'backup-file' && t.files && t.files[0]) {
+    readBackupFile(t.files[0]);
+    t.value = '';
+  }
 });
 
 document.addEventListener('keydown', function (e) {

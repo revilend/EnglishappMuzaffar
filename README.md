@@ -100,6 +100,30 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 - **Real-time:** supabase realtime obunasi + ochiq chat 5 sekundda bir avtomatik
   yangilanadi.
 
+### 14. Ma'lumotlar bazasi zaxirasi (Backup & Restore)
+
+**Veb ilovada (Ustoz → Profil → "Ma'lumotlar Bazasi Zaxirasi"):**
+
+- **📥 Bazani yuklab olish (Backup)** — barcha jadvallar (`groups`, `students`,
+  `attendance`, `grades`, `messages`, `speaking_submissions`) bitta vaqt muhrli
+  JSON faylga yig'iladi va yuklab oladi: `english_crm_backup_2026-10-13.json`.
+- **📤 Bazani qayta tiklash (Restore)** — saqlangan JSON faylni tanlang → tasdiq
+  modali: *"Haqiqatan ham bazani ushbu fayldan qayta tiklamoqchimisiz? Hozirgi
+  ma'lumotlar yangilanadi."* → **[Bekor qilish] [Ha, tiklash]** → jadvallar
+  tozalanib, ID saqlangan holda qayta yoziladi, UI darhol yangilanadi.
+- **ID va FK xavfsizligi:** string/g-/s- ko'rinishidagi lokal ID raqamga
+  aylantiriladi, yaroqsiz va bog'lanishi yo'q qatorlar tashlanadi.
+- Bulut ulanmagan bo'lsa (offline) — lokal ma'lumotlardan zaxira olinadi.
+
+**Telegram botda (faqat ADMIN_ID):**
+
+- `/backup` — barcha jadvallar JSON fayl sifatida ustozga yuboriladi
+  (`backup_english_app.json`).
+- Zaxira faylini botga yuboring (yoki avval `/restore` yozing) → bot tasdiq
+  tugmalarini ko'rsatadi: **[✅ Ha, tiklash] [❌ Bekor qilish]** → tasdiqdan
+  keyin baza qayta tiklanadi va natija hisoboti yuboriladi.
+- Barcha backup/restore buyruqlari **faqat ustoz** uchun (boshqalariga rad etiladi).
+
 ## Telegram bot (aiogram 3.x)
 
 `bot.py` — bu ilovaning xabar yuborish boti. `/start` buyrug'i pastki chapdagi
@@ -148,6 +172,14 @@ python3 bot.py
 
 > 💡 Menyu tugmasi ishlashi uchun **BotFather → Bot Settings → Configure Mini App**
 > bo'limida Mini App'ni yoqib, shu URL'ni kiriting.
+
+**Zaxira buyruqlari** (`bot.py`): buyruq | Vazifasi
+
+| Buyruq | Vazifasi |
+|---|---|
+| `/backup` | Barcha jadvallarni `backup_english_app.json` fayl sifatida ADMIN_ID ga yuboradi |
+| `/restore` | Zaxira faylini yuborishni so'raydi (keyin tasdiq tugmalari chiqadi) |
+| JSON fayl (document) | *"Haqiqatan ham bazani ushbu fayldan qayta tiklamoqchimisiz?"* → [✅ Ha, tiklash] [❌ Bekor qilish] |
 
 **Xabar yuborish funksiyalari** (`bot.py`):
 

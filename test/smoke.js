@@ -57,6 +57,16 @@ check(!!q('#password-input'), 'login: Parol inputi mavjud');
 check(text().includes('Kirish'), 'login: "Kirish" tugmasi');
 check(q('#app-header').textContent.includes('English Tutor'), 'header: ilova nomi');
 check(qa('.nav-item').length === 0, 'login rejimida bottom nav yo\'q');
+check(!q('.hint-card') && !text().includes('Demo kirish'), "login: demo credentials kartasi olib tashlandi");
+check(!text().includes('Ustoz: admin') && !text().includes("O'quvchi: jasur"), "login: login/parollar endi ko'rinmaydi");
+const pwBtnLogin = q('[data-act="toggle-pw"][data-target="password-input"]');
+check(!!pwBtnLogin, "login: parol ko'zgusi tugmasi (👁) mavjud");
+if (pwBtnLogin) {
+  click(pwBtnLogin);
+  check(q('#password-input').type === 'text', "login: ko'zgusi bosildi — parol ko'rindi");
+  click(pwBtnLogin);
+  check(q('#password-input').type === 'password', "login: qayta bosildi — parol yashirildi");
+}
 
 /* bo'sh forma */
 clickAct('do-login');
@@ -285,6 +295,7 @@ click('[data-act="nav"][data-screen="profile"]');
 check(text().includes('Parolni o\'zgartirish'), 'student: profilda parol o\'zgartirish tugmasi');
 clickAct('open-change-pwd');
 check(q('#modal-overlay').hidden === false, 'change: modal ochildi');
+check(qa('.pw-toggle').length === 3, "change: 3 ta parol ko'zgusi tugmasi (eski/yangi/tasdiq)");
 setVal('#cp-old', '999');
 setVal('#cp-new', '4321');
 setVal('#cp-new2', '4321');
@@ -325,6 +336,8 @@ clickAct('open-add-student');
 check(!q('#f-sphone'), 'telefon: qo\'shish formasida telefon maydoni yo\'q');
 check(!!q('#f-sname') && !!q('#f-sclass') && !!q('#f-slogin') && !!q('#f-spass'), 'forma: Ism + Sinf + Login + Parol mavjud');
 check(!q('[data-phone]'), 'forma: data-phone atributi yo\'q');
+check(q('#f-spass').type === 'password', "qo'shish: parol maydoni yashirin (type=password)");
+check(!!q('[data-act="toggle-pw"][data-target="f-spass"]'), "qo'shish: parol ko'zgusi tugmasi");
 click('[data-act="close-modal"]');
 
 /* --- 2. Sinflar faqat 5–11 --- */
@@ -387,6 +400,8 @@ check(jasurCells.some(c => c.textContent.trim() === '9'), 'audio→jurnal: ball 
 logout();
 loginAs('jasur', '4321');
 check(text().includes('Speaking qarzingiz') || text().includes("Speaking qarzingiz yo'q"), 'student: Speaking qarzi badge');
+check(!!q('[data-act="speak-cta"]') && q('[data-act="speak-cta"]').textContent.includes('Speaking topshirish'),
+  "student: '🎙 Speaking topshirish' dolzarb tugmasi (badge tagida)");
 check(text().includes('Ovoz yozish'), 'student: "Ovoz yozish" tugmasi');
 check(!!q('[data-act="rec-start"]') && !!q('[data-act="rec-send"]'), 'student: recorder tugmalari mavjud');
 clickAct('rec-start');
@@ -502,5 +517,104 @@ const studentsAfterGrpDel = JSON.parse(win.localStorage.getItem('et_students'));
 check(studentsAfterGrpDel.filter(x => x.groupId === null).length === 2, "guruh: o'quvchilari guruhsiz qoldi (group_id = null)");
 check(!JSON.parse(win.localStorage.getItem('et_grades'))['x'], "guruh: boshqa ma'lumotlar o'zgarmadi");
 
-console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
-process.exit(failed ? 1 : 0);
+/* ================= 19. ZAXIRA — BACKUP & RESTORE (async) ================= */
+const until = async (fn, ms) => {
+  const t0 = Date.now();
+  for (;;) {
+    let v = false;
+    try { v = await fn(); } catch (e) { v = false; }
+    if (v) return true;
+    if (Date.now() - t0 > ms) return false;
+    await new Promise(r => setTimeout(r, 60));
+  }
+};
+
+(async () => {
+  /* Ustoz profili → zaxira kartasi */
+  click('[data-act="nav"][data-screen="profile"]');
+  check(q('#screen').textContent.includes("Ma'lumotlar Bazasi Zaxirasi"), 'zaxira: karta profilda');
+  check(!!q('[data-act="backup-dl"]') && q('[data-act="backup-dl"]').textContent.includes('Bazani yuklab olish'),
+    'zaxira: "📥 Bazani yuklab olish (Backup)" tugmasi');
+  check(!!q('[data-act="backup-pick"]') && !!q('#backup-file'), 'zaxira: "📤 Bazani qayta tiklash" + fayl input');
+
+  /* Download (jsdom uchun stub) */
+  if (typeof win.URL.createObjectURL !== 'function') {
+    win.URL.createObjectURL = () => 'blob:mock';
+    win.URL.revokeObjectURL = () => {};
+  }
+  click('[data-act="backup-dl"]');
+  check(await until(() => q('#toast').textContent.includes('Zaxira yuklab olindi'), 4000), 'zaxira: JSON yuklab olindi (toast)');
+
+  /* Faylni tanlash → tasdiq modali → BEKOR */
+  const bak = {
+    app: 'english-tutor', version: 1,
+    groups: [{ id: 55, name: 'RESTORED GROUP', days: 'Dushanba', time: '09:00' }],
+    students: [{ id: 77, name: 'Restored Student', school_class: '9-sinf', group_id: 55,
+                 login: 'restore1', password: '9876', speaking_debt: 3 }],
+    attendance: [{ student_id: 77, date: '2026-10-01', status: 'present' }],
+    grades: [{ student_id: 77, date: '2026-10-01', grade: 9, category: "Lug'at", note: '' }],
+    messages: [{ student_id: 77, sender: 'teacher', text: 'Tiklangan xabar', created_at: '2026-10-01T10:00:00.000Z' }],
+    speaking_submissions: []
+  };
+  const pickFile = () => {
+    const f = new win.File([JSON.stringify(bak)], 'english_crm_backup_2026-10-13.json', { type: 'application/json' });
+    const inp = q('#backup-file');
+    Object.defineProperty(inp, 'files', { value: [f], configurable: true });
+    inp.dispatchEvent(new win.Event('change', { bubbles: true }));
+  };
+  pickFile();
+  check(await until(() => q('#modal-overlay').hidden === false &&
+    q('#modal-sheet').textContent.includes('Haqiqatan ham bazani ushbu fayldan qayta tiklamoqchimisiz'), 4000),
+    'zaxira: tasdiq modali (spec matni)');
+  check(q('#modal-sheet').textContent.includes('english_crm_backup_2026-10-13.json'), 'zaxira: fayl nomi ko\'rinadi');
+  check(!!q('.confirm-actions [data-act="close-modal"]') && q('.confirm-actions [data-act="close-modal"]').textContent.includes('Bekor qilish'),
+    "zaxira: 'Bekor qilish' tugmasi");
+  check(!!q('[data-act="do-restore"]') && q('[data-act="do-restore"]').textContent.includes('Ha, tiklash'),
+    "zaxira: 'Ha, tiklash' tugmasi");
+
+  click('.confirm-actions [data-act="close-modal"]');
+  check(q('#modal-overlay').hidden === true, 'zaxira: bekor qilindi');
+  const grpBefore = JSON.parse(win.localStorage.getItem('et_groups') || '[]');
+  check(!grpBefore.some(g => g.name === 'RESTORED GROUP'), 'zaxira: bekor qilingach ma\'lumot o\'zgarmadi');
+
+  /* Qayta tanlash → TASDIQLASH → lokal tiklash */
+  pickFile();
+  check(await until(() => q('#modal-overlay').hidden === false, 4000), 'zaxira: modal qayta ochildi');
+  click('[data-act="do-restore"]');
+  check(await until(() => {
+    const g = JSON.parse(win.localStorage.getItem('et_groups') || '[]');
+    return g.length === 1 && g[0].name === 'RESTORED GROUP';
+  }, 4000), 'zaxira: guruh qayta tiklandi (RESTORED GROUP)');
+  check(q('#toast').textContent.includes('Baza qayta tiklandi'), 'zaxira: success toast');
+
+  const stAfter = JSON.parse(win.localStorage.getItem('et_students') || '[]');
+  check(stAfter.length === 1 && stAfter[0].fullName === 'Restored Student', 'zaxira: o\'quvchi qayta tiklandi');
+  check(stAfter[0].id === 's77' && stAfter[0].groupId === 'g55', 'zaxira: idlar mos (s77 → g55)');
+  check(stAfter[0].speakingDebt === 3, 'zaxira: speaking qarz saqlandi (3)');
+  const grAfter = JSON.parse(win.localStorage.getItem('et_grades') || '{}');
+  check(grAfter['s77'] && grAfter['s77']['2026-10-01'] && grAfter['s77']['2026-10-01'].score === 9, 'zaxira: baholar tiklandi');
+  const attAfter2 = JSON.parse(win.localStorage.getItem('et_attendance') || '{}');
+  check(attAfter2['2026-10-01'] && attAfter2['2026-10-01']['s77'] === 'present', 'zaxira: davomat tiklandi');
+  const msgAfter = JSON.parse(win.localStorage.getItem('et_messages') || '[]');
+  check(msgAfter.some(m => m.text === 'Tiklangan xabar' && m.sid === 's77'), 'zaxira: xabarlar tiklandi');
+  const accAfter = JSON.parse(win.localStorage.getItem('et_accounts') || '{}');
+  check(!!accAfter['restore1'] && accAfter['restore1'].password === '9876' && !!accAfter['admin'],
+    'zaxira: hisoblar qayta qurildi (admin + restore1)');
+
+  /* UI jonli yangilandi */
+  forceNav('groups');
+  check(text().includes('RESTORED GROUP'), 'zaxira: guruhlar ekrani yangilandi');
+  forceNav('students');
+  check(text().includes('Restored Student'), "zaxira: o'quvchilar ekrani yangilandi");
+
+  /* Tiklangan hisob bilan kirish */
+  click('[data-act="nav"][data-screen="profile"]');
+  clickAct('logout');
+  loginAs('restore1', '1111');
+  check(q('#login-error').classList.contains('show'), "zaxira: noto'g'ri parol rad etildi");
+  loginAs('restore1', '9876');
+  check(text().includes('Restored Student'), "zaxira: restore1/9876 bilan kirish ishlaydi");
+
+  console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
+  process.exit(failed ? 1 : 0);
+})();
