@@ -89,67 +89,220 @@ async def cmd_start(message: types.Message):
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
-# Voice & Video Speaking Submissions
+# ============================================================
+# O'quvchini Telegram hisobiga ulash (/login) + yordamchilar
+# ============================================================
+def student_by_chat(chat_id: int):
+    """Telegram chat_id bilan ulangan o'quvchini topadi."""
+    try:
+        rows = supabase.table("students").select("*").eq("telegram_chat_id", chat_id).limit(1).execute().data
+        return rows[0] if rows else None
+    except Exception as e:
+        logging.warning(f"student_by_chat: {e}")
+        return None
+
+
+@dp.message(Command("login"))
+async def cmd_login(message: types.Message):
+    """O'quvchi: /login <login> <parol> — bot va hisobni ulaydi."""
+    parts = (message.text or "").split()
+    if len(parts) != 3:
+        await message.answer(
+            "🔑 <b>O'quvchi kabineti ulanishi</b>\n\n"
+            "Iltimos, shu ko'rinishda yozing:\n"
+            "<code>/login jasur 123</code>\n\n"
+            "Login va parolingizni ilovadan ko'rishingiz mumkin.",
+            parse_mode="HTML",
+        )
+        return
+    _, login, password = parts
+    try:
+        rows = supabase.table("students").select("id, name, login, password")\
+            .eq("login", login).eq("password", password).limit(1).execute().data
+    except Exception as e:
+        logging.error(f"login query: {e}")
+        await message.answer("⚠️ Bazaga ulanib bo'lmadi. Birozdan keyin qayta urinib ko'ring.")
+        return
+    if not rows:
+        await message.answer("❌ Login yoki parol noto'g'ri. Qayta urinib ko'ring.")
+        return
+    st = rows[0]
+    try:
+        supabase.table("students").update({"telegram_chat_id": message.from_user.id}).eq("id", st["id"]).execute()
+    except Exception as e:
+        logging.error(f"login update: {e}")
+        await message.answer("⚠️ Hisobni ulab bo'lmadi. Admin bilan bog'laning.")
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🚀 Shaxsiy Kabinetga kirish", web_app=WebAppInfo(url=config.WEBAPP_URL))]
+    ])
+    await message.answer(
+        f"✅ <b>Xush kelibsiz, {html.escape(str(st.get('name') or login))}!</b>\n"
+        "Hisobingiz Telegramga ulandi. Endi speaking topshiriklaringiz shu yerga qabul qilinadi.",
+        reply_markup=kb,
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# Voice & Video Speaking Submissions (faqat ulangan o'quvchi,
+# voice_allowed = true bo'lgandagina qabul qilinadi)
+# ============================================================
 @dp.message(F.voice | F.video_note | F.video)
 async def handle_speaking_submission(message: types.Message):
     user = message.from_user
     media_type = "voice" if message.voice else ("video_note" if message.video_note else "video")
     file_id = message.voice.file_id if message.voice else (message.video_note.file_id if message.video_note else message.video.file_id)
 
-    # Save to Supabase
+    # 1) O'quvchi ulanganmi?
+    student = student_by_chat(user.id)
+    if not student:
+        await message.answer(
+            "🔐 <b>Avval hisobingizni ulang!</b>\n\n"
+            "Shunday yozing: <code>/login jasur 123</code>\n"
+            "(Login va parolingizni o'quvchi kabinetasidan oling)",
+            parse_mode="HTML",
+        )
+        return
+
+    # 2) Ustoz ruxsat berganmi? (students.voice_allowed)
+    if student.get("voice_allowed") is False:
+        await message.answer(
+            "⛔ Kechirasiz! Ustoz hozircha sizga ovozli topshirishga ruxsat bermagan. Darsda topshiring."
+        )
+        return
+
+    # 3) Supabase'ga yozish + speaking qarzi +1
+    debt = int(student.get("speaking_debt") or 0) + 1
     try:
-        supabase.table("audio_submissions").insert({
+        supabase.table("speaking_submissions").insert({
+            "student_id": student["id"],
             "media_type": media_type,
             "telegram_file_id": file_id,
-            "status": "kutilmoqda"
+            "status": "kutilmoqda",
         }).execute()
+        supabase.table("students").update({"speaking_debt": debt}).eq("id", student["id"]).execute()
     except Exception as e:
-        logging.error(f"Supabase error: {e}")
+        logging.error(f"Supabase error (speaking): {e}")
 
-    # Forward to Teacher
+    # 4) Ustozga yuborish (baholash tugmasi bilan)
+    st_name = html.escape(str(student.get("name") or user.full_name))
     caption = (
         f"🎙 <b>YANGI SPEAKING TOPSHIRILDI!</b>\n\n"
-        f"👤 <b>Yuboruvchi:</b> {user.full_name} (@{user.username or 'yoʻq'})\n"
+        f"👤 <b>O'quvchi:</b> {st_name}\n"
         f"🆔 <b>Telegram ID:</b> <code>{user.id}</code>\n"
-        f"📹 <b>Turi:</b> {media_type.upper()}"
+        f"📹 <b>Turi:</b> {media_type.upper()}\n"
+        f"💰 <b>Speaking qarzi:</b> {debt} ta"
     )
     eval_btn = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📝 Mini App'da Baholash", web_app=WebAppInfo(url=config.WEBAPP_URL))]
     ])
 
-    if message.voice:
-        await bot.send_voice(chat_id=config.ADMIN_ID, voice=file_id, caption=caption, reply_markup=eval_btn, parse_mode="HTML")
-    elif message.video_note:
-        await bot.send_video_note(chat_id=config.ADMIN_ID, video_note=file_id, reply_markup=eval_btn)
-        await bot.send_message(chat_id=config.ADMIN_ID, text=caption, parse_mode="HTML")
-    else:
-        await bot.send_video(chat_id=config.ADMIN_ID, video=file_id, caption=caption, reply_markup=eval_btn, parse_mode="HTML")
+    try:
+        if message.voice:
+            await bot.send_voice(chat_id=config.ADMIN_ID, voice=file_id, caption=caption, reply_markup=eval_btn, parse_mode="HTML")
+        elif message.video_note:
+            await bot.send_video_note(chat_id=config.ADMIN_ID, video_note=file_id, reply_markup=eval_btn)
+            await bot.send_message(chat_id=config.ADMIN_ID, text=caption, parse_mode="HTML")
+        else:
+            await bot.send_video(chat_id=config.ADMIN_ID, video=file_id, caption=caption, reply_markup=eval_btn, parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"forward to teacher: {e}")
 
     await message.reply(
-        "✅ <b>Qabul qilindi!</b>\nSpeaking vazifangiz ustozga yuborildi. Ustoz tekshirib baho qo'yishi bilan sizga xabar beriladi.", 
-        parse_mode="HTML"
+        "✅ <b>Qabul qilindi!</b>\nSpeaking vazifangiz ustozga yuborildi. Ustoz tekshirib baho qo'yishi bilan speaking qarzingiz kamayadi.",
+        parse_mode="HTML",
     )
 
 
-# Notification function for grades
-async def notify_student_grade(student_chat_id: int, subject: str, grade: int, note: str = ""):
-    text = (
-        f"📝 <b>Speaking natijangiz chiqdi!</b>\n\n"
-        f"Topshiriq: <b>{subject}</b>\n"
-        f"Baho: <b>{grade} / 10 ball</b>\n"
-        f"Ustoz izohi: <i>{note or 'Yaxshi!'}</i>\n\n"
-        f"🎉 Speaking qarzingiz 1 taga kamaytirildi!"
-    )
+# ============================================================
+# Uyga vazifalari: yangi homework → guruh o'quvchilariga xabar
+# ============================================================
+HW_TEXT = (
+    "📚 YANGI UYGA VAZIFA!\n"
+    "Guruh: {group_name}\n"
+    "Mavzu: {title}\n"
+    "Vazifa: {description}\n"
+    "Topshirish muddati: {due_date}\n\n"
+    "Ilovaga kirib to'liq ko'rishingiz mumkin!"
+)
+
+_last_hw_seen = None  # bot boshlanganda mavjud vazifalar "ko'rilgan" bo'ladi
+
+
+async def broadcast_homework(row: dict) -> int:
+    """Bitta vazifani guruh o'quvchilariga yuboradi (ulanganlarga)."""
+    hw_id = row.get("id")
     try:
-        await bot.send_message(chat_id=student_chat_id, text=text, parse_mode="HTML")
+        groups = supabase.table("groups").select("id, name").eq("id", row.get("group_id")).limit(1).execute().data
+        group_name = groups[0]["name"] if groups else "—"
+        studs = supabase.table("students").select("id, name, telegram_chat_id")\
+            .eq("group_id", row.get("group_id")).execute().data
     except Exception as e:
-        logging.error(f"Notify error: {e}")
+        logging.warning(f"homework lookup {hw_id}: {e}")
+        return 0
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📱 Ilovani ochish", web_app=WebAppInfo(url=config.WEBAPP_URL))]
+    ])
+    due = row.get("due_date") or "—"
+    text = HW_TEXT.format(
+        group_name=group_name,
+        title=row.get("title") or "—",
+        description=row.get("description") or "—",
+        due_date=due,
+    )
+    sent = 0
+    for st in studs:
+        chat_id = st.get("telegram_chat_id")
+        if not chat_id:
+            continue
+        try:
+            await bot.send_message(chat_id=int(chat_id), text=text, reply_markup=kb)
+            sent += 1
+        except Exception as e:
+            logging.warning(f"homework notify {st.get('id')} -> {chat_id}: {e}")
+    return sent
+
+
+async def hw_tick():
+    """Bitta kuzatuv qadamini bajaradi (test qilinadigan mantiq)."""
+    global _last_hw_seen
+    rows = supabase.table("homework").select("id, group_id, title, description, due_date").order("id").execute().data or []
+    if _last_hw_seen is None:
+        # birinchi start: mavjud vazifalarni SPAM qilmaymiz
+        _last_hw_seen = rows[-1]["id"] if rows else 0
+        logging.info(f"homework watcher: {len(rows)} ta mavjud vazifa ko'rib chiqildi")
+        return 0
+    sent_total = 0
+    for row in rows:
+        if row["id"] > _last_hw_seen:
+            sent_total += await broadcast_homework(row)
+            logging.info(f"homework #{row['id']} -> yangi vazifa yuborildi")
+            _last_hw_seen = row["id"]
+    return sent_total
+
+
+async def homework_watcher():
+    """homework jadvalini kuzatadi: yangi qator → guruhga xabar (faqat yangilar)."""
+    await asyncio.sleep(3)
+    while True:
+        try:
+            await hw_tick()
+        except Exception as e:
+            msg = str(e)
+            if "PGRST205" in msg or "homework" in msg:
+                logging.warning("homework jadvali topilmadi — supabase.sql ni ishga tushiring (60s dan keyin qayta)")
+                await asyncio.sleep(60)
+            else:
+                logging.warning(f"homework watcher: {e}")
+        await asyncio.sleep(5)
 
 
 # ============================================================
 # Zaxira (backup / restore) — Supabase
 # ============================================================
-BACKUP_TABLES = ["groups", "students", "attendance", "grades", "messages", "speaking_submissions", "audio_submissions"]
+BACKUP_TABLES = ["groups", "students", "attendance", "grades", "messages", "speaking_submissions", "audio_submissions", "homework"]
 RESTORE_PLAN = [
     ("groups", ["id", "name", "days", "time"]),
     ("students", ["id", "name", "school_class", "group_id", "login", "password", "speaking_debt"]),
@@ -158,6 +311,7 @@ RESTORE_PLAN = [
     ("messages", ["id", "student_id", "sender", "text", "created_at"]),
     ("speaking_submissions", ["id", "media_type", "telegram_file_id", "status", "created_at"]),
     ("audio_submissions", ["id", "student_id", "date", "url", "status", "score", "feedback", "created_at"]),
+    ("homework", ["id", "group_id", "title", "description", "due_date", "created_at"]),
 ]
 pending_restore_file = {}
 
@@ -219,7 +373,7 @@ def prepare_restore(data: dict) -> dict:
 def restore_backup(data: dict) -> dict:
     """Zaxirani Supabase'ga qayta tiklaydi: avval O'CHIRISH (bog'liq jadvallardan),
     keyin ID saqlanib qayta YOZISH. Har jadval uchun son qaytaradi."""
-    for t in ["messages", "grades", "attendance", "speaking_submissions", "audio_submissions", "students", "groups"]:
+    for t in ["messages", "grades", "attendance", "speaking_submissions", "audio_submissions", "homework", "students", "groups"]:
         try:
             supabase.table(t).delete().gte("id", 0).execute()
         except Exception as e:
@@ -426,6 +580,9 @@ async def main():
 
     # Render portini ochish
     await start_dummy_web_server()
+
+    # Uyga vazifalari kuzatuvchisi (yangi homework → guruhga xabar)
+    asyncio.create_task(homework_watcher())
 
     logging.info("Bot starting with polling...")
     await dp.start_polling(bot)

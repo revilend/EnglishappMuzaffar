@@ -365,36 +365,41 @@ check(qa('.debt-num').filter(d => d.textContent.trim() === '0 ta').length >= 1, 
 click('[data-act="nav"][data-screen="speaking"]');
 check(text().includes('Speaking qarzi (o\'quvchilar)'), 'speaking: qarz ro\'yxati ekranda');
 check(qa('[data-act="debt-plus"]').length === nStud, 'speaking: ' + nStud + ' ta [+] tugma');
-check(text().includes('Ovozli topshiriklar'), 'speaking: audio inbox bo\'limi bor');
-check(text().includes("Hozircha ovozli topshirik yo'q") || qa('.audio-item').length >= 0, 'speaking: inbox holati ko\'rinadi');
+check(text().includes('Telegram topshiriklari'), 'speaking: Telegram inbox bo\'limi bor');
+check(text().includes("Hozircha Telegram orqali topshirik yo'q"), 'speaking: inbox holati ko\'rinadi');
 
-/* --- 4. Audio topshirik → baholash → qarz -1 --- */
+/* --- 4. Telegram topshirik → baholash → qarz -1 --- */
 const studentsRaw = JSON.parse(win.localStorage.getItem('et_students'));
 const jasurSt = studentsRaw.filter(x => x.id === 's3')[0];
 jasurSt.speakingDebt = 2;
-jasurSt.audioSubmissions = [{ id: 'aT1', date: TODAY, url: 'data:audio/webm;base64,AAAA', status: 'pending', score: null, feedback: '' }];
 win.localStorage.setItem('et_students', JSON.stringify(studentsRaw));
+win.localStorage.setItem('et_tg_subs', JSON.stringify([
+  { id: 't1', dbId: 101, sid: 's3', mediaType: 'voice', status: 'kutilmoqda', score: null, feedback: '', createdAt: TODAY + 'T10:00:00.000Z' }
+]));
 forceNav('speaking');
-check(qa('.audio-item').length >= 1, 'inbox: ovozli topshirik paydo bo\'ldi');
+check(qa('.audio-item').length >= 1, 'inbox: Telegram topshirik paydo bo\'ldi');
 check(text().includes('Jasur Karimov'), 'inbox: o\'quvchi ismi ko\'rinadi');
-check(qa('[data-act="audio-grade"]').length === 10, 'inbox: 10 ta ball tugmasi');
-check(q('[data-act="audio-feedback"]'), 'inbox: izoh maydoni mavjud');
+check(text().includes('🎙 Ovozli xabar'), 'inbox: media turi (voice) ko\'rinadi');
+check(qa('[data-act="tg-grade"]').length === 10, 'inbox: 10 ta ball tugmasi');
+check(q('[data-act="tg-feedback"]'), 'inbox: izoh maydoni mavjud');
+check(!q('[data-act="rec-start"]') && !q('#recorder'), 'recorder: brauzer yozgich olib tashlangan');
 
-setVal('[data-act="audio-feedback"]', "A'lo talaffuz");
-click(qa('[data-act="audio-grade"]').filter(b => b.getAttribute('data-score') === '9')[0]);
-check(q('#toast').textContent.includes('jurnalga yozildi'), 'audio: baho saqlandi + jurnalga sync');
+setVal('[data-act="tg-feedback"]', "A'lo talaffuz");
+click(qa('[data-act="tg-grade"]').filter(b => b.getAttribute('data-score') === '9')[0]);
+check(q('#toast').textContent.includes('qarz kamaydi'), 'tg: baho saqlandi + qarz kamaydi');
 
 /* qarz kamaydi: 2 → 1 */
 const afterGrade = JSON.parse(win.localStorage.getItem('et_students')).filter(x => x.id === 's3')[0];
-check(afterGrade.speakingDebt === 1, 'audio: baholash qarzni 1 ga kamaytirdi (2 → 1)');
-check(afterGrade.audioSubmissions[0].status === 'graded' && afterGrade.audioSubmissions[0].score === 9, 'audio: topshirik baholandi (9)');
-check(afterGrade.audioSubmissions[0].feedback === "A'lo talaffuz", 'audio: izoh saqlandi');
+check(afterGrade.speakingDebt === 1, 'tg: baholash qarzni 1 ga kamaytirdi (2 → 1)');
+const tgAfter = JSON.parse(win.localStorage.getItem('et_tg_subs')).filter(x => x.id === 't1')[0];
+check(tgAfter.status === 'baholandi' && tgAfter.score === 9, 'tg: topshirik baholandi (9)');
+check(tgAfter.feedback === "A'lo talaffuz", 'tg: izoh saqlandi');
 
 /* jurnalda Speaking satri */
 click('[data-act="nav"][data-screen="grades"]');
 click('[data-act="grade-group"][data-group="g2"]');
 const jasurCells = qa('[data-act="edit-grade"][data-sid="s3"]');
-check(jasurCells.some(c => c.textContent.trim() === '9'), 'audio→jurnal: ball jurnalga tushdi');
+check(jasurCells.some(c => c.textContent.trim() === '9'), 'tg→jurnal: ball jurnalga tushdi');
 
 /* --- 4b. O'quvchi portali: badge + yozish paneli --- */
 logout();
@@ -402,11 +407,15 @@ loginAs('jasur', '4321');
 check(text().includes('Speaking qarzingiz') || text().includes("Speaking qarzingiz yo'q"), 'student: Speaking qarzi badge');
 check(!!q('[data-act="speak-cta"]') && q('[data-act="speak-cta"]').textContent.includes('Speaking topshirish'),
   "student: '🎙 Speaking topshirish' dolzarb tugmasi (badge tagida)");
-check(text().includes('Ovoz yozish'), 'student: "Ovoz yozish" tugmasi');
-check(!!q('[data-act="rec-start"]') && !!q('[data-act="rec-send"]'), 'student: recorder tugmalari mavjud');
-clickAct('rec-start');
-check(q('#toast').textContent.includes('mikrofon') || q('#rec-status'), 'student: yozishga urinish xavfsiz (jsdom)');
-check(text().includes('9'), 'student: baholangan audio ko\'rinadi');
+check(text().includes('Telegram orqali'), "student: 'Telegram orqali topshirish' yo'riqnomasi");
+check(!q('#recorder') && !q('[data-act="rec-start"]') && !q('[data-act="rec-send"]'),
+  "student: brauzer recorder butunlay olib tashlangan");
+check(text().includes('Uyga vazifalar'), "student: 'Uyga vazifalar' bo'limi portalda");
+check(text().includes('✅ Baho: 9/10'), 'student: baholangan Telegram topshirigi ko\'rinadi');
+clickAct('speak-cta');
+check(q('#modal-overlay').hidden === false && q('#modal-sheet').textContent.includes('Telegram'),
+  "student: CTA → Telegram yo'riqnomasi modali");
+click('[data-act="close-modal"]');
 
 /* ================= 14. CHAT (Ustoz ↔ O'quvchi) ================= */
 check(text().includes('Ustoz bilan Chat'), "chat: o'quvchi portali bo'limi bor");
@@ -620,6 +629,94 @@ const until = async (fn, ms) => {
   check(q('#login-error').classList.contains('show'), "zaxira: noto'g'ri parol rad etildi");
   loginAs('restore1', '9876');
   check(text().includes('Restored Student'), "zaxira: restore1/9876 bilan kirish ishlaydi");
+
+  /* ================= 20. UYGA VAZIFA (ustoz → o'quvchi portali) ================= */
+  logout();
+  loginAs('admin', '123');
+  click('[data-act="nav"][data-screen="home"]');
+  check(!!q('[data-act="open-hw"]'), "uyga vazifa: '+ Uyga vazifa' tugmasi (Bosh)");
+  check(text().includes('Uyga vazifalar'), "uyga vazifa: bo'lim sarlavhasi");
+  clickAct('open-hw');
+  check(q('#modal-overlay').hidden === false, "uyga vazifa: modali ochildi");
+  check(!!q('#hw-group') && !!q('#hw-title') && !!q('#hw-desc') && !!q('#hw-due'),
+    "uyga vazifa: guruh/mavzu/tavsif/muddat formasi");
+  clickAct('save-hw');
+  check(q('#hw-error').classList.contains('show'), "uyga vazifa: bo'sh mavzu rad etildi");
+  setVal('#hw-title', 'Present Perfect shakli');
+  q('#hw-group').value = 'g55';
+  setVal('#hw-desc', '10 ta gap tuzing');
+  q('#hw-due').value = '2026-10-20';
+  clickAct('save-hw');
+  check(q('#modal-overlay').hidden === true, "uyga vazifa: modal yopildi");
+  check(text().includes('Present Perfect shakli'), "uyga vazifa: ro'yxatda ko'rinadi");
+  check(text().includes('20.10.2026') || text().includes('2026-10-20'), "uyga vazifa: muddat ko'rinadi");
+  const hwLocal = JSON.parse(win.localStorage.getItem('et_homework') || '[]');
+  check(hwLocal.length === 1 && hwLocal[0].title === 'Present Perfect shakli' &&
+    hwLocal[0].groupId === 'g55' && hwLocal[0].dueDate === '2026-10-20',
+    "uyga vazifa: lokalda saqlandi (g55, muddat)");
+
+  logout();
+  loginAs('restore1', '9876');
+  check(text().includes('Present Perfect shakli'), "uyga vazifa: o'quvchi portalida ko'rinadi");
+  check(text().includes('10 ta gap tuzing'), "uyga vazifa: tavsif portalda ko'rinadi");
+  check(text().includes('📚 Uyga vazifalar'), "uyga vazifa: portal bo'limi mavjud");
+
+  /* ================= 21. VOICE RUXSAT KALITI (kartada) ================= */
+  logout();
+  loginAs('admin', '123');
+  click('[data-act="nav"][data-screen="students"]');
+  const swEl = q('[data-act="voice-toggle"]');
+  check(!!swEl, "voice: o'quvchi kartasida ruxsat kaliti bor");
+  check(!!swEl && swEl.classList.contains('on'), "voice: standart holat ON (ruxsat berilgan)");
+  click(swEl);
+  const swEl2 = q('[data-act="voice-toggle"]');
+  check(!!swEl2 && !swEl2.classList.contains('on'), "voice: bosildi → OFF (cheklandi)");
+  const stV = JSON.parse(win.localStorage.getItem('et_students')).filter(x => x.id === 's77')[0];
+  check(!!stV && stV.voiceAllowed === false, "voice: voiceAllowed=false lokalda saqlandi");
+  check(q('#toast').textContent.includes('cheklandi'), "voice: toast xabari");
+
+  /* ================= 22. 5 SONIYALIK POLLING OLIB TASHLANGAN ================= */
+  let fiveSec = 0;
+  const origST = win.setTimeout;
+  win.setTimeout = function () { if (arguments[1] === 5000) fiveSec++; return origST.apply(win, arguments); };
+  click(qa('[data-act="open-chat"]')[0]);
+  check(q('#modal-overlay').hidden === false, "chat: modal ochildi (polling tekshiruvi)");
+  await new Promise(r => setTimeout(r, 120));
+  win.setTimeout = origST;
+  check(fiveSec === 0, "sync: 5 soniyalik chat polling yo'q (loop'siz)");
+  click('[data-act="close-modal"]');
+
+  /* ================= 23. TOZALASH (AVVAL ZAXIRA → TASDIQ → TOZALASH) ================= */
+  click('[data-act="nav"][data-screen="profile"]');
+  check(!!q('[data-act="cleanup-go"]'), "tozalash: tugma profilda");
+  check(qa('[data-act="cleanup-pick"]').length === 4, "tozalash: 4 ta jadval tanlovi");
+  check(!!q('[data-act="cleanup-pick"][data-table="grades"]') &&
+    q('[data-act="cleanup-pick"][data-table="grades"]').classList.contains('active'),
+    "tozalash: 'Baholar' standart tanlangan");
+  check(JSON.parse(win.localStorage.getItem('et_grades') || '{}')['s77'] !== undefined,
+    "tozalash: baholar mavjud (oldin)");
+  q('#toast').textContent = '';
+  clickAct('cleanup-go');
+  check(await until(() => q('#toast').textContent.includes('Zaxira yuklab olindi'), 4000),
+    "tozalash: AVVAL to'liq zaxira fayl yuklab olindi");
+  check(await until(() => q('#modal-overlay').hidden === false, 4000), "tozalash: tasdiq modali ochildi");
+  check(q('#modal-sheet').textContent.includes("Eski ma'lumotlar fayl ko'rinishida yuklandi. Bazani tozalashni tasdiqlaysizmi?"),
+    "tozalash: tasdiq modali spec matni");
+  check(!!q('.confirm-actions [data-act="close-modal"]') &&
+    q('.confirm-actions [data-act="close-modal"]').textContent.includes('Bekor qilish'),
+    "tozalash: 'Bekor qilish' tugmasi");
+  check(!!q('[data-act="do-cleanup"]') && q('[data-act="do-cleanup"]').textContent.includes('Ha, tozalash'),
+    "tozalash: 'Ha, tozalash' tugmasi");
+  click('.confirm-actions [data-act="close-modal"]');
+  check(JSON.parse(win.localStorage.getItem('et_grades') || '{}')['s77'] !== undefined,
+    "tozalash: bekor qilingach ma'lumot saqlanib qoldi");
+  q('#toast').textContent = '';
+  clickAct('cleanup-go');
+  check(await until(() => q('#modal-overlay').hidden === false, 4000), "tozalash: modal qayta ochildi");
+  clickAct('do-cleanup');
+  check(await until(() => q('#toast').textContent.includes('Jadval tozalandi'), 4000), "tozalash: success toast");
+  check(Object.keys(JSON.parse(win.localStorage.getItem('et_grades') || '{}')).length === 0,
+    "tozalash: baholar jadvali tozalandi");
 
   console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
   process.exit(failed ? 1 : 0);

@@ -763,3 +763,36 @@ body.auth-mode .toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
 .backup-card { display: flex; flex-direction: column; gap: 10px; }
 .backup-card .btn-block { margin-top: 0; }
 .speak-cta { margin: 4px 0 10px; font-weight: 800; letter-spacing: .2px; }
+
+/* --- 🎙 Ovozli topshirishga ruxsat kaliti (neytral, rangli emas) --- */
+.switch {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease;
+  flex: 0 0 auto;
+  padding: 0;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .35);
+  transition: transform .18s ease;
+}
+.switch.on { background: #334155; border-color: #334155; }
+.switch.on::after { transform: translateX(18px); }
+.switch:active::after { width: 23px; }
+
+/* --- Uyga vazifa qatori --- */
+.hw-item { padding: 9px 0; border-bottom: 1px solid var(--line); }
+.hw-item:last-child { border-bottom: 0; }

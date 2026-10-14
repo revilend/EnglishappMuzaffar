@@ -49,11 +49,16 @@ Barcha sinf variantlari va filtrlari qat'iy: `5-sinf, 6-sinf, 7-sinf, 8-sinf, 9-
 - **Ustoz:** o'quvchilar ro'yxatida va Speaking ekranida har biri uchun **[ − ] / [ + ]** nazorat
 - **O'quvchi:** kabinetda **"Speaking qarzingiz: X ta"** badge (yoki "qarzingiz yo'q")
 
-### 10. Ovozli topshirish (ovoz yozish)
-- **O'quvchi kabinetida:** "🎙 Ovoz yozish" → tinglash → "📤 Yuborish" (brauzer `MediaRecorder`)
-- **Ustoz (Speaking → Ovozli topshiriklar):** ijrochini eshitadi, **1–10 ball** va izoh qoldiradi
-- **Baholash avtomatik ravishda Speaking qarzini 1 ga kamaytiradi** va ball o'quvchi
-  baholar jurnaliga (kategoriyasi "Speaking") yoziladi
+### 10. Speaking topshirish — faqat Telegram orqali (lightweight)
+- **Brauzer yozgich YO'Q** — ilova yengil: o'quvchi Telegram botga 🎙 ovozli xabar
+  (voice), 📹 krujok (video note) yoki MP4 yuboradi.
+- **Ustoz ruxsati:** har bir o'quvchi kartasida **"🎙 Ovozli topshirishga ruxsat"**
+  kaliti → `students.voice_allowed`. Yopiq bo'lsa bot rad etadi:
+  *"⛔ Kechirasiz! Ustoz hozircha sizga ovozli topshirishga ruxsat bermagan..."*
+- **Bot qabul qilganda:** `speaking_submissions` jadvaliga yoziladi, qarz +1 va
+  ustozga **[📝 Mini App'da Baholash]** tugmasi bilan forward qilinadi.
+- **Ustoz (Speaking → Telegram topshiriklari):** **1–10 ball** + izoh qo'yadi —
+  **qarz avtomatik 1 ga kamayadi**, ball baholar jurnaliga ("Speaking") tushadi.
 
 ### 11. Ko'p qurilmali bulut sinxronizatsiyasi (Supabase) ✅ JOYIDA ULANGAN
 Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
@@ -65,17 +70,22 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 | `attendance` | sana + o'quvchi + holat (Keldi/Kelmadi/Sababli) |
 | `grades` | sana, ball (1–10), kategoriya, izoh |
 | `messages` | ustoz ↔ o'quvchi chati (real-time) |
-| `audio_submissions` | ovozli topshiriklar (ixtiyoriy, `supabase.sql`) |
+| `homework` | uyga vazifalar (mavzu, tavsif, muddat) — bot guruhga xabar qiladi |
+| `speaking_submissions` | Telegram voice/video topshiriklar (holat, ball) |
+| `audio_submissions` | eski brauzer topshiriklari (zaxira uchun) |
 
 - **Loyiha ulanishi** `index.html` ichida: `window.SUPABASE_URL` +
   `window.SUPABASE_ANON_KEY` (publishable kalit).
 - **Login paytida** barcha jadvallar tortib olinadi → boshqa telefonda/PC da
   **bir xil login/parol** bilan kirilsa o'sha ma'lumotlar to'liq tiklanadi.
-- Har bir o'zgarish (o'quvchi, baho, davomat, qarz, xabar) **darhol** bulutga yoziladi.
+- Har bir o'zgarish (o'quvchi, baho, davomat, qarz, xabar, uyga vazifa) **darhol**
+  bulutga yoziladi; **5 soniyalik polling loop olib tashlangan** — real-time obuna
+  va login/ekran ochilgandagi bir martalik pull ishlatiladi (cheksiz yangilanish yo'q).
 - Birinchi marta jadvallar bo'sh bo'lsa, demo ma'lumot avtomatik seed qilinadi.
 
 **Sozlash (1 qadam):** `supabase.sql` faylini Supabase Dashboard → SQL Editor'da
-**Run** bosing (messages allaqachon bor — qayta yaratish xavfsiz).
+**Run** bosing (hammasi idempotent — qayta ishga tushirish xavfsiz). Yangi qo'shimcha:
+`homework` jadvali, `students.telegram_chat_id` va `voice_allowed` ustunlari.
 
 > ⚠️ Konfiguratsiya olib tashlansa ilova **localStorage** rejimida ishlayveradi
 > (graceful fallback). Publishing kaliti xavfsiz (faqat o'qish/yozish uchun;
@@ -123,6 +133,26 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
   tugmalarini ko'rsatadi: **[✅ Ha, tiklash] [❌ Bekor qilish]** → tasdiqdan
   keyin baza qayta tiklanadi va natija hisoboti yuboriladi.
 - Barcha backup/restore buyruqlari **faqat ustoz** uchun (boshqalariga rad etiladi).
+
+### 15. Uyga vazifalar (homework) + Telegram xabarnomasi
+- **Ustoz (Bosh ekran → "+ Uyga vazifa"):** guruh, **Mavzu**, **Vazifa (tavsif)**,
+  **Topshirish muddati** → `homework` jadvaliga saqlanadi.
+- **Bot** yangi vazifa paydo bo'lishini kuzatadi va **guruh barcha o'quvchilariga**
+  (Telegram'ga ulanganlarga) darhol yuboradi:
+  `📚 YANGI UYGA VAZIFA! / Guruh / Mavzu / Vazifa / Topshirish muddati` +
+  **[📱 Ilovani ochish]** tugmasi.
+- **O'quvchi portali:** "📚 Uyga vazifalar" — faqat **o'z guruhi** vazifalari.
+- O'quvchi botga `/login jasur 123` yozib hisobini ulaydi — shundan keyin unga
+  xabar boradi (`students.telegram_chat_id`).
+
+### 16. Tozalash (avval zaxira — xavfsiz)
+- **Profil → Ma'lumotlar Bazasi Zaxirasi → Tozalash:** jadval tanlanadi
+  (Baholar / Davomat / Xabarlar / Topshiriklar).
+- **Avval barcha jadvallar to'liq JSON zaxira fayl sifatida yuklab olinadi**,
+  keyin tasdiq modali: *"Eski ma'lumotlar fayl ko'rinishida yuklandi. Bazani
+  tozalashni tasdiqlaysizmi?"* → **[Bekor qilish] [Ha, tozalash]**.
+- Tasdiqlangach tanlangan jadval Supabase'da va lokalda tozalanadi.
+  (Botda zaxirani Telegram'ga olish uchun `/backup` buyrug'i bor.)
 
 ## Telegram bot (aiogram 3.x)
 
@@ -177,6 +207,7 @@ python3 bot.py
 
 | Buyruq | Vazifasi |
 |---|---|
+| `/login <login> <parol>` | O'quvchini Telegram hisobiga ulaydi (broadcast + speaking uchun) |
 | `/backup` | Barcha jadvallarni `backup_english_app.json` fayl sifatida ADMIN_ID ga yuboradi |
 | `/restore` | Zaxira faylini yuborishni so'raydi (keyin tasdiq tugmalari chiqadi) |
 | JSON fayl (document) | *"Haqiqatan ham bazani ushbu fayldan qayta tiklamoqchimisiz?"* → [✅ Ha, tiklash] [❌ Bekor qilish] |
@@ -197,7 +228,7 @@ HTML uchun xavfsiz escaped qilinadi.
 
 ```bash
 npm install      # test uchun (jsdom)
-npm test         # interaktiv smoke-test (194 tekshiruv)
+npm test         # interaktiv smoke-test (263 tekshiruv)
 npm start        # http://localhost:3000
 ```
 
@@ -208,8 +239,8 @@ index.html        — ilova qobigi
 css/styles.css    — Telegram tema o'zgaruvchilari bilan (yorug'/qorong'i)
 js/data.js        — mock ma'lumotlar (hisoblar, baholar, davomat, speaking)
 js/app.js         — kirish, rollar, kabinet, jurnal, davomat, speaking
-test/smoke.js     — jsdom asosida butun oqimni sinovdan o'tkazadi (194 tekshiruv)
-supabase.sql      — messages/audio_submissions jadvallari (SQL Editor'da Run)
+test/smoke.js     — jsdom asosida butun oqimni sinovdan o'tkazadi (263 tekshiruv)
+supabase.sql      — messages/homework/speaking_submissions + telegram_chat_id (SQL Editor'da Run)
 bot.py            — Telegram bot (aiogram 3.x): /start + xabar funksiyalari
 config.py         — BOT_TOKEN, WEBAPP_URL, ADMIN_ID
 requirements.txt  — aiogram>=3.13.0, aiohttp>=3.9.0
