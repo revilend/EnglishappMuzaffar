@@ -554,7 +554,9 @@ const until = async (fn, ms) => {
     attendance: [{ student_id: 77, date: '2026-10-01', status: 'present' }],
     grades: [{ student_id: 77, date: '2026-10-01', grade: 9, category: "Lug'at", note: '' }],
     messages: [{ student_id: 77, sender: 'teacher', text: 'Tiklangan xabar', created_at: '2026-10-01T10:00:00.000Z' }],
-    speaking_submissions: []
+    speaking_submissions: [],
+    audio_submissions: [{ id: 9, student_id: 77, date: '2026-10-02', url: 'data:audio/ogg;base64,AAA',
+                           status: 'graded', score: 8, feedback: 'Yaxshi' }]
   };
   const pickFile = () => {
     const f = new win.File([JSON.stringify(bak)], 'english_crm_backup_2026-10-13.json', { type: 'application/json' });
@@ -597,6 +599,10 @@ const until = async (fn, ms) => {
   check(attAfter2['2026-10-01'] && attAfter2['2026-10-01']['s77'] === 'present', 'zaxira: davomat tiklandi');
   const msgAfter = JSON.parse(win.localStorage.getItem('et_messages') || '[]');
   check(msgAfter.some(m => m.text === 'Tiklangan xabar' && m.sid === 's77'), 'zaxira: xabarlar tiklandi');
+  check(stAfter[0].audioSubmissions && stAfter[0].audioSubmissions.length === 1 &&
+    stAfter[0].audioSubmissions[0].score === 8 && stAfter[0].audioSubmissions[0].rid === 9 &&
+    stAfter[0].audioSubmissions[0].status === 'graded',
+    'zaxira: ovozli topshiriklar tiklandi (audio_submissions)');
   const accAfter = JSON.parse(win.localStorage.getItem('et_accounts') || '{}');
   check(!!accAfter['restore1'] && accAfter['restore1'].password === '9876' && !!accAfter['admin'],
     'zaxira: hisoblar qayta qurildi (admin + restore1)');

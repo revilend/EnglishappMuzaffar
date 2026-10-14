@@ -557,7 +557,7 @@ const CloudSync = (function () {
   }
 
   /* --- Zaxira: jadvallarni olish / qayta tiklash --- */
-  const BACKUP_TABLES = ['groups', 'students', 'attendance', 'grades', 'messages', 'speaking_submissions'];
+  const BACKUP_TABLES = ['groups', 'students', 'attendance', 'grades', 'messages', 'speaking_submissions', 'audio_submissions'];
 
   async function fetchBackup() {
     if (!ready()) return null;
@@ -590,7 +590,7 @@ const CloudSync = (function () {
     if (!ready() || !data) return false;
     try {
       /* 1) avval bog'liq qatorlar, keyin asosiy jadvallar (FK uchun) */
-      const delOrder = ['messages', 'grades', 'attendance', 'speaking_submissions', 'students', 'groups'];
+      const delOrder = ['messages', 'grades', 'attendance', 'speaking_submissions', 'audio_submissions', 'students', 'groups'];
       for (let i = 0; i < delOrder.length; i++) {
         const res = await client.from(delOrder[i]).delete().gte('id', 0);
         if (res.error && !missing(res.error)) throw res.error;
@@ -602,7 +602,8 @@ const CloudSync = (function () {
         ['attendance', ['id', 'student_id', 'date', 'status']],
         ['grades', ['id', 'student_id', 'date', 'grade', 'category', 'note']],
         ['messages', ['id', 'student_id', 'sender', 'text', 'created_at']],
-        ['speaking_submissions', ['id', 'media_type', 'telegram_file_id', 'status', 'created_at']]
+        ['speaking_submissions', ['id', 'media_type', 'telegram_file_id', 'status', 'created_at']],
+        ['audio_submissions', ['id', 'student_id', 'date', 'url', 'status', 'score', 'feedback', 'created_at']]
       ];
       const groupIds = {};
       (data.groups || []).forEach(g => { const n = toNumId(g && g.id); if (n != null) groupIds[n] = 1; });
@@ -1559,7 +1560,22 @@ function localBackupData() {
     .filter(m => toNumId(m.sid) != null)
     .map(m => ({ student_id: toNumId(m.sid), sender: m.sender, text: m.text, created_at: m.createdAt }));
 
-  return { groups, students, attendance, grades, messages, speaking_submissions: [] };
+  const audio_submissions = [];
+  getStudents().forEach(st => {
+    const student_id = toNumId(st.id);
+    if (student_id == null) return;
+    (st.audioSubmissions || []).forEach(a => {
+      if (!a || !a.url) return;
+      audio_submissions.push({
+        student_id, date: a.date, url: a.url,
+        status: a.status || 'pending',
+        score: a.score == null ? null : a.score,
+        feedback: a.feedback || ''
+      });
+    });
+  });
+
+  return { groups, students, attendance, grades, messages, speaking_submissions: [], audio_submissions };
 }
 
 async function downloadBackup() {
@@ -1599,6 +1615,24 @@ function restoreLocal(data) {
     return { id: 'g' + n, dbId: n, name: g.name || '', days: g.days || '', time: g.time || '' };
   }).filter(Boolean);
 
+  /* ovozli topshiriklar (audio_submissions) — o'quvchiga bog'lab tiklaymiz */
+  const audioBySid = {};
+  (data.audio_submissions || []).forEach((a, i) => {
+    const sid = toNumId(a && a.student_id);
+    if (sid == null || !a || !a.url) return;
+    const rid = (a.id != null && a.id !== '') ? toNumId(a.id) : null;
+    audioBySid['s' + sid] = audioBySid['s' + sid] || [];
+    audioBySid['s' + sid].push({
+      id: rid != null ? 'a' + rid : 'a' + Date.now() + i,
+      rid: rid,
+      date: a.date || '',
+      url: a.url,
+      status: a.status || 'pending',
+      score: a.score == null ? null : Number(a.score),
+      feedback: a.feedback || ''
+    });
+  });
+
   const students = (data.students || []).map(st => {
     const n = toNumId(st.id);
     if (n == null) return null;
@@ -1611,7 +1645,7 @@ function restoreLocal(data) {
       login: st.login || '',
       password: st.password || '',
       speakingDebt: Number(st.speaking_debt) || 0,
-      audioSubmissions: []
+      audioSubmissions: (audioBySid['s' + n] || [])
     };
   }).filter(Boolean);
 
