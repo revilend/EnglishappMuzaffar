@@ -353,6 +353,8 @@ async def main():
     check("🎙 Speaking topshirish" in stu_rb and "📊 Baholarim va Qarzim" in stu_rb,
           "start: o'quvchi menyusi [🎙 Speaking topshirish] [📊 Baholarim va Qarzim]")
     check("🔑 Login orqali ulanish" in stu_rb, "start: o'quvchi menyusi [🔑 Login orqali ulanish]")
+    check(st.answers[1]["reply_markup"].is_persistent is True,
+          "start: o'quvchi menyusi doimiy (is_persistent=True)")
 
     st = Msg(ADMIN, "/start")
     await B.cmd_start(st)
@@ -372,6 +374,8 @@ async def main():
           "start: ustoz menyusi [🎙 Yangi Speakinglar] [👥 O'quvchilar ro'yxati]")
     check("📥 Bazani yuklab olish (Backup)" in ad_rb and "🗑 Bazani tozalash" in ad_rb,
           "start: ustoz menyusi [📥 Bazani yuklab olish (Backup)] [🗑 Bazani tozalash]")
+    check(st.answers[1]["reply_markup"].is_persistent is True,
+          "start: ustoz menyusi doimiy (is_persistent=True)")
 
     # =========================================================
     # 2) Ustoz: 👥 O'quvchilar ro'yxati
