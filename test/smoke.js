@@ -410,7 +410,7 @@ loginAs('jasur', '123');
 check(text().includes('Jasur Karimov'), 'student: kabinet ochildi');
 check(text().includes('8-sinf') && text().includes('General English'), 'student: sinf + guruh ko\'rsatildi');
 check(q('#app-header').textContent.includes("O'quvchi"), 'student: headerda "O\'quvchi"');
-check(navLabels().length === 2 && navLabels().join(',') === 'Portim,Profil', 'student: nav faqat Portim + Profil');
+check(navLabels().length === 2 && navLabels().join(',') === 'Kabinet,Profil', 'student: nav faqat Kabinet + Profil');
 
 check(text().includes('Mening baholarim'), 'student: "Mening baholarim"');
 check(qa('.grade-row').length > 0, 'student: baholar ro\'yxati bor');
@@ -516,7 +516,7 @@ check(qa('.debt-num').filter(d => d.textContent.trim() === '0 ta').length >= 1, 
 click('[data-act="nav"][data-screen="speaking"]');
 check(text().includes('Speaking qarzi (o\'quvchilar)'), 'speaking: qarz ro\'yxati ekranda');
 check(qa('[data-act="debt-plus"]').length === nStud, 'speaking: ' + nStud + ' ta [+] tugma');
-check(text().includes('Telegram topshiriklari'), 'speaking: Telegram inbox bo\'limi bor');
+check(text().includes('Telegram topshiriqlari'), 'speaking: Telegram inbox bo\'limi bor');
 check(text().includes("Hozircha Telegram orqali topshirik yo'q"), 'speaking: inbox holati ko\'rinadi');
 
 /* --- 4. Telegram topshirik → baholash → qarz -1 --- */

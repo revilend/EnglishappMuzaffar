@@ -236,7 +236,13 @@ const CloudSync = (function () {
       }
       const res = await query;
       if (res.error) { if (missing(res.error)) hasMessages = false; return false; }
-      const cache = store.get(K.messages, []).filter(function (m) { return sid == null || m.sid === sid; });
+      /* Ilova paydo bo'lganda DB qatorlari keshga qayta qo'shilmasin —
+         aks holda har bir realtime yangilanishda xabarlar dublikatlanadi. */
+      const cache = store.get(K.messages, []).filter(function (m) {
+        if (sid != null && m.sid !== sid) return false;
+        if (sid == null) return false;
+        return !(m.id && String(m.id).charAt(0) === 'm');
+      });
       res.data.forEach(function (r) {
         cache.push({
           id: 'm' + r.id,
@@ -830,7 +836,7 @@ function navItems() {
   }
   /* O'quvchi: faqat o'z portali va profili */
   return [
-    ['home', 'Portim', ICON.home],
+    ['home', 'Kabinet', ICON.home],
     ['profile', 'Profil', ICON.profile]
   ];
 }
@@ -1311,7 +1317,7 @@ function profileScreen() {
   ${isTeacher() ? `
   <div class="section-title">Ma'lumotlar Bazasi Zaxirasi</div>
   <div class="card backup-card">
-    <div class="muted small">Guruhlar, o'quvchilar, davomat, baholar, xabarlar va speaking topshiriklari JSON faylda saqlanadi.</div>
+    <div class="muted small">Guruhlar, o'quvchilar, davomat, baholar, xabarlar va speaking topshiriqlari JSON faylda saqlanadi.</div>
     <button type="button" class="btn btn-primary btn-block" data-act="backup-dl">📥 Bazani yuklab olish (Backup)</button>
     <button type="button" class="btn btn-ghost btn-block" data-act="backup-pick">📤 Bazani qayta tiklash (Restore)</button>
     <input type="file" id="backup-file" accept="application/json,.json" hidden />
@@ -1770,7 +1776,7 @@ const CLEANUP_TABLES = [
   ['grades', 'Baholar'],
   ['attendance', 'Davomat'],
   ['messages', 'Xabarlar'],
-  ['speaking_submissions', 'Topshiriklar']
+  ['speaking_submissions', 'Topshiriqlar']
 ];
 
 async function startCleanup() {
@@ -2282,7 +2288,7 @@ function speakingScreen() {
       </div>`).join('')}
   </div>
 
-  <div class="section-title">Telegram topshiriklari (Inbox)</div>
+  <div class="section-title">Telegram topshiriqlari (Inbox)</div>
   <div class="card">
     ${renderTgInbox()}
   </div>
@@ -2547,14 +2553,15 @@ function fmtHM(iso) {
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 function messagesFor(sid) {
-  return store.get(K.messages, [])
-    .filter(m => m.sid === sid)
-    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  const rows = store.get(K.messages, []).filter(m => m.sid === sid);
+  /* Takroriy xabarlarni yagona id bo'yicha kesib tashlaymiz */
+  const uniqueMessages = Array.from(new Map(rows.map(m => [m.id, m])).values());
+  return uniqueMessages.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 }
 function chatListHTML(sid, viewer) {
   const msgs = messagesFor(sid);
   if (!msgs.length) return `<div class="empty"><span class="emoji">💬</span>Hozircha xabar yo'q</div>`;
-  return msgs.map(m => `<div class="chat-msg ${m.sender === viewer ? 'mine' : 'theirs'}">
+  return msgs.map(m => `<div class="chat-msg ${m.sender === viewer ? 'mine' : 'theirs'}" data-message-id="${esc(String(m.id))}">
       <div class="chat-text">${esc(m.text)}</div>
       <div class="chat-time">${fmtHM(m.createdAt)}</div>
     </div>`).join('');
@@ -2572,6 +2579,7 @@ function updateChatView() {
   const list = $('#chat-list');
   const c = activeChat();
   if (!list || !c) return;
+  list.innerHTML = '';
   list.innerHTML = chatListHTML(c.sid, c.viewer);
   list.scrollTop = list.scrollHeight;
 }
@@ -2613,9 +2621,19 @@ function sendChat() {
   if (!c || !input) return;
   const text = (input.value || '').trim();
   if (!text) { toast('Xabar matnini kiriting', 'error'); return; }
+  const sendBtn = document.querySelector('[data-act="send-chat"]');
+  if (sendBtn) sendBtn.disabled = true; /* Supabase insert tugaguncha o'chiriladi */
   input.value = '';
-  CloudSync.sendMessage(c.sid, c.viewer, text);
+  /* Lokal xabar keshga darhol tushadi (sendMessage ichida) — shuning uchun
+     natroniy ham render qilamiz, insert tugagach esa qayta render + tugma ochiladi. */
+  const sending = CloudSync.sendMessage(c.sid, c.viewer, text);
   updateChatView();
+  Promise.resolve(sending)
+    .catch(function (e) { console.warn('[cloud] send:', (e && e.message) || e); })
+    .then(function () {
+      updateChatView();
+      if (sendBtn) sendBtn.disabled = false;
+    });
 }
 
 /* ==================== Hodisalar ==================== */

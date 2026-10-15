@@ -56,14 +56,14 @@ async def start_dummy_web_server():
 # ============================================================
 ADMIN_MENU = {
     "speak": "🎙 Yangi Speakinglar",
-    "students": "👥 O'quvchilar ro'yxati",
+    "students": "👥 O'quvchilar va Qarzlar",
     "backup": "📥 Bazani yuklab olish (Backup)",
     "cleanup": "🗑 Bazani tozalash",
 }
 STUDENT_MENU = {
     "speak": "🎙 Speaking topshirish",
     "grades": "📊 Baholarim va Qarzim",
-    "login": "🔑 Login orqali ulanish",
+    "login": "🔑 Login orqali ulash",
 }
 
 
@@ -73,7 +73,7 @@ def admin_reply_keyboard() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
         is_persistent=True,
         keyboard=[
-            [KeyboardButton(text="🚀 Muzaffar Amirov Paneli (Web App)",
+            [KeyboardButton(text="📱 Muzaffar Amirov Paneli",
                             web_app=WebAppInfo(url=config.WEBAPP_URL))],
             [KeyboardButton(text=ADMIN_MENU["speak"]), KeyboardButton(text=ADMIN_MENU["students"])],
             [KeyboardButton(text=ADMIN_MENU["backup"]), KeyboardButton(text=ADMIN_MENU["cleanup"])],
@@ -87,7 +87,7 @@ def student_reply_keyboard() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
         is_persistent=True,
         keyboard=[
-            [KeyboardButton(text="🚀 Shaxsiy Kabinetim (Web App)",
+            [KeyboardButton(text="📱 Shaxsiy Kabinetim",
                             web_app=WebAppInfo(url=config.WEBAPP_URL))],
             [KeyboardButton(text=STUDENT_MENU["speak"]), KeyboardButton(text=STUDENT_MENU["grades"])],
             [KeyboardButton(text=STUDENT_MENU["login"])],
@@ -303,6 +303,32 @@ async def cmd_start(message: types.Message):
                          reply_markup=student_reply_keyboard(), parse_mode="HTML")
 
 
+# /admin command — To'liq ustoz boshqaruv paneli
+@dp.message(Command("admin"))
+async def cmd_admin(message: types.Message):
+    if message.from_user.id != config.ADMIN_ID:
+        await message.answer("⛔ Kechirasiz! Ushbu buyruq faqat Muzaffar Amirov uchun.")
+        return
+    try:
+        await bot.set_chat_menu_button(
+            chat_id=message.from_user.id,
+            menu_button=MenuButtonWebApp(text="📱 Muzaffar Amirov Paneli",
+                                         web_app=WebAppInfo(url=config.WEBAPP_URL))
+        )
+    except Exception as e:
+        logging.warning(f"set_chat_menu_button (/admin): {e}")
+    inline = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🚀 Muzaffar Amirov Panelini ochish",
+                              web_app=WebAppInfo(url=config.WEBAPP_URL))],
+    ])
+    await message.answer(
+        "🎛 <b>Muzaffar Amirov — boshqaruv paneli</b>\n\n"
+        "Quyidagi tugmalar orqali boshqaruvni amalga oshiring:",
+        reply_markup=inline, parse_mode="HTML")
+    await message.answer("📋 <b>Ustoz menyusi</b> — kerakli bo'limni tanlang:",
+                         reply_markup=admin_reply_keyboard(), parse_mode="HTML")
+
+
 # ============================================================
 # O'quvchini Telegram hisobiga ulash (/login) + yordamchilar
 # ============================================================
@@ -471,11 +497,14 @@ async def btn_student_speak(message: types.Message):
 # voice_allowed = true bo'lgandagina qabul qilinadi)
 # ============================================================
 def grade_keyboard(sub_id) -> InlineKeyboardMarkup:
-    """Ustoz uchun 1-tap baho: [10][9][8][7][6][5] + [📝 Saytda ochish]."""
-    row = [InlineKeyboardButton(text=str(n), callback_data=f"g:{sub_id}:{n}")
-           for n in (10, 9, 8, 7, 6, 5)]
-    return InlineKeyboardMarkup(inline_keyboard=[
-        row,
+    """Ustoz uchun 1-tap baho: [10][9][8][7][6] / [5][4][3][2][1] + [📝 Saytda ochish]."""
+    rows = [
+        [InlineKeyboardButton(text=str(n), callback_data=f"g:{sub_id}:{n}")
+         for n in (10, 9, 8, 7, 6)],
+        [InlineKeyboardButton(text=str(n), callback_data=f"g:{sub_id}:{n}")
+         for n in (5, 4, 3, 2, 1)],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows + [
         [InlineKeyboardButton(text="📝 Saytda ochish", web_app=WebAppInfo(url=config.WEBAPP_URL))],
     ])
 
@@ -674,12 +703,11 @@ async def on_grade_tap(call: types.CallbackQuery):
 # Uyga vazifalari: yangi homework → guruh o'quvchilariga xabar
 # ============================================================
 HW_TEXT = (
-    "📚 YANGI UYGA VAZIFA!\n"
+    "📚 <b>YANGI UYGA VAZIFA!</b>\n"
     "Guruh: {group_name}\n"
     "Mavzu: {title}\n"
     "Vazifa: {description}\n"
-    "Topshirish muddati: {due_date}\n\n"
-    "Ilovaga kirib to'liq ko'rishingiz mumkin!"
+    "Muddati: {due_date}"
 )
 
 _last_hw_seen = None  # bot boshlanganda mavjud vazifalar "ko'rilgan" bo'ladi
@@ -702,10 +730,10 @@ async def broadcast_homework(row: dict) -> int:
     ])
     due = row.get("due_date") or "—"
     text = HW_TEXT.format(
-        group_name=group_name,
-        title=row.get("title") or "—",
-        description=row.get("description") or "—",
-        due_date=due,
+        group_name=html.escape(str(group_name)),
+        title=html.escape(str(row.get("title") or "—")),
+        description=html.escape(str(row.get("description") or "—")),
+        due_date=html.escape(str(due)),
     )
     sent = 0
     for st in studs:
@@ -713,7 +741,7 @@ async def broadcast_homework(row: dict) -> int:
         if not chat_id:
             continue
         try:
-            await bot.send_message(chat_id=int(chat_id), text=text, reply_markup=kb)
+            await bot.send_message(chat_id=int(chat_id), text=text, reply_markup=kb, parse_mode="HTML")
             sent += 1
         except Exception as e:
             logging.warning(f"homework notify {st.get('id')} -> {chat_id}: {e}")
@@ -751,6 +779,62 @@ async def homework_watcher():
                 await asyncio.sleep(60)
             else:
                 logging.warning(f"homework watcher: {e}")
+        await asyncio.sleep(5)
+
+
+# ============================================================
+# Ovozli topshirish ruxsati — ustoz web ilovada yoqsa, o'quvchiga xabar
+# ============================================================
+VOICE_ALERT_TEXT = (
+    "🎙 <b>Ruxsat berildi!</b>\n\n"
+    "<b>Muzaffar Amirov</b> sizga ovozli yoki dumaloq video (krujok) orqali "
+    "Speaking topshirishga ruxsat berdi.\n"
+    "Marhamat, javobingizni shu yerga yuborishingiz mumkin!"
+)
+
+_voice_seen: dict = {}  # student_id -> oxirgi voice_allowed holati
+
+
+async def voice_tick() -> int:
+    """voice_allowed false -> true o'tishlarini topib, o'quvchiga xabar yuboradi."""
+    global _voice_seen
+    try:
+        rows = supabase.table("students").select(
+            "id, name, voice_allowed, telegram_chat_id"
+        ).execute().data or []
+    except Exception as e:
+        logging.warning(f"voice watcher: {e}")
+        return 0
+
+    current = {r["id"]: bool(r.get("voice_allowed")) for r in rows}
+    first_run = not _voice_seen
+    sent = 0
+    for r in rows:
+        sid = r["id"]
+        allowed = current[sid]
+        was = _voice_seen.get(sid)
+        # faqat yangi qo'shilgan yoki false -> true o'tishida xabar ketadi
+        if not first_run and was is not None and was is False and allowed is True:
+            chat_id = r.get("telegram_chat_id")
+            if chat_id:
+                try:
+                    await bot.send_message(chat_id=int(chat_id), text=VOICE_ALERT_TEXT,
+                                            parse_mode="HTML")
+                    sent += 1
+                except Exception as e:
+                    logging.warning(f"voice alert {sid} -> {chat_id}: {e}")
+    _voice_seen = current
+    return sent
+
+
+async def voice_watcher():
+    """students.voice_allowed o'zgarishlarini kuzatadi (ustoz ilovada toggle qilganda)."""
+    await asyncio.sleep(3)
+    while True:
+        try:
+            await voice_tick()
+        except Exception as e:
+            logging.warning(f"voice watcher: {e}")
         await asyncio.sleep(5)
 
 
@@ -1110,6 +1194,8 @@ async def main():
 
     # Uyga vazifalari kuzatuvchisi (yangi homework → guruhga xabar)
     asyncio.create_task(homework_watcher())
+    # Ovozli topshirish ruxsati kuzatuvchisi (voice_allowed → o'quvchiga xabar)
+    asyncio.create_task(voice_watcher())
 
     logging.info("Bot starting with polling...")
     await dp.start_polling(bot)

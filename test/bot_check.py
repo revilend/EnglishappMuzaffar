@@ -348,11 +348,11 @@ async def main():
     await B.cmd_start(st)
     check("Assalomu alaykum" in st.answers[0]["text"], "start: o'quvchi salomi")
     stu_rb = rb_texts(st.answers[1]["reply_markup"])
-    check("🚀 Shaxsiy Kabinetim (Web App)" in stu_rb,
-          "start: o'quvchi menyusi '🚀 Shaxsiy Kabinetim (Web App)'")
+    check("📱 Shaxsiy Kabinetim" in stu_rb,
+          "start: o'quvchi menyusi '📱 Shaxsiy Kabinetim'")
     check("🎙 Speaking topshirish" in stu_rb and "📊 Baholarim va Qarzim" in stu_rb,
           "start: o'quvchi menyusi [🎙 Speaking topshirish] [📊 Baholarim va Qarzim]")
-    check("🔑 Login orqali ulanish" in stu_rb, "start: o'quvchi menyusi [🔑 Login orqali ulanish]")
+    check("🔑 Login orqali ulash" in stu_rb, "start: o'quvchi menyusi [🔑 Login orqali ulash]")
     check(st.answers[1]["reply_markup"].is_persistent is True,
           "start: o'quvchi menyusi doimiy (is_persistent=True)")
 
@@ -368,10 +368,10 @@ async def main():
     check("📥 Barcha ma'lumotlarni yuklab olish (Backup)" in texts,
           "start: '📥 Barcha ma'lumotlarni yuklab olish (Backup)' tugmasi")
     ad_rb = rb_texts(st.answers[1]["reply_markup"])
-    check("🚀 Muzaffar Amirov Paneli (Web App)" in ad_rb,
-          "start: ustoz menyusi '🚀 Muzaffar Amirov Paneli (Web App)'")
-    check("🎙 Yangi Speakinglar" in ad_rb and "👥 O'quvchilar ro'yxati" in ad_rb,
-          "start: ustoz menyusi [🎙 Yangi Speakinglar] [👥 O'quvchilar ro'yxati]")
+    check("📱 Muzaffar Amirov Paneli" in ad_rb,
+          "start: ustoz menyusi '📱 Muzaffar Amirov Paneli'")
+    check("🎙 Yangi Speakinglar" in ad_rb and "👥 O'quvchilar va Qarzlar" in ad_rb,
+          "start: ustoz menyusi [🎙 Yangi Speakinglar] [👥 O'quvchilar va Qarzlar]")
     check("📥 Bazani yuklab olish (Backup)" in ad_rb and "🗑 Bazani tozalash" in ad_rb,
           "start: ustoz menyusi [📥 Bazani yuklab olish (Backup)] [🗑 Bazani tozalash]")
     check(st.answers[1]["reply_markup"].is_persistent is True,
