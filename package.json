@@ -5,7 +5,8 @@
   "description": "English Tutor — Telegram Mini App (Step 1)",
   "scripts": {
     "start": "python3 -m http.server 3000 --bind 0.0.0.0",
-    "test": "node test/smoke.js"
+    "test": "node test/smoke.js",
+    "test:bot": "python3 test/bot_check.py"
   },
   "devDependencies": {
     "jsdom": "^24.1.0"
