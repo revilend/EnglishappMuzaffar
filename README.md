@@ -68,7 +68,7 @@ Barcha sinf variantlari va filtrlari qat'iy: `5-sinf, 6-sinf, 7-sinf, 8-sinf, 9-
   (voice), 📹 krujok (video note) yoki MP4 yuboradi.
 - **Ustoz ruxsati:** har bir o'quvchi kartasida **"🎙 Ovozli topshirishga ruxsat"**
   kaliti → `students.voice_allowed`. Yopiq bo'lsa bot rad etadi:
-  *"⛔ Kechirasiz! Muzaffar Amirov hozircha sizga ovozli topshirishga ruxsat bermagan..."*
+  *"⛔ Kechirasiz! Ustoz hozircha sizga ovozli topshirishga ruxsat bermagan. Darsda topshiring."*
 - **Bot qabul qilganda:** `speaking_submissions` jadvaliga yoziladi, qarz +1 va
   ustozga **[📝 Mini App'da Baholash]** tugmasi bilan forward qilinadi.
 - **Ustoz (Speaking → Telegram topshiriklari):** **1–10 ball** + izoh qo'yadi —
