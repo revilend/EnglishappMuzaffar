@@ -453,7 +453,7 @@ async def btn_student_speak(message: types.Message):
         return
     if st.get("voice_allowed") is False:
         await message.answer(
-            "⛔ Kechirasiz! Muzaffar Amirov hozircha sizga ovozli topshirishga ruxsat bermagan. Darsda topshiring."
+            "⛔ Kechirasiz! Ustoz hozircha sizga ovozli topshirishga ruxsat bermagan. Darsda topshiring."
         )
         return
     debt = int(st.get("speaking_debt") or 0)
@@ -533,7 +533,7 @@ async def handle_speaking_submission(message: types.Message):
     # 2) Muzaffar Amirov ruxsat berganmi? (students.voice_allowed)
     if student.get("voice_allowed") is False:
         await message.answer(
-            "⛔ Kechirasiz! Muzaffar Amirov hozircha sizga ovozli topshirishga ruxsat bermagan. Darsda topshiring."
+            "⛔ Kechirasiz! Ustoz hozircha sizga ovozli topshirishga ruxsat bermagan. Darsda topshiring."
         )
         return
 

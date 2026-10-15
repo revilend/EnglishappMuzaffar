@@ -551,9 +551,8 @@ async def main():
     # =========================================================
     m = Msg(666, B.STUDENT_MENU["speak"])
     await B.btn_student_speak(m)
-    check(m.answers[0]["text"] ==
-          "⛔ Kechirasiz! Muzaffar Amirov hozircha sizga ovozli topshirishga ruxsat "
-          "bermagan. Darsda topshiring.",
+    check(m.answers[0]["text"]
+          == "⛔ Kechirasiz! Ustoz hozircha sizga ovozli topshirishga ruxsat bermagan. Darsda topshiring.",
           "speaking: voice_allowed=false -> aynan spec rad xabari")
 
     m = Msg(555, B.STUDENT_MENU["speak"])
@@ -573,9 +572,8 @@ async def main():
     # ruxsat yo'q
     v = Msg(666, voice=Media("V1"))
     await B.handle_speaking_submission(v)
-    check(v.answers[0]["text"] ==
-          "⛔ Kechirasiz! Muzaffar Amirov hozircha sizga ovozli topshirishga ruxsat "
-          "bermagan. Darsda topshiring.",
+    check(v.answers[0]["text"]
+          == "⛔ Kechirasiz! Ustoz hozircha sizga ovozli topshirishga ruxsat bermagan. Darsda topshiring.",
           "voice: ruxsat yo'q -> aynan spec rad xabari")
 
     # ruxsat bor -> ustozga forward + qarz +1
