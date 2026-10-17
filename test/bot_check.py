@@ -499,14 +499,14 @@ async def main():
           "restore: yo'q o'quvchiga bog'langan qator tashlanadi")
 
     # =========================================================
-    # 6) O'QUVCHI MENYUSI — 🔑 Login orqali ulanish
+    # 6) O'QUVCHI MENYUSI — 🔑 Login orqali ulash
     # =========================================================
     reset_rows()
     B.pending_logins.clear()
 
     m = Msg(999, B.STUDENT_MENU["login"])
     await B.btn_student_login(m)
-    check("Login orqali ulanish" in m.answers[0]["text"],
+    check("Login orqali ulash" in m.answers[0]["text"],
           "menyu: login tugmasi -> yo'riqnoma")
     check(999 in B.pending_logins, "menyu: chat 999 kutish holatiga o'tdi")
 
@@ -544,7 +544,7 @@ async def main():
 
     m = Msg(444, B.STUDENT_MENU["grades"])
     await B.btn_student_grades(m)
-    check("Login orqali ulanish" in m.answers[0]["text"], "baholar: ulanmagan -> login taklifi")
+    check("Login orqali ulash" in m.answers[0]["text"], "baholar: ulanmagan -> login taklifi")
 
     # =========================================================
     # 8) 🎙 Speaking topshirish

@@ -351,7 +351,7 @@ async def cmd_login(message: types.Message):
             "🔑 <b>O'quvchi kabineti ulanishi</b>\n\n"
             "Iltimos, shu ko'rinishda yozing:\n"
             "<code>/login jasur 123</code>\n\n"
-            "yoki menyudan <b>🔑 Login orqali ulanish</b> tugmasini bosing.",
+            "yoki menyudan <b>🔑 Login orqali ulash</b> tugmasini bosing.",
             parse_mode="HTML",
         )
         return
@@ -403,7 +403,7 @@ async def _linked_or_prompt(message: types.Message):
         return st
     await message.answer(
         "🔐 <b>Avval hisobingizni ulang!</b>\n\n"
-        "Menyudan <b>🔑 Login orqali ulanish</b> ni bosing va login/parolni yuboring "
+        "Menyudan <b>🔑 Login orqali ulash</b> tugmasini bosing va login/parolni yuboring "
         "(yoki <code>/login jasur 123</code>).",
         parse_mode="HTML",
     )
@@ -421,7 +421,7 @@ async def btn_student_login(message: types.Message):
         return
     pending_logins.add(message.from_user.id)
     await message.answer(
-        "🔑 <b>Login orqali ulanish</b>\n\n"
+        "🔑 <b>Login orqali ulash</b>\n\n"
         "Loginni va parolni <b>bitta xabarda</b> yozing — masalan:\n"
         "<code>jasur 123</code>\n\n"
         "Login va parolingizni ilovadan ko'rishingiz mumkin.",
@@ -553,7 +553,7 @@ async def handle_speaking_submission(message: types.Message):
     if not student:
         await message.answer(
             "🔐 <b>Avval hisobingizni ulang!</b>\n\n"
-            "Menyudan <b>🔑 Login orqali ulanish</b> ni bosing yoki shunday yozing: <code>/login jasur 123</code>\n"
+            "Menyudan <b>🔑 Login orqali ulash</b> tugmasini bosing yoki shunday yozing: <code>/login jasur 123</code>\n"
             "(Login va parolingizni o'quvchi kabinetasidan oling)",
             parse_mode="HTML",
         )
@@ -1158,7 +1158,7 @@ async def send_credentials(chat_id: int, student_name: str, login: str, password
 
 
 # ============================================================
-# Erkin matn: "🔑 Login orqali ulanish" ni bosganlar uchun
+# Erkin matn: "🔑 Login orqali ulash" ni bosganlar uchun
 # login/parol qabuli (ro'yxatdagi barcha handlerlardan KEYIN)
 # ============================================================
 @dp.message(F.text)
