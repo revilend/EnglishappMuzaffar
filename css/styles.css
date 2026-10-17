@@ -447,6 +447,29 @@ select.input {
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.error { background: var(--danger); }
+/* Tugmali toast (bildirishnoma ruxsati so'rovi) */
+.toast--action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  max-width: 92%;
+  line-height: 1.45;
+}
+.toast.show.toast--action { pointer-events: auto; } /* aslida .toast pointer-events: none */
+.toast-action {
+  flex: none;
+  border: 0;
+  border-radius: 9px;
+  background: #fff;
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.toast-action:active { transform: translateY(1px); }
 body.auth-mode .toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
 
 /* ==================== Step 2: Baholar jurnali ==================== */

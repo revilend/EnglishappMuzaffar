@@ -200,6 +200,9 @@ const CloudSync = (function () {
   let hasMessages = true;
   let hasAudio = true;
   let subscribed = false;
+  let notifSubscribed = false;
+  /* Bildirishnoma yozadigan jadvallar */
+  const NOTIFY_TABLES = ['grades', 'homework', 'students', 'messages', 'speaking_submissions'];
   const gradeTimers = {};
 
   function bg(p, tag) {
@@ -688,7 +691,13 @@ const CloudSync = (function () {
 
   /* Real-time: messages jadvaliga obuna (publication yo'l qo'ysa) */
   function subscribe() {
-    if (!ready() || !hasMessages || subscribed) return;
+    if (!ready()) return;
+    subscribeMessages();
+    subscribeNotifications();
+  }
+
+  function subscribeMessages() {
+    if (!hasMessages || subscribed) return;
     try {
       const ch = client.channel('messages-live');
       ch.on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, function () { refreshChat(); })
@@ -697,6 +706,24 @@ const CloudSync = (function () {
         });
       subscribed = true;
     } catch (e) { subscribed = false; }
+  }
+
+  /* Real-time: bildirishnomalar uchun barcha tegishli jadvallar */
+  function subscribeNotifications() {
+    if (notifSubscribed) return;
+    try {
+      const ch = client.channel('notify-live');
+      NOTIFY_TABLES.forEach(function (t) {
+        ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: t },
+            function (p) { onCloudNotifChange(t, p && p.new, null); })
+          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: t },
+            function (p) { onCloudNotifChange(t, p && p.new, p && p.old); });
+      });
+      ch.subscribe(function (status) {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') notifSubscribed = false;
+      });
+      notifSubscribed = true;
+    } catch (e) { notifSubscribed = false; }
   }
 
   return {
@@ -748,6 +775,8 @@ function startSession(login) {
   /* Boshqa qurilmadan kirgan bo'lsak — bulutdan ma'lumotni tiklandi (doLogin) */
   CloudSync.subscribe();
   refreshChat();
+  /* Bildirishnomalar ruxsati hali so'ralmagan bo'lsa — so'raymiz (salomdan keyin) */
+  Notif.afterLogin();
 }
 function go(screen) {
   state.screen = screen;
@@ -785,6 +814,183 @@ function toast(msg, type) {
   clearTimeout(state.toastTimer);
   state.toastTimer = setTimeout(() => { el.className = 'toast'; }, 2600);
 }
+
+/* Tugmali toast — masalan bildirishnoma ruxsati so'rovi */
+function toastAction(msg, actionLabel, onAction) {
+  const el = $('#toast');
+  if (!el) return;
+  clearTimeout(state.toastTimer);
+  el.innerHTML = '';
+  el.appendChild(document.createTextNode(msg + ' '));
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'toast-action';
+  btn.textContent = actionLabel;
+  btn.addEventListener('click', function () {
+    clearTimeout(state.toastTimer);
+    el.className = 'toast';
+    el.innerHTML = '';
+    onAction();
+  });
+  el.appendChild(btn);
+  el.className = 'toast show toast--action';
+  state.toastTimer = setTimeout(function () { el.className = 'toast'; }, 15000);
+}
+
+/* ==================== Brauzer bildirishnomalari (Web Push) ====================
+   Bloklangan bo'lsa — jim o'tamiz: barcha ogohlantirishlar UI (toast) va
+   Telegram botda qolaveradi. */
+const Notif = (function () {
+  const ICON_URL = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+    '<rect width="64" height="64" rx="14" fill="#2563eb"/>' +
+    '<circle cx="32" cy="32" r="15" fill="#fff" opacity=".92"/></svg>'
+  );
+  const PROMPT_TEXT = '🔔 Yangi baholar va xabarlarni o\'tkazib yubormaslik uchun bildirishnomalarni yoqing';
+  const PROMPT_BUTTON = 'Ruxsat berish';
+  const shown = Object.create(null); /* bitta hodisa bir marta ko'rsatiladi */
+
+  function supported() {
+    return typeof window !== 'undefined' && typeof window.Notification !== 'undefined';
+  }
+  function permission() { return supported() ? window.Notification.permission : 'denied'; }
+  function granted() { return supported() && window.Notification.permission === 'granted'; }
+  function blocked() { const p = permission(); return p === 'denied' || p === 'default'; }
+
+  function show(title, body) {
+    if (!granted()) return false;
+    try {
+      new window.Notification(title, { body: body, icon: ICON_URL });
+      return true;
+    } catch (e) {
+      /* ba'zi brauzerlar (yoki HTTPS emas) Notification quruvchisini tashlaydi */
+      console.warn('[notif]', (e && e.message) || e);
+      return false;
+    }
+  }
+
+  /* key — qatorning yagona id'si; ruxsat hali 'default' bo'lsa ko'rsatmaymiz,
+     lekin kalitni ham yozmaymiz — ruxsat berilgach keyingi realtime yangilikda chiqadi. */
+  function notifyOnce(key, title, body) {
+    if (!key || shown[key]) return false;
+    if (!granted()) return false;
+    shown[key] = true;
+    return show(title, body);
+  }
+
+  function request() {
+    if (!supported()) return;
+    if (granted()) { toast('Bildirishnomalar yoqildi 🔔'); return; }
+    if (permission() === 'denied') { toast("Brauzerda bildirishnomalar bloklangan", 'error'); return; }
+    const onDone = function (p) {
+      if (p === 'granted') toast('Bildirishnomalar yoqildi 🔔');
+      else toast("Bildirishnomalar o'chirib qoldi", 'error');
+    };
+    try {
+      const r = window.Notification.requestPermission(onDone);
+      if (r && typeof r.then === 'function') { r.then(onDone).catch(function () {}); }
+    } catch (e) { console.warn('[notif] request:', (e && e.message) || e); }
+  }
+
+  function showPrompt() {
+    if (permission() !== 'default') return false;
+    toastAction(PROMPT_TEXT, PROMPT_BUTTON, request);
+    return true;
+  }
+
+  /* Kirganda: ruxsat so'ralmagan bo'lsa — do'stona so'rov (salomdan keyin) */
+  function afterLogin(delayMs) {
+    if (permission() !== 'default') return false;
+    setTimeout(showPrompt, typeof delayMs === 'number' ? delayMs : 2800);
+    return true;
+  }
+
+  function resetSeen() {
+    Object.keys(shown).forEach(function (k) { delete shown[k]; });
+  }
+
+  return {
+    supported: supported,
+    permission: permission,
+    granted: granted,
+    blocked: blocked,
+    show: show,
+    notifyOnce: notifyOnce,
+    request: request,
+    showPrompt: showPrompt,
+    afterLogin: afterLogin,
+    resetSeen: resetSeen,
+    PROMPT_TEXT: PROMPT_TEXT,
+    PROMPT_BUTTON: PROMPT_BUTTON
+  };
+})();
+window.Notif = Notif;
+
+/* Supabase realtime → brauzer bildirishnomasi.
+   Har bir hodisada faqat qabul qiluvchi tomon ogohlantiriladi:
+   ustoz yozgan xabar o'quvchiga, o'quvchi yozgan xabar ustozga va h.k. */
+function onCloudNotifChange(table, row, old) {
+  if (!row) return;
+
+  if (table === 'grades') {
+    const st = linkedStudent();
+    if (!st || st.dbId == null || row.student_id !== st.dbId) return;
+    Notif.notifyOnce('grade:' + row.id,
+      TEACHER_NAME + ': Sizga yangi baho qo\'yildi (' + row.grade + '/10)!');
+    return;
+  }
+
+  if (table === 'homework') {
+    const st = linkedStudent();
+    if (!st) return;
+    const g = groupById(st.groupId);
+    if (!g || g.dbId == null || row.group_id == null || row.group_id !== g.dbId) return;
+    Notif.notifyOnce('hw:' + row.id, 'Yangi uyga vazifa: ' + String(row.title || ''));
+    return;
+  }
+
+  if (table === 'students') {
+    const st = linkedStudent();
+    if (!st || st.dbId == null || row.id !== st.dbId) return;
+    if (row.voice_allowed !== true) return;
+    /* faqat false -> true: lokal keshda ham yangilaymiz */
+    const was = old && typeof old.voice_allowed !== 'undefined'
+      ? old.voice_allowed
+      : st.voiceAllowed;
+    if (was === true) return;
+    const list = getStudents();
+    const t = list.filter(function (x) { return x.id === st.id; })[0];
+    if (t) { t.voiceAllowed = true; store.set(K.students, list); }
+    Notif.notifyOnce('voice:' + row.id,
+      TEACHER_NAME + ': Ovozli speaking topshirishga ruxsat berildi!');
+    render();
+    return;
+  }
+
+  if (table === 'messages') {
+    const txt = String(row.text || '');
+    if (row.sender === 'teacher') {
+      const st = linkedStudent();
+      if (!st || st.dbId == null || row.student_id !== st.dbId) return;
+      Notif.notifyOnce('msg:' + row.id,
+        TEACHER_NAME + 'dan yangi xabar: ' + txt);
+    } else if (row.sender === 'student') {
+      if (!isTeacher()) return;
+      const s = getStudents().filter(function (x) { return x.dbId === row.student_id; })[0];
+      if (!s) return;
+      Notif.notifyOnce('msg:' + row.id, s.fullName + ': Yangi xabar keldi');
+    }
+    return;
+  }
+
+  if (table === 'speaking_submissions') {
+    if (!isTeacher()) return;
+    const s = getStudents().filter(function (x) { return x.dbId === row.student_id; })[0];
+    if (!s) return;
+    Notif.notifyOnce('sub:' + row.id, s.fullName + ': Yangi speaking topshirildi!');
+  }
+}
+window.onCloudNotifChange = onCloudNotifChange;
 
 /* ==================== Ikonkalar ==================== */
 const ICON = {

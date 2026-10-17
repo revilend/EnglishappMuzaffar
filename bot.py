@@ -741,7 +741,8 @@ async def broadcast_homework(row: dict) -> int:
         if not chat_id:
             continue
         try:
-            await bot.send_message(chat_id=int(chat_id), text=text, reply_markup=kb, parse_mode="HTML")
+            await bot.send_message(chat_id=int(chat_id), text=text, reply_markup=kb, parse_mode="HTML",
+                               disable_notification=False)  # ovozli (sound)
             sent += 1
         except Exception as e:
             logging.warning(f"homework notify {st.get('id')} -> {chat_id}: {e}")
@@ -819,7 +820,7 @@ async def voice_tick() -> int:
             if chat_id:
                 try:
                     await bot.send_message(chat_id=int(chat_id), text=VOICE_ALERT_TEXT,
-                                            parse_mode="HTML")
+                                            parse_mode="HTML", disable_notification=False)  # ovozli (sound)
                     sent += 1
                 except Exception as e:
                     logging.warning(f"voice alert {sid} -> {chat_id}: {e}")
@@ -835,6 +836,130 @@ async def voice_watcher():
             await voice_tick()
         except Exception as e:
             logging.warning(f"voice watcher: {e}")
+        await asyncio.sleep(5)
+
+
+# ============================================================
+# Tezkor Telegram bildirishnomalar: yangi baho va chat xabari
+# Web ilovadagi brauzer bildirishnomalari bilan bir vaqtda ishlaydi.
+# disable_notification=False → ovozli (sound) yetkazish
+# ============================================================
+def grade_alert_text(grade) -> str:
+    return f"📚 <b>Muzaffar Amirov: Sizga yangi baho qo'yildi ({grade}/10)!</b>"
+
+
+def msg_alert_from_teacher(text: str) -> str:
+    return "💬 <b>Muzaffar Amirovdan yangi xabar:</b>\n\n" + html.escape(text)
+
+
+def msg_alert_from_student(name: str, text: str) -> str:
+    return f"💬 <b>{html.escape(name)}: Yangi xabar keldi</b>\n\n" + html.escape(text)
+
+
+async def send_alert(chat_id, text: str) -> bool:
+    """Ovozli (sound) tezkor xabar yuboradi; muvaffaqiyatsiz bo'lsa False."""
+    if bot is None or not chat_id:
+        return False
+    try:
+        await bot.send_message(chat_id=int(chat_id), text=text, parse_mode="HTML",
+                               disable_notification=False)
+        return True
+    except Exception as e:
+        logging.warning(f"alert -> {chat_id}: {e}")
+        return False
+
+
+_last_grade_seen = None
+_last_msg_seen = None
+
+
+async def grade_tick() -> int:
+    """Yangi bahoni topib, o'quvchiga tezkor xabar yuboradi (test qilinadigan mantiq)."""
+    global _last_grade_seen
+    rows = supabase.table("grades").select("id, student_id, grade, date").order("id").execute().data or []
+    if _last_grade_seen is None:
+        # birinchi start: mavjud baholarni SPAM qilmaymiz
+        _last_grade_seen = rows[-1]["id"] if rows else 0
+        logging.info(f"grades watcher: {len(rows)} ta mavjud baho ko'rib chiqildi")
+        return 0
+    sent = 0
+    for row in rows:
+        if row["id"] <= _last_grade_seen:
+            continue
+        _last_grade_seen = row["id"]  # qayta yuborilmaydi
+        try:
+            studs = supabase.table("students").select("id, telegram_chat_id").\
+                eq("id", row["student_id"]).limit(1).execute().data
+        except Exception as e:
+            logging.warning(f"grades watcher student: {e}")
+            continue
+        if not studs:
+            continue
+        if await send_alert(studs[0].get("telegram_chat_id"), grade_alert_text(row.get("grade"))):
+            sent += 1
+    return sent
+
+
+async def grades_watcher():
+    """grades jadvalini kuzatadi: yangi baho → o'quvchiga tezkor xabar."""
+    await asyncio.sleep(3)
+    while True:
+        try:
+            await grade_tick()
+        except Exception as e:
+            logging.warning(f"grades watcher: {e}")
+        await asyncio.sleep(5)
+
+
+async def message_tick() -> int:
+    """Yangi chat xabarini qabul qiluvchiga tezkor xabar qiladi (test qilinadigan mantiq)."""
+    global _last_msg_seen
+    rows = supabase.table("messages").select("id, student_id, sender, text").order("id").execute().data or []
+    if _last_msg_seen is None:
+        # birinchi start: mavjud xabarlarni SPAM qilmaymiz
+        _last_msg_seen = rows[-1]["id"] if rows else 0
+        logging.info(f"messages watcher: {len(rows)} ta mavjud xabar ko'rib chiqildi")
+        return 0
+    sent = 0
+    for row in rows:
+        if row["id"] <= _last_msg_seen:
+            continue
+        _last_msg_seen = row["id"]  # qayta yuborilmaydi
+        sender = row.get("sender")
+        text = str(row.get("text") or "")
+        if sender == "teacher":
+            # Ustoz yozgan → o'quvchiga
+            try:
+                studs = supabase.table("students").select("id, telegram_chat_id").\
+                    eq("id", row["student_id"]).limit(1).execute().data
+            except Exception as e:
+                logging.warning(f"messages watcher student: {e}")
+                continue
+            if studs and await send_alert(studs[0].get("telegram_chat_id"),
+                                          msg_alert_from_teacher(text)):
+                sent += 1
+        elif sender == "student":
+            # O'quvchi yozgan → ustozga
+            try:
+                studs = supabase.table("students").select("id, name").\
+                    eq("id", row["student_id"]).limit(1).execute().data
+            except Exception as e:
+                logging.warning(f"messages watcher name: {e}")
+                continue
+            name = (studs[0].get("name") if studs else None) or "O'quvchi"
+            if await send_alert(config.ADMIN_ID, msg_alert_from_student(name, text)):
+                sent += 1
+    return sent
+
+
+async def messages_watcher():
+    """messages jadvalini kuzatadi: yangi xabar → qabul qiluvchiga tezkor xabar."""
+    await asyncio.sleep(3)
+    while True:
+        try:
+            await message_tick()
+        except Exception as e:
+            logging.warning(f"messages watcher: {e}")
         await asyncio.sleep(5)
 
 
@@ -1196,6 +1321,10 @@ async def main():
     asyncio.create_task(homework_watcher())
     # Ovozli topshirish ruxsati kuzatuvchisi (voice_allowed → o'quvchiga xabar)
     asyncio.create_task(voice_watcher())
+    # Yangi baho kuzatuvchisi (grades → o'quvchiga tezkor xabar)
+    asyncio.create_task(grades_watcher())
+    # Yangi chat xabari kuzatuvchisi (messages → qabul qiluvchiga tezkor xabar)
+    asyncio.create_task(messages_watcher())
 
     logging.info("Bot starting with polling...")
     await dp.start_polling(bot)

@@ -272,7 +272,8 @@ class FakeBot:
 
     async def send_message(self, chat_id, text, reply_markup=None, parse_mode=None, **kw):
         self.sent.append({"kind": "message", "chat_id": chat_id, "text": text,
-                          "reply_markup": reply_markup})
+                          "reply_markup": reply_markup,
+                          "disable_notification": kw.get("disable_notification")})
 
     async def send_voice(self, chat_id, voice, caption=None, reply_markup=None,
                          parse_mode=None, **kw):
@@ -710,9 +711,93 @@ async def main():
           "homework: xabar matni")
     again = await B.hw_tick()
     check(again == 0, "homework: takrorlanish spam qilmaydi")
+    hw_msgs = [s for s in fb.sent if s["kind"] == "message"]
+    check(hw_msgs and hw_msgs[0].get("disable_notification") is False,
+          "homework: ovozli (sound) yetkazish — disable_notification=False")
 
     # =========================================================
-    # 12) Health server (Render 24/7)
+    # 12) TEZKOR BILDIRISHNOMALAR (grade_tick / message_tick / voice)
+    # =========================================================
+    B._last_grade_seen = None
+    B._last_msg_seen = None
+    fb.sent.clear()
+
+    # --- (a) yangi baho → o'quvchiga ---
+    sent0 = await B.grade_tick()
+    check(sent0 == 0, "notif: grade — birinchi start mavjud baholarni SPAM qilmaydi")
+
+    FAKE_ROWS["grades"].append({"id": 90, "student_id": 1, "date": "2026-10-05",
+                                "grade": 9, "category": "Speaking", "note": ""})
+    fb.sent.clear()
+    sent = await B.grade_tick()
+    g_msgs = [s for s in fb.sent if s["kind"] == "message"]
+    check(sent == 1 and len(g_msgs) == 1, "notif: grade — yangi baho → 1 ta tezkor xabar")
+    check(g_msgs and g_msgs[0]["chat_id"] == 555,
+          "notif: grade — o'quvchining telegram_chat_id'siga ketdi")
+    check(g_msgs and "Sizga yangi baho qo'yildi (9/10)!" in g_msgs[0]["text"],
+          "notif: grade — matn specda aniq")
+    check(g_msgs and g_msgs[0].get("disable_notification") is False,
+          "notif: grade — ovozli (sound) yetkazish")
+    again = await B.grade_tick()
+    check(again == 0, "notif: grade — takrorlanish spam qilmaydi")
+
+    # telegram_chat_id yo'q o'quvchi → yuborilmaydi, xato yo'q
+    _saved_chat = FAKE_ROWS["students"][2].get("telegram_chat_id")
+    FAKE_ROWS["students"][2]["telegram_chat_id"] = None
+    FAKE_ROWS["grades"].append({"id": 91, "student_id": 3, "date": "2026-10-05",
+                                "grade": 7, "category": "Speaking", "note": ""})
+    fb.sent.clear()
+    sent = await B.grade_tick()
+    FAKE_ROWS["students"][2]["telegram_chat_id"] = _saved_chat
+    check(sent == 0 and not [s for s in fb.sent if s["kind"] == "message"],
+          "notif: grade — telegram_chat_id yo'q bo'lsa jim o'tadi")
+
+    # --- (b) chat xabari → qabul qiluvchiga ---
+    sent0 = await B.message_tick()
+    check(sent0 == 0, "notif: message — birinchi start mavjud xabarlarni SPAM qilmaydi")
+
+    FAKE_ROWS["messages"].append({"id": 70, "student_id": 1, "sender": "teacher",
+                                  "text": "Ertaga dars bor",
+                                  "created_at": "2026-10-05T10:00:00Z"})
+    fb.sent.clear()
+    sent = await B.message_tick()
+    to_student = [s for s in fb.sent if s["kind"] == "message" and s["chat_id"] == 555]
+    check(sent == 1 and len(to_student) == 1, "notif: message — ustoz yozgan → o'quvchiga")
+    check(to_student and "Muzaffar Amirovdan yangi xabar:" in to_student[0]["text"],
+          "notif: message — o'quvchiga matn specda aniq")
+    check(to_student and "Ertaga dars bor" in to_student[0]["text"],
+          "notif: message — xabar matni yetdi")
+    check(to_student and to_student[0].get("disable_notification") is False,
+          "notif: message — ovozli (sound) yetkazish")
+
+    FAKE_ROWS["messages"].append({"id": 71, "student_id": 2, "sender": "student",
+                                  "text": "Yaxshiman",
+                                  "created_at": "2026-10-05T10:05:00Z"})
+    fb.sent.clear()
+    sent = await B.message_tick()
+    to_teacher = [s for s in fb.sent if s["kind"] == "message" and s["chat_id"] == config.ADMIN_ID]
+    check(sent == 1 and len(to_teacher) == 1, "notif: message — o'quvchi yozgan → ustozga")
+    check(to_teacher and "Nilufar Ergasheva: Yangi xabar keldi" in to_teacher[0]["text"],
+          "notif: message — ustozga matn specda aniq")
+    check(to_teacher and "Yaxshiman" in to_teacher[0]["text"],
+          "notif: message — ustozga xabar matni yetdi")
+    check(to_teacher and to_teacher[0].get("disable_notification") is False,
+          "notif: message — ustozga ovozli (sound) yetkazish")
+    again = await B.message_tick()
+    check(again == 0, "notif: message — takrorlanish spam qilmaydi")
+
+    # --- (c) voice ruxsati — mavjud oqim ham ovozli ---
+    B._voice_seen = {1: False, 2: True, 3: True}
+    fb.sent.clear()
+    sent = await B.voice_tick()
+    v_msgs = [s for s in fb.sent if s["kind"] == "message" and s["chat_id"] == 555]
+    check(sent == 1 and len(v_msgs) == 1, "notif: voice — false→true o'tishi xabar ketdi")
+    check(v_msgs and "Ruxsat berildi" in v_msgs[0]["text"], "notif: voice — matn saqlangan")
+    check(v_msgs and v_msgs[0].get("disable_notification") is False,
+          "notif: voice — ovozli (sound) yetkazish")
+
+    # =========================================================
+    # 13) Health server (Render 24/7)
     # =========================================================
     import aiohttp
     await B.start_dummy_web_server()

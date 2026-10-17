@@ -869,6 +869,163 @@ const until = async (fn, ms) => {
   check(Object.keys(JSON.parse(win.localStorage.getItem('et_grades') || '{}')).length === 0,
     "tozalash: baholar jadvali tozalandi");
 
+  /* ================= 24. BRAUZER BILDIRISHNOMALARI ================= */
+  {
+    /* jsdom'da Notification yo'q — sun'iy kuzatuvchi o'rnatamiz */
+    const shownNotifs = [];
+    let permRequests = 0;
+    function FakeNotification(title, opts) {
+      this.title = title;
+      this.body = (opts && opts.body) || '';
+      this.icon = (opts && opts.icon) || '';
+      shownNotifs.push(this);
+    }
+    FakeNotification.permission = 'default';
+    FakeNotification.requestPermission = function (cb) {
+      permRequests++;
+      FakeNotification.permission = 'granted';
+      if (cb) cb('granted');
+      return Promise.resolve('granted');
+    };
+    win.Notification = FakeNotification;
+    win.Notif.resetSeen();
+
+    check(typeof win.Notif.notifyOnce === 'function' && typeof win.Notif.showPrompt === 'function',
+      'notif: Notif moduli mavjud');
+    check(win.Notif.PROMPT_TEXT === "🔔 Yangi baholar va xabarlarni o'tkazib yubormaslik uchun bildirishnomalarni yoqing",
+      "notif: so'rov matni specda aniq");
+    check(win.Notif.PROMPT_BUTTON === 'Ruxsat berish', 'notif: [Ruxsat berish] tugma nomi');
+    check(win.Notif.permission() === 'default', "notif: ruxsat hali default — so'rov kerak");
+
+    /* --- Ruxsat so'rovi --- */
+    q('#toast').textContent = '';
+    check(win.Notif.showPrompt() === true, "notif: default holatda do'stona so'rov chiqdi");
+    check(q('#toast').textContent.includes(win.Notif.PROMPT_TEXT), "notif: toast so'rov matnini ko'rsatdi");
+    const permBtn = q('#toast .toast-action');
+    check(!!permBtn && permBtn.textContent === 'Ruxsat berish', 'notif: toastda [Ruxsat berish] tugmasi bor');
+    if (permBtn) click(permBtn);
+    check(permRequests === 1, 'notif: tugma bosildi → Notification.requestPermission() chaqirildi');
+    check(win.Notif.permission() === 'granted', 'notif: ruxsat berildi');
+    check(q('#toast').textContent.includes('yoqildi'), 'notif: ruxsat olgach tasdiq toast');
+
+    /* --- Bloklangan holat: xatosiz jim (fallback) --- */
+    FakeNotification.permission = 'denied';
+    win.Notif.resetSeen();
+    shownNotifs.length = 0;
+    check(win.Notif.showPrompt() === false, "notif: ruxsat bloklanganda so'rov ko'rsatilmaydi");
+    check(win.Notif.notifyOnce('blocked1', 'sarlavha', 'matn') === false && shownNotifs.length === 0,
+      'notif: bloklanganda native bildirishnoma chiqmaydi (fallback)');
+
+    /* --- Ruxsat berilganda native bildirishnoma --- */
+    FakeNotification.permission = 'granted';
+    win.Notif.resetSeen();
+    shownNotifs.length = 0;
+    check(win.Notif.notifyOnce('g901', "Muzaffar Amirov: Sizga yangi baho qo'yildi (9/10)!", 'b9') === true &&
+      shownNotifs.length === 1, 'notif: ruxsat bilan native bildirishnoma chiqdi');
+    check(shownNotifs[0].title === "Muzaffar Amirov: Sizga yangi baho qo'yildi (9/10)!" &&
+      String(shownNotifs[0].icon).indexOf('data:image/svg') === 0,
+      'notif: baho sarlavhasi specda aniq + icon biriktirilgan');
+    check(win.Notif.notifyOnce('g901', 'takroriy', 'b9') === false && shownNotifs.length === 1,
+      'notif: bir xil qator id faqat bir marta (dedup)');
+
+    /* ================= 25. BILDIRISHNOMA HODISALARI (realtime) ================= */
+    /* Realtime qatorlari Supabase id ishlatadi — testda dbId beramiz */
+    const gRows = JSON.parse(win.localStorage.getItem('et_groups') || '[]');
+    gRows.forEach((g, i) => { g.dbId = i + 1; });
+    win.localStorage.setItem('et_groups', JSON.stringify(gRows));
+    const sRows = JSON.parse(win.localStorage.getItem('et_students') || '[]');
+    sRows.forEach((s, i) => { s.dbId = i + 1; });
+    win.localStorage.setItem('et_students', JSON.stringify(sRows));
+
+    /* Bu bosqichda qolgan ulangan o'quvchini topamiz (zaxiradan tiklangan hisob) */
+    const accsNow = JSON.parse(win.localStorage.getItem('et_accounts') || '{}');
+    let stuLogin = null, stuPass = null, stuLocalId = null;
+    Object.keys(accsNow).forEach(k => {
+      const a = accsNow[k];
+      if (stuLogin || a.role !== 'student' || !a.studentId) return;
+      if (!sRows.some(x => x.id === a.studentId)) return;
+      stuLogin = k; stuPass = a.password; stuLocalId = a.studentId;
+    });
+    const stu = stuLogin ? sRows.filter(x => x.id === stuLocalId)[0] : null;
+    const grp = stu && stu.groupId ? gRows.filter(x => x.id === stu.groupId)[0] : null;
+    const S5_DB = stu ? stu.dbId : null;      /* joriy o'quvchining DB id'si */
+    const G1_DB = grp ? grp.dbId : null;      /* joriy o'quvchining guruhi */
+    const stuName = (stu && stu.fullName) || "O'quvchi";
+    check(!!stuLogin && S5_DB != null && G1_DB != null,
+      "notif: ulangan o'quvchi + guruhi topildi (realtime testi uchun)");
+
+    logout();
+    loginAs(stuLogin, stuPass);
+    win.Notif.resetSeen();
+    shownNotifs.length = 0;
+
+    /* (0) boshqa o'quvchiga tegishli baho → o'quvchiga xabar KETMAYDI */
+    win.onCloudNotifChange('grades', { id: 8001, student_id: 9999, grade: 5 }, null);
+    check(shownNotifs.length === 0, 'notif: boshqa o' + "'" + 'quvchi bahosi lokal xabar bermaydi');
+
+    /* (1) ustoz baho qo'ydi */
+    win.onCloudNotifChange('grades', { id: 8002, student_id: S5_DB, grade: 9 }, null);
+    check(shownNotifs.length === 1 &&
+      shownNotifs[0].title === "Muzaffar Amirov: Sizga yangi baho qo'yildi (9/10)!",
+      "notif: o'quvchi — yangi baho sarlavhasi specda aniq");
+
+    /* (2) ustoz voice ruxsati berdi */
+    win.onCloudNotifChange('students', { id: S5_DB, voice_allowed: true }, { voice_allowed: false });
+    check(shownNotifs.length === 2 &&
+      shownNotifs[1].title === 'Muzaffar Amirov: Ovozli speaking topshirishga ruxsat berildi!',
+      "notif: o'quvchi — voice ruxsati sarlavhasi specda aniq");
+    const stNow = JSON.parse(win.localStorage.getItem('et_students')).filter(x => x.id === stuLocalId)[0];
+    check(stNow.voiceAllowed === true, 'notif: voice_allowed lokal keshda ham yangilandi');
+
+    /* (2b) allaqachon true bo'lgan → takroriy xabar yo'q */
+    win.onCloudNotifChange('students', { id: S5_DB, voice_allowed: true }, { voice_allowed: true });
+    check(shownNotifs.length === 2, 'notif: voice true→true takroriy xabar bermaydi');
+
+    /* (3) ustoz chat yozdi */
+    win.onCloudNotifChange('messages', { id: 8003, student_id: S5_DB, sender: 'teacher', text: 'Ertaga dars bor' }, null);
+    check(shownNotifs.length === 3 &&
+      shownNotifs[2].title === 'Muzaffar Amirovdan yangi xabar: Ertaga dars bor',
+      'notif: o‘quvchi — Muzaffar Amirovdan yangi xabar (specda aniq)');
+
+    /* (4) guruhi uchun yangi uyga vazifa */
+    win.onCloudNotifChange('homework', { id: 8004, group_id: G1_DB, title: 'Present Perfect' }, null);
+    check(shownNotifs.length === 4 && shownNotifs[3].title === 'Yangi uyga vazifa: Present Perfect',
+      'notif: o‘quvchi — yangi uyga vazifa sarlavhasi specda aniq');
+
+    /* (4b) boshqa guruh uchun vazifa → xabar ketmaydi */
+    win.onCloudNotifChange('homework', { id: 8005, group_id: 777, title: 'Boshqa guruh' }, null);
+    check(shownNotifs.length === 4, 'notif: boshqa guruh vazifasi lokal xabar bermaydi');
+
+    /* (5) o‘quvchi yozgan xabar → USTOZGA (o‘quvchi turib xabar olmaydi) */
+    win.onCloudNotifChange('messages', { id: 8006, student_id: S5_DB, sender: 'student', text: 'Tayyor' }, null);
+    check(shownNotifs.length === 4, "notif: o'quvchi yozgan xabar o'quvchiga qaytarilmaydi");
+
+    /* --- Ustoz tomoni --- */
+    logout();
+    loginAs('m_amirov', '123');
+    win.Notif.resetSeen();
+    shownNotifs.length = 0;
+
+    win.onCloudNotifChange('messages', { id: 8007, student_id: S5_DB, sender: 'student', text: 'Yaxshiman' }, null);
+    check(shownNotifs.length === 1 && shownNotifs[0].title === stuName + ': Yangi xabar keldi',
+      "notif: ustoz — o'quvchi xabari sarlavhasi specda aniq");
+
+    win.onCloudNotifChange('speaking_submissions', { id: 8008, student_id: S5_DB }, null);
+    check(shownNotifs.length === 2 && shownNotifs[1].title === stuName + ': Yangi speaking topshirildi!',
+      "notif: ustoz — yangi speaking sarlavhasi specda aniq");
+
+    win.onCloudNotifChange('grades', { id: 8009, student_id: S5_DB, grade: 10 }, null);
+    check(shownNotifs.length === 2, "notif: ustozga o'quvchi bahosi xabari ketmaydi (faqat o'quvchiga)");
+
+    /* Kirganda ruxsat 'default' bo'lsa — so'rov rejalashtiriladi */
+    FakeNotification.permission = 'default';
+    check(win.Notif.afterLogin(5) === true, "notif: kirishda default → so'rov rejalashtirildi");
+    FakeNotification.permission = 'granted';
+    check(win.Notif.afterLogin(5) === false, 'notif: ruxsat allaqachon berilgan — qayta so‘ramaydi');
+    FakeNotification.permission = 'denied';
+    check(win.Notif.afterLogin(5) === false, 'notif: ruxsat bloklangan — so‘ramaydi');
+  }
+
   console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
   process.exit(failed ? 1 : 0);
 })();
