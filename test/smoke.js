@@ -251,8 +251,12 @@ check(studentCards() === 2, 'filtr: 11-sinf = 2 ta');
 click('[data-act="filter-class"][data-class="Barchasi"]');
 check(studentCards() === 6, 'filtr: Barchasi = 6 ta');
 
-/* --- Jonli qidiruv (harf yozilishi bilan, Enter'siz) --- */
-check(q('#s-search').placeholder === "🔍 O'quvchi ismini kiriting...", "qidiruv: spec placeholder (jonli qidiruv)");
+/* --- Jonli qidiruv (harf yozilishi bilan, Enter'siz) --- */  /* Redizayn: qidiruv ikonkasi placeholder'dan olib, CSS orqali input ichiga ko'chirildi */
+  check(q('#s-search').placeholder === "O'quvchi ismini kiriting..." &&
+    q('#s-search').placeholder.indexOf('🔍') < 0,
+    "qidiruv: placeholder toza (ikonka endi emoji emas)");
+  check(!!q('.search-wrap #s-search') && !!q('.chips .chip-btn'),
+    "qidiruv: pill shakl + ichilgan qidiruv ikonkasi (.search-wrap) + chip'lar");
 setVal('#s-search', 'Jas');
 check(studentCards() === 1 && text().includes('Jasur Karimov'), "qidiruv: 1 ta harf yozildi → darhol filtr (Enter'siz)");
 setVal('#s-search', 'ma');

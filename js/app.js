@@ -1168,7 +1168,7 @@ function teacherHome() {
   const recent = students.slice(0, 3);
 
   return `
-  <section class="card">
+  <section class="card hero-card">
     <div class="greet-main">
       <div class="avatar avatar-lg">${esc(initials(name))}</div>
       <div class="col">
@@ -1180,9 +1180,9 @@ function teacherHome() {
   </section>
 
   <div class="stat-grid">
-    <div class="card stat"><span class="stat-num">${groups.length}</span><span class="stat-label">Guruhlar</span></div>
-    <div class="card stat"><span class="stat-num">${students.length}</span><span class="stat-label">O'quvchilar</span></div>
-    <div class="card stat"><span class="stat-num">${Object.keys(classSet).length}</span><span class="stat-label">Sinflar</span></div>
+    <div class="card stat"><span class="stat-ico">${ICON.groups}</span><span class="stat-num">${groups.length}</span><span class="stat-label">Guruhlar</span></div>
+    <div class="card stat"><span class="stat-ico">${ICON.students}</span><span class="stat-num">${students.length}</span><span class="stat-label">O'quvchilar</span></div>
+    <div class="card stat"><span class="stat-ico">${ICON.cal}</span><span class="stat-num">${Object.keys(classSet).length}</span><span class="stat-label">Sinflar</span></div>
   </div>
 
   <div class="section-title">Tez amallar</div>
@@ -1294,7 +1294,7 @@ function studentPortal() {
   const myHw = getHomework().filter(h => h.groupId && h.groupId === st.groupId);
 
   return `
-  <section class="card">
+  <section class="card hero-card">
     <div class="portal-head">
       <div class="avatar avatar-lg">${esc(initials(st.fullName))}</div>
       <div class="col">
@@ -1485,7 +1485,7 @@ function studentsScreen() {
   </div>` : ''}
 
   <div class="search-wrap">
-    <input class="input" id="s-search" type="search" placeholder="🔍 O'quvchi ismini kiriting..." value="${esc(state.search)}" />
+    <input class="input" id="s-search" type="search" placeholder="O'quvchi ismini kiriting..." value="${esc(state.search)}" />
   </div>
 
   <div class="chips">
