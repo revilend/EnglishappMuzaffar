@@ -1103,3 +1103,37 @@ body.auth-mode .toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
   font-size: 11px;
   font-weight: 700;
 }
+
+/* ---------- Guruh kartasi: tugmalar 2x2 grid (ramkadan chiqmasligi uchun) ---------- */
+.group-card { overflow: hidden; max-width: 100%; box-sizing: border-box; }
+.gc-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 11px;
+}
+.gc-actions .btn { width: 100%; box-sizing: border-box; }
+.meta-row > span { overflow-wrap: anywhere; word-break: break-word; }
+
+/* ---------- Baholar jurnali: qat'iy ustunlar + yopishqoq o'quvchi ustuni ---------- */
+.bj { table-layout: fixed; border-collapse: separate; border-spacing: 0; width: max-content; }
+.bj th.col-student, .bj td.col-student {
+  width: 195px !important;
+  min-width: 195px !important;
+  max-width: 195px !important;
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  background-color: #ffffff;
+  border-right: 2px solid #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 12px;
+}
+.bj thead th.col-student { z-index: 21; }
+.bj-date, .bj-cell { width: 56px !important; min-width: 56px !important; max-width: 56px !important; text-align: center; }
+.bj-sum { width: 72px; min-width: 72px; text-align: center; }
+.bj td.col-student .bj-name-cell, .bj .s-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

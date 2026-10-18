@@ -37,6 +37,8 @@ const K = {
   messages: 'et_messages',
   homework: 'et_homework',
   homeworkDone: 'et_hw_done',
+  loginFails: 'et_login_fails',
+  speakLog: 'et_speak_log',
   tgsubs: 'et_tg_subs'
 };
 
@@ -77,7 +79,8 @@ const state = {
   slotMode: 'create',
   slotId: '',
   chatSid: null,
-  classHint: false
+  classHint: false,
+  loginTimer: null
 };
 
 const AUTH_SCREENS = ['login'];
@@ -1200,6 +1203,7 @@ function loginScreen() {
                autocomplete="current-password" placeholder="••••" />
         <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="password-input" aria-label="Parolni ko'rsatish">${ico('eye', 18)}</button>
       </div>
+      <input type="text" name="bot_check_field" id="login-bot-hp" style="display:none !important; position:absolute; left:-9999px;" tabindex="-1" autocomplete="off" aria-hidden="true" />
 
       <div class="field-error" id="login-error"></div>
       <button type="button" class="btn btn-primary btn-block" data-act="do-login">Kirish</button>
@@ -1631,7 +1635,7 @@ function groupCard(g, students) {
            <div class="meta-row">${ico('clock', 15)} <span>${esc(g.time)}</span></div>`}
     </div>
     <div class="muted small" style="margin-top:7px">Bosib, guruh o'quvchilarini ko'rish</div>
-    <div class="row g8" style="margin-top:11px">
+    <div class="gc-actions">
       <button type="button" class="btn btn-ghost btn-sm" data-act="grade-group-go" data-group="${g.id}">${ico('grades', 15)} Baholar</button>
       <button type="button" class="btn btn-ghost btn-sm" data-act="open-attendance" data-group="${g.id}">${ico('cal', 15)} Davomat</button>
       <button type="button" class="btn btn-ghost btn-sm" data-act="edit-group" data-gid="${g.id}">${ico('brush', 15)} Tahrirlash</button>
@@ -1688,6 +1692,7 @@ function studentCard(s) {
         <div class="row g8" style="margin-top:10px">
           <button type="button" class="btn btn-xs ghost" data-act="open-chat" data-sid="${s.id}">${ico('message', 14)} Xabar yozish</button>
           <button type="button" class="btn btn-xs ghost" data-act="reset-pwd" data-sid="${s.id}">${ico('key', 14)} Parolni yangilash</button>
+          <button type="button" class="btn btn-xs ghost" data-act="edit-student" data-sid="${s.id}">${ico('brush', 14)} Tahrirlash</button>
           <button type="button" class="btn btn-xs danger" data-act="del-student" data-sid="${s.id}">${ico('trash', 14)} O'chirish</button>
         </div>
       </div>
@@ -1885,6 +1890,7 @@ function openAddStudent() {
       <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="f-spass" aria-label="Parolni ko'rsatish">${ico('eye', 18)}</button>
     </div>
 
+    <input type="text" name="bot_check_field" id="hp-student" style="display:none !important; position:absolute; left:-9999px;" tabindex="-1" autocomplete="off" aria-hidden="true" />
     <button type="button" class="btn btn-primary btn-block" data-act="save-student">Saqlash</button>
   `);
 }
@@ -1992,6 +1998,8 @@ function saveEditGroup(gid) {
 }
 
 function saveStudent() {
+  /* Bot honeypot: maydon to'ldirilgan bo'lsa — jimjimrad rad etiladi */
+  if ($('#hp-student') && $('#hp-student').value) return;
   const name = ($('#f-sname').value || '').trim();
   const cls = $('#f-sclass').value;
   const gid = $('#f-sgroup').value;
@@ -2069,6 +2077,65 @@ function saveResetPwd(sid) {
   closeModal();
   render();
   toast("Parol yangilandi ✓");
+}
+
+/* ==================== O'QUVCHINI TAHRIRLASH (guruhni almashtirish) ==================== */
+function openEditStudent(sid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const st = getStudents().filter(x => x.id === sid)[0];
+  if (!st) return;
+  const groups = getGroups();
+  openModal(`
+    <div class="modal-head">
+      <h3>O'quvchini tahrirlash</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+
+    <label class="field-label" for="es-name">Ism familiya</label>
+    <input class="input" id="es-name" value="${esc(st.fullName)}" />
+
+    <label class="field-label" for="es-class">Maktab sinfi</label>
+    <select class="input" id="es-class">
+      ${APP_DATA.classes.map(c => `<option value="${esc(c)}" ${c === st.schoolClass ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+    </select>
+
+    <label class="field-label" for="es-group">Guruh</label>
+    <select class="input" id="es-group">
+      <option value="">Guruh tanlanmagan</option>
+      ${groups.map(g => `<option value="${esc(g.id)}" ${g.id === st.groupId ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}
+    </select>
+    <p class="muted small" style="margin-top:8px">Guruh o'zgartirilsa, mavjud baholar va davomat tarixi saqlanib qoladi.</p>
+
+    <div class="field-error" id="es-error"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
+      <button type="button" class="btn btn-primary" data-act="save-edit-student" data-sid="${esc(String(sid))}">Saqlash</button>
+    </div>
+  `);
+}
+
+function saveEditStudent(sid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const cur = getStudents().filter(x => x.id === sid)[0];
+  if (!cur) return;
+  const name = (($('#es-name') && $('#es-name').value) || '').trim();
+  const cls = $('#es-class') ? $('#es-class').value : cur.schoolClass;
+  const gid = $('#es-group') ? $('#es-group').value : '';
+  const err = $('#es-error');
+  if (!name) {
+    if (err) { err.textContent = "Ism familiyani kiriting"; err.classList.add('show'); }
+    return;
+  }
+  /* Faqat name/schoolClass/group_id yangilanadi — baholar va davomat
+     student_id bo'yicha qoladi (Supabase'da alohida jadvallar) */
+  const list = getStudents().map(x => String(x.id) === String(sid)
+    ? Object.assign({}, x, { fullName: name, schoolClass: cls, groupId: gid || null })
+    : x);
+  store.set(K.students, list);
+  CloudSync.pushStudent(sid);
+  closeModal();
+  render();
+  toast("O'quvchi yangilandi ✓");
 }
 
 /* ---- O'quvchi: parolni o'zgartirish ---- */
@@ -2574,7 +2641,7 @@ function gradesScreen() {
   const classChips = ['Barchasi'].concat(APP_DATA.classes);
 
   const head = `<tr>
-    <th class="bj-name">O'quvchi</th>
+    <th class="bj-name col-student">O'quvchi</th>
     ${dates.map(d => `<th class="bj-date ${state.gradeDate === d ? 'is-focus' : ''}"><button type="button" class="bj-date-btn" data-act="grade-date" data-date="${d}">${fmtDM(d)}</button></th>`).join('')}
     <th class="bj-sum">O'rtacha</th>
   </tr>`;
@@ -2583,7 +2650,7 @@ function gradesScreen() {
     const nums = scoresFor(s.id, dates);
     const avg = avgOf(nums);
     return `<tr>
-      <td class="bj-name">
+      <td class="bj-name col-student">
         <div class="bj-name-cell">
           <span class="s-name">${esc(s.fullName)}</span>
           <span class="chip-class">${esc(s.schoolClass)}</span>
@@ -2622,7 +2689,7 @@ function gradesScreen() {
   <div class="grid-scroll">
     <table class="bj">
       <thead>${head}</thead>
-      <tbody>${body || `<tr><td class="bj-name">${esc("Bu sinfda o'quvchi yo'q")}</td></tr>`}</tbody>
+      <tbody>${body || `<tr><td class="bj-name col-student">${esc("Bu sinfda o'quvchi yo'q")}</td></tr>`}</tbody>
     </table>
   </div>
 
@@ -2848,6 +2915,8 @@ function speakingScreen() {
       </div>`).join('')}
   </div>
 
+  ${speakingLogHTML()}
+
   <div class="section-title">Telegram topshiriqlari (Inbox)</div>
   <div class="card">
     ${renderTgInbox()}
@@ -2855,6 +2924,28 @@ function speakingScreen() {
 
   <p class="muted small" style="margin-top:10px">Slotga o'quvchi tayinlanadi. Ovozli/video topshiriklar botga tushadi (foydalanuvchi ruxsati bilan) — "Baholash" orqali 1–10 ball qo'yiladi, ball baholar jurnaliga tushadi va Speaking qarzi 1 ga kamayadi.</p>
   `;
+}
+
+/* ---- Speaking sessiyalar jurnali (bir xil sana uchun ko'p sessiya — hammasi saqlanadi) ---- */
+function logSpeakingSession(sid, date, score, source) {
+  const log = store.get(K.speakLog, []) || [];
+  log.unshift({ sid: sid, date: date, score: Number(score) || 0, source: source || '', at: new Date().toISOString() });
+  store.set(K.speakLog, log.slice(0, 200));
+}
+function speakingLogHTML() {
+  const log = (store.get(K.speakLog, []) || []).slice(0, 15);
+  if (!log.length) return '';
+  const byId = {};
+  getStudents().forEach(s => { byId[s.id] = s; });
+  return `
+  <div class="section-title">Speaking sessiyalar jurnali</div>
+  <div class="card">
+    ${log.map(e => `
+      <div class="row between" style="padding:7px 0;border-bottom:1px solid var(--line)">
+        <span class="muted small">${e.date ? fmtDM(e.date) : '—'} • ${e.sid && byId[e.sid] ? esc(byId[e.sid].fullName) : '—'}</span>
+        <span class="chip-class">${Number(e.score) || 0}/10</span>
+      </div>`).join('')}
+  </div>`;
 }
 
 /* ---- Telegram topshiriklari (ustoz uchun inbox) ---- */
@@ -3020,7 +3111,79 @@ function saveSlotScore(id, score) {
 }
 
 /* ==================== KIRISH MANTIQI ==================== */
+const LOGIN_MAX_FAILS = 5;
+const LOGIN_LOCK_MS = 5 * 60 * 1000;
+
+function loginLockRec() {
+  const r = store.get(K.loginFails, null);
+  if (!r) return null;
+  if (r.until && Date.now() >= r.until) { store.del(K.loginFails); return null; }
+  return r;
+}
+function loginLockText(r) {
+  const left = Math.max(0, (r && r.until ? r.until : 0) - Date.now());
+  const mm = String(Math.floor(left / 60000)).padStart(2, '0');
+  const ss = String(Math.floor((left % 60000) / 1000)).padStart(2, '0');
+  return "Xavfsizlik: 5 marta xato kiritildi. Iltimos, " + mm + ':' + ss + " daqiqa kuting.";
+}
+function registerLoginFail() {
+  const r = store.get(K.loginFails, null) || { count: 0, until: 0 };
+  r.count = (r.count || 0) + 1;
+  if (r.count >= LOGIN_MAX_FAILS) r.until = Date.now() + LOGIN_LOCK_MS;
+  store.set(K.loginFails, r);
+  return r;
+}
+/* Login ekranidagi jonli hisoblagich: qulf tugunicha 'Kirish' o'chiriladi */
+function syncLoginLock() {
+  if (state.loginTimer) { clearInterval(state.loginTimer); state.loginTimer = null; }
+  if (state.screen !== 'login') return;
+  const tick = () => {
+    const r = loginLockRec();
+    const btnEl = $('[data-act="do-login"]');
+    const errEl = $('#login-error');
+    if (!r || !r.until) {
+      if (btnEl) btnEl.disabled = false;
+      if (errEl && String(errEl.textContent).indexOf('Xavfsizlik:') === 0) {
+        errEl.textContent = '';
+        errEl.classList.remove('show');
+      }
+      if (state.loginTimer) { clearInterval(state.loginTimer); state.loginTimer = null; }
+      return;
+    }
+    if (btnEl) btnEl.disabled = true;
+    if (errEl) { errEl.textContent = loginLockText(r); errEl.classList.add('show'); }
+  };
+  tick();
+  if (loginLockRec() && loginLockRec().until) state.loginTimer = setInterval(tick, 1000);
+}
+
+/* Telegram WebApp initData tekshiruvi (identity spoofing ga qarshi).
+   To'liq HMAC tekshiruvi bot tokeni (faqat serverda) talab qiladi — brauzerda
+   token saqlab bo'lmaydi. Shu yerda xavfsiz cross-reference qilinadi:
+   initData 'user' id → initDataUnsafe.user.id mosligi, 'hash' mavjudligi va
+   auth_date yangiligi (24 soat) tekshiriladi; nomuvofiqlik → kirish rad etiladi. */
+function telegramInitDataOK() {
+  try {
+    const tg = window.Telegram && window.Telegram.WebApp;
+    if (!tg || !tg.initData) return true; /* Telegram'siz (brauzerda) kirish */
+    const params = new URLSearchParams(tg.initData);
+    if (!params.get('hash')) return false;
+    const userStr = params.get('user');
+    if (!userStr) return true;
+    const user = JSON.parse(userStr);
+    const du = tg.initDataUnsafe && tg.initDataUnsafe.user;
+    if (!du || String(du.id) !== String(user.id)) return false; /* soxtalanish belgisi */
+    const authDate = Number(params.get('auth_date') || 0);
+    if (authDate && (Date.now() / 1000 - authDate) > 86400) return false; /* 24+ soat eskirgan */
+    return true;
+  } catch (e) { return false; }
+}
+
 function doLogin() {
+  /* Bot honeypot: bu maydon to'ldirilgan bo'lsa — jimjimrad rad etiladi */
+  const hp = $('#login-bot-hp');
+  if (hp && hp.value) return;
+
   const loginEl = $('#login-input');
   const passEl = $('#password-input');
   const err = $('#login-error');
@@ -3031,17 +3194,31 @@ function doLogin() {
     if (err) { err.textContent = msg; err.classList.add('show'); }
   };
 
+  /* Anti-brute-force: 5 ta ketma-ket xato → 5 daqiqa qulf */
+  const locked = loginLockRec();
+  if (locked && locked.until) { fail(loginLockText(locked)); syncLoginLock(); return; }
+
+  /* Telegram kimlik soxtalanishini keskin rad etish */
+  if (!telegramInitDataOK()) { fail("Telegram kirishi tekshiruvi majburiy — kirish rad etildi"); return; }
+
   if (!login || !pass) { fail("Login va parolni kiriting"); return; }
   if (err) { err.textContent = ''; err.classList.remove('show'); }
 
   const validate = () => {
     const acc = accounts[login];
     if (!acc || acc.password !== pass) {
-      fail("Login yoki parol noto'g'ri");
+      const r = registerLoginFail();
+      if (r && r.until) {
+        fail(loginLockText(r));
+        syncLoginLock();
+      } else {
+        fail("Login yoki parol noto'g'ri");
+      }
       passEl.value = '';
       passEl.focus();
       return;
     }
+    store.del(K.loginFails);
     startSession(login);
     toast('Xush kelibsiz!');
   };
@@ -3106,6 +3283,7 @@ function render() {
   if (scr === 'attendance') ensureAttState();
   if (scr === 'speaking') ensureSpeakState();
   if (scr === 'home' && !isTeacher()) refreshChat();
+  syncLoginLock();
 }
 
 /* ==================== CHAT (Ustoz ↔ O'quvchi) ==================== */
@@ -3239,11 +3417,20 @@ function gradeTgSub(tid, score) {
     }
   }
 
-  /* O'quvchi baholar jurnaliga yozish */
+  /* O'quvchi baholar jurnaliga yozish — bir xil sana uchun OLDINGI sessiyalar yo'qolmaydi */
   if (st) {
     const grades = getGrades();
     if (!grades[st.id]) grades[st.id] = {};
-    grades[st.id][dateKey] = { score: score, category: 'Speaking', note: sub.feedback || 'Speaking (Telegram)' };
+    logSpeakingSession(st.id, dateKey, score, 'telegram');
+    const prev = grades[st.id][dateKey];
+    if (prev) {
+      /* Shu kunda sessiya allaqachon bor: avvalgi yozuv ustiga yozilmaydi,
+         yangi sessiya qo'shimcha sifatida note ga qo'shiladi */
+      prev.note = (prev.note ? prev.note + ' • ' : '') + 'Sessiya ' + prev.score + '/10 → ' + score + '/10' + (sub.feedback ? ' — ' + sub.feedback : '');
+      prev.score = score;
+    } else {
+      grades[st.id][dateKey] = { score: score, category: 'Speaking', note: sub.feedback || 'Speaking (Telegram)' };
+    }
     store.set(K.grades, grades);
     CloudSync.pushGrade(st.id, dateKey);
   }
@@ -3325,6 +3512,8 @@ document.addEventListener('click', function (e) {
     'save-group': saveGroup,
     'save-student': saveStudent,
     'reset-pwd': function () { openResetPwd(btn.getAttribute('data-sid')); },
+    'edit-student': function () { openEditStudent(btn.getAttribute('data-sid')); },
+    'save-edit-student': function () { saveEditStudent(btn.getAttribute('data-sid')); },
     'save-reset': function () { saveResetPwd(btn.getAttribute('data-sid')); },
 
     /* --- Zaxira (backup/restore) --- */

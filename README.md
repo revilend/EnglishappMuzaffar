@@ -196,6 +196,22 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
   kunlar belgilangan holda, har bir kun uchun alohida vaqt picker prefilled bo'ladi
   (eski guruhlar uchun — bitta `time` qiymati barcha kunlarga avtomatik tarqatiladi).
   Saqlangach `groups.days` "kun+vaqt" formatida yangilanadi va Supabase'ga push qilinadi.
+- **O'quvchini tahrirlash / guruhini almashtirish**: o'quvchi kartasidagi **Tahrirlash** —
+  ism, sinf (5–11) va yangi guruh tanlanadi; `students.group_id` Supabase'da yangilanadi,
+  mavjud **baholar va davomat tarixi saqlanadi** (student_id bo'yicha jadvallar tegilmaydi).
+
+### 18. Xavfsizlik va speaking jurnali
+- **Anti-brute-force**: 5 ta ketma-ket xato → login **5 daqiqa qulflanadi**, jonli `mm:ss`
+  hisoblagich va "Xavfsizlik: 5 marta xato kiritildi..." xabari; "Kirish" tugmasi o'chiriladi.
+- **Bot honeypot**: login va "O'quvchi qo'shish" modallarida yashirin `bot_check_field`
+  maydoni bor — to'ldirilsa, ariza jimjimrad rad etiladi.
+- **XSS**: barcha foydalanuvchi matnlari `esc()` orqali (`< > " ' &`) escape qilinadi.
+- **Telegram WebApp initData**: `user` id ↔ `initDataUnsafe.user.id` mosligi, `hash`
+  mavjudligi va `auth_date` yangiligi (24 soat) tekshiriladi — soxtalanish rad etiladi
+  (to'liq HMAC tekshiruvi bot tokeni bilan serverda amalga oshiriladi).
+- **Speaking sessiyalar jurnali**: bir xil sana uchun ko'p baholash — avvalgi sessiya
+  yo'qolmaydi (note ga qo'shiladi + `et_speak_log` jurnalida saqlanadi); har bir
+  baholash `speaking_debt` ni 1 ga kamaytiradi (0 dan past tushmaydi) va Supabase'ga yoziladi.
 
 ## Telegram bot (aiogram 3.x)
 

@@ -1282,6 +1282,197 @@ const until = async (fn, ms) => {
     check(win.Notif.afterLogin(5) === false, 'notif: ruxsat bloklangan — so‘ramaydi');
   }
 
+  /* ================= 27. GURUH KARTASI: 2x2 GRID TUGMALAR (CSS) ================= */
+  logout();
+  loginAs('m_amirov', '123');
+  const cssSrc = fs.readFileSync(path.join(root, 'css', 'styles.css'), 'utf8');
+  const cssN = cssSrc.replace(/\s+/g, ' ');
+  check(/\.gc-actions \{[^}]*grid-template-columns: 1fr 1fr/.test(cssN) &&
+        /\.gc-actions \{[^}]*width: 100%/.test(cssN),
+    "grid: guruh kartasi tugmalari 2x2 (1fr 1fr, width 100%)");
+  check(/\.group-card \{[^}]*overflow: hidden/.test(cssN),
+    'grid: group-card overflow hidden (ramkadan chiqmaydi)');
+  check(/\.meta-row > span \{[^}]*overflow-wrap: anywhere/.test(cssN),
+    'grid: kunlar matni wrap bo\'ladi (qirqilmaydi)');
+  forceNav('groups');
+  check(!!q('.gc-actions'), 'grid: karta tugmalari .gc-actions konteynerida');
+  const gcBtns = qa('.gc-actions .btn').map(b => b.textContent.trim());
+  check(gcBtns.length === 4 && /Baholar/.test(gcBtns[0]) && /Davomat/.test(gcBtns[1]) &&
+        /Tahrirlash/.test(gcBtns[2]) && /O'chirish/.test(gcBtns[3]),
+    "grid: tartib — [Baholar][Davomat] / [Tahrirlash][O'chirish]");
+
+  /* ================= 28. BAHOLAR JADVALI: COL-STUDENT (CSS + markup) ================= */
+  check(/\.bj \{[^}]*table-layout: fixed/.test(cssN) && /\.bj \{[^}]*border-collapse: separate/.test(cssN) &&
+        /\.bj \{[^}]*width: max-content/.test(cssN),
+    'jadval: table-layout fixed + separate + width max-content');
+  check(/\.bj th\.col-student, \.bj td\.col-student \{[^}]*width: 195px !important[^}]*min-width: 195px !important[^}]*max-width: 195px !important/.test(cssN),
+    'jadval: col-student 195px !important (width/min/max)');
+  check(/\.bj th\.col-student, \.bj td\.col-student \{[^}]*position: sticky; left: 0; z-index: 20; background-color: #ffffff; border-right: 2px solid #e2e8f0/.test(cssN),
+    'jadval: col-student sticky left + oq fon + 2px chegara');
+  check(/\.bj th\.col-student, \.bj td\.col-student \{[^}]*white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px/.test(cssN),
+    'jadval: nom overflow — ellipsis + padding-right 12px');
+  check(/\.bj-date, \.bj-cell \{[^}]*width: 56px !important[^}]*min-width: 56px !important[^}]*max-width: 56px !important[^}]*text-align: center/.test(cssN),
+    'jadval: sana ustunlari 56px !important + center');
+  forceNav('grades');
+  if (!q('.bj')) { const gg = q('[data-act="grade-group"]'); if (gg) click(gg); }
+  check(!!q('.bj th.col-student') && qa('.bj td.col-student').length >= 1,
+    'jadval: col-student klassi th va td da mavjud');
+
+  /* ================= 29. O\'QUVCHINI TAHRIRLASH (guruhni almashtirish) ================= */
+  forceNav('students');
+  check(!!q('[data-act="edit-student"]'), "tahrirlash: o'quvchi kartasida Tahrirlash tugmasi bor");
+  const gradesBefore = win.localStorage.getItem('et_grades');
+  const attBefore = win.localStorage.getItem('et_attendance');
+  click(q('[data-act="edit-student"]'));
+  check(q('#modal-overlay').hidden === false && !!q('#es-name') && !!q('#es-class') && !!q('#es-group'),
+    "tahrirlash: modali — ism/sinf/guruh formasi");
+  check(q('#es-name').value === 'Restored Student', "tahrirlash: ism prefilled");
+  check(q('#es-class').value === '9-sinf', "tahrirlash: sinf prefilled");
+  check(qa('#es-group option').length >= 2 && q('#es-group').value === 'g55',
+    "tahrirlash: guruh dropdown prefilled (g55)");
+  /* bo'sh ism rad etiladi */
+  setVal('#es-name', '');
+  clickAct('save-edit-student');
+  check(q('#modal-overlay').hidden === false && q('#es-error').classList.contains('show'),
+    "tahrirlash: bo'sh ism rad etildi");
+  /* ism + sinf + guruhni almashtirish */
+  setVal('#es-name', 'Restored Student');
+  q('#es-class').value = '10-sinf';
+  q('#es-group').value = '';
+  clickAct('save-edit-student');
+  check(q('#modal-overlay').hidden === true, 'tahrirlash: modal yopildi');
+  check(q('#toast').textContent.includes('yangilandi'), 'tahrirlash: success toast');
+  const stAfterE = JSON.parse(win.localStorage.getItem('et_students') || '[]').filter(x => x.id === 's77')[0];
+  check(!!stAfterE && stAfterE.schoolClass === '10-sinf', "tahrirlash: sinf yangilandi (9 → 10)");
+  check(!!stAfterE && (stAfterE.groupId === null || stAfterE.groupId === ''),
+    "tahrirlash: guruh o'chirildi → group_id NULL (Supabase push)");
+  check(!!stAfterE && stAfterE.fullName === 'Restored Student', "tahrirlash: ism saqlandi");
+  check(win.localStorage.getItem('et_grades') === gradesBefore,
+    "tahrirlash: baholar tarixi O'ZGARMADI (student_id bo'yicha qoldi)");
+  check(win.localStorage.getItem('et_attendance') === attBefore,
+    "tahrirlash: davomat tarixi O'ZGARMADI");
+  check(JSON.parse(win.localStorage.getItem('et_accounts') || '{}').restore1.studentId === 's77',
+    "tahrirlash: login hisobi o'quvchiga bog'langan holatda qoldi");
+
+  /* ================= 30. SPEAKING: BIR XIL SANA — KO'P SESSIYA + QARZ ================= */
+  forceNav('speaking');
+  /* s77 qarzi = 2 — ikki baholashdan keyin 0 bo'lishi kerak */
+  const stFix = JSON.parse(win.localStorage.getItem('et_students') || '[]');
+  if (stFix[0]) { stFix[0].speakingDebt = 2; win.localStorage.setItem('et_students', JSON.stringify(stFix)); }
+  win.onCloudNotifChange('speaking_submissions',
+    { id: 8301, student_id: 77, media_type: 'voice', status: 'kutilmoqda', score: null,
+      created_at: TODAY + 'T10:00:00.000Z' }, null);
+  check(!!q('[data-tgcard="t8301"]'), 'speaking: yangi topshirik INBOXda paydo bo\'ldi');
+  click(q('[data-act="tg-grade"][data-tid="t8301"][data-score="8"]'));
+  await new Promise(r => setTimeout(r, 330));
+  let gRec = (JSON.parse(win.localStorage.getItem('et_grades') || '{}').s77 || {})[TODAY];
+  check(!!gRec && gRec.score === 8 && gRec.category === 'Speaking',
+    'speaking: birinchi sessiya jurnalga yozildi (8/10)');
+  let debtS = JSON.parse(win.localStorage.getItem('et_students') || '[]').filter(x => x.id === 's77')[0];
+  check(!!debtS && debtS.speakingDebt === 1, 'speaking: baholash qarzni −1 qildi (2 → 1), Supabase pushDebt');
+  check(qa('.debt-num').filter(d => d.textContent.trim() === '1 ta').length >= 1,
+    "speaking: ekrandagi qarz hisoblagichi darhol yangilandi (1 ta)");
+  check(JSON.parse(win.localStorage.getItem('et_speak_log') || '[]').length >= 1,
+    'speaking: sessiya et_speak_log jurnaliga yozildi');
+
+  /* SHU SANA IKKINCHI SESSIYA — avvalgisini yo'qotmaydi */
+  win.onCloudNotifChange('speaking_submissions',
+    { id: 8302, student_id: 77, media_type: 'voice', status: 'kutilmoqda', score: null,
+      created_at: TODAY + 'T11:00:00.000Z' }, null);
+  check(!!q('[data-tgcard="t8302"]'), 'speaking: ikkinchi topshirik ham INBOXda');
+  click(q('[data-act="tg-grade"][data-tid="t8302"][data-score="9"]'));
+  await new Promise(r => setTimeout(r, 330));
+  gRec = (JSON.parse(win.localStorage.getItem('et_grades') || '{}').s77 || {})[TODAY];
+  check(!!gRec && gRec.score === 9, 'speaking: ikkinchi sessiya yangilandi (9/10)');
+  check(!!gRec && String(gRec.note || '').includes('Sessiya 8/10'),
+    "speaking: OLDINGI sessiya yo'qolmadi — note ga qo'shilgan (Sessiya 8/10)");
+  debtS = JSON.parse(win.localStorage.getItem('et_students') || '[]').filter(x => x.id === 's77')[0];
+  check(!!debtS && debtS.speakingDebt === 0, 'speaking: ikkinchi baholashdan keyin qarz 0 (2 → 1 → 0)');
+  const sLog = JSON.parse(win.localStorage.getItem('et_speak_log') || '[]');
+  check(sLog.length >= 2 && sLog[0].score === 9 && sLog[1].score === 8 && sLog[0].sid === 's77' && sLog[1].sid === 's77',
+    'speaking: jurnalda ketma-ket 2 ta sessiya (9 → 8, har biri alohida qator)');
+  check(text().includes('Speaking sessiyalar jurnali'), 'speaking: sessiyalar jurnali ekranda ko\'rinadi');
+
+  /* ================= 31. XAVFSIZLIK: XSS / HONEYPOT / initData / BRUTE-FORCE ================= */
+  /* XSS: foydalanuvchi kirgan HTML DOM ga xavfsiz matn sifatida chiqadi */
+  forceNav('students');
+  click(q('[data-act="edit-student"]'));
+  setVal('#es-name', '<img src=x onerror="alert(1)">');
+  clickAct('save-edit-student');
+  check(qa('#screen img').length === 0 && text().includes('<img src=x'),
+    'xss: ismdagi HTML render qilinmaydi — xavfsiz matn sifatida ko\'rinadi');
+  check(!doc.querySelector('#screen [onerror]'), 'xss: onerror atributi DOM ga kirmadi');
+  click(q('[data-act="edit-student"]'));
+  setVal('#es-name', 'Restored Student');
+  clickAct('save-edit-student');
+
+  logout();
+  /* Honeypot: login */
+  check(!!q('#login-bot-hp') && q('#login-bot-hp').getAttribute('name') === 'bot_check_field' &&
+        q('#login-bot-hp').tabIndex === -1,
+    'xavfsizlik: login honeypot maydoni bor (name/tabindex)');
+  setVal('#login-input', 'm_amirov');
+  setVal('#password-input', '123');
+  setVal('#login-bot-hp', 'i-am-bot');
+  clickAct('do-login');
+  check(text().includes('English Tutor') && !q('#login-error').classList.contains('show'),
+    "xavfsizlik: honeypot to'ldirildi → jimjimrad rad etildi (xabarsiz)");
+  check(!JSON.parse(win.localStorage.getItem('et_session') || 'null'),
+    'xavfsizlik: honeypot bilan session yaratilmadi');
+  setVal('#login-bot-hp', '');
+  /* Honeypot: o'quvchi qo'shish modali */
+  setVal('#login-input', 'm_amirov');
+  setVal('#password-input', '123');
+  clickAct('do-login');
+  clickAct('open-add-student');
+  check(!!q('#hp-student') && q('#hp-student').getAttribute('name') === 'bot_check_field',
+    "xavfsizlik: 'O'quvchi qo'shish' modalisida ham honeypot bor");
+  click('[data-act="close-modal"]');
+
+  /* Telegram initData: soxtalanish (id mos emas) → rad */
+  win.Telegram = { WebApp: {
+    initData: 'user=' + encodeURIComponent(JSON.stringify({ id: 111, first_name: 'X' })) +
+              '&hash=deadbeef&auth_date=' + Math.floor(Date.now() / 1000),
+    initDataUnsafe: { user: { id: 222 } }
+  } };
+  logout();
+  setVal('#login-input', 'm_amirov');
+  setVal('#password-input', '123');
+  clickAct('do-login');
+  check(q('#login-error').textContent.includes('tekshiruvi') && text().includes('English Tutor'),
+    'xavfsizlik: initData id mos emas → kirish rad etildi (spoofing)');
+  /* Mos keldi → kirish o\'tadi */
+  win.Telegram.WebApp.initDataUnsafe.user.id = 111;
+  setVal('#login-input', 'm_amirov');
+  setVal('#password-input', '123');
+  clickAct('do-login');
+  check(text().includes('Xush kelibsiz'), 'xavfsizlik: initData mos bo\'lsa kirish ishlaydi');
+  delete win.Telegram;
+  logout();
+
+  /* Anti-brute-force: 5 xato → 5 daqiqa qulf + mm:ss hisoblagich */
+  for (let i = 0; i < 5; i++) {
+    setVal('#login-input', 'm_amirov');
+    setVal('#password-input', 'nope-' + i);
+    clickAct('do-login');
+  }
+  check(q('#login-error').textContent.includes('Xavfsizlik: 5 marta xato kiritildi'),
+    "xavfsizlik: 5 xatodan so'ng qulf xabari");
+  check(/Iltimos, \d{2}:\d{2} daqiqa kuting/.test(q('#login-error').textContent),
+    'xavfsizlik: mm:ss jonli hisoblagich matnda');
+  check(q('[data-act="do-login"]').disabled === true, "xavfsizlik: 'Kirish' tugmasi o'chirilgan");
+  setVal('#login-input', 'm_amirov');
+  setVal('#password-input', '123');
+  q('[data-act="do-login"]').dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
+  check(text().includes('English Tutor') && !JSON.parse(win.localStorage.getItem('et_session') || 'null'),
+    "xavfsizlik: qulflangan holda to'g'ri parol bilan ham kira olmaydi");
+  /* Qulfni tozalash → tugma qayta yoqiladi */
+  win.localStorage.removeItem('et_login_fails');
+  forceNav('login');
+  check(q('[data-act="do-login"]').disabled === false, 'xavfsizlik: qulf tozalandi → tugma qayta yoqildi');
+  loginAs('m_amirov', '123');
+  check(text().includes('Xush kelibsiz'), 'xavfsizlik: oddiy kirish yana ishlaydi');
+
   console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
   process.exit(failed ? 1 : 0);
 })();
