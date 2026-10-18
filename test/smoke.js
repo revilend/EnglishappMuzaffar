@@ -458,8 +458,10 @@ check(text().includes('Jasur Karimov'), 'guard: o\'quvchi o\'z kabinetida qoladi
 /* ================= 11. O'QUVCHI: PAROLNI O'ZGARTIRISH ================= */
 click('[data-act="nav"][data-screen="profile"]');
 check(text().includes('Parolni o\'zgartirish'), 'student: profilda parol o\'zgartirish tugmasi');
+check(!!q('.list-row .login-val') && !q('.list-row code'), "login: profilda login oddiy matn — kod/badge yo'q");
 clickAct('open-change-pwd');
 check(q('#modal-overlay').hidden === false, 'change: modal ochildi');
+check(!!q('#modal-sheet .login-val') && !q('#modal-sheet code'), "change: modalda login oddiy matn — monospace kod yo'q");
 check(qa('.pw-toggle').length === 3, "change: 3 ta parol ko'zgusi tugmasi (eski/yangi/tasdiq)");
 setVal('#cp-old', '999');
 setVal('#cp-new', '4321');
@@ -482,6 +484,7 @@ logout();
 loginAs('m_amirov', '123');
 click('[data-act="nav"][data-screen="students"]');
 check(text().includes('Nilufar Ergasheva'), 'ustoz: qayta kirdi');
+check(!!q('.s-contact .login-val') && !q('.s-contact code'), "login: o'quvchi kartasida login oddiy matn — kod badge yo'q");
 logout();
 
 loginAs('nilufar', '7777');

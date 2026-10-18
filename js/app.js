@@ -1478,7 +1478,7 @@ function studentPortal() {
 
   <div class="section-title">Sozlamalar</div>
   <div class="card">
-    <div class="list-row"><span>Login</span><code>${esc(u.login || '')}</code></div>
+    <div class="list-row"><span>Login</span><span class="login-val">${esc(u.login || '')}</span></div>
     <div class="list-row"><span>Parol</span><span class="muted">••••</span></div>
   </div>
   <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">${ico('key', 16)} Parolni o'zgartirish</button>
@@ -1538,7 +1538,7 @@ function studentCard(s) {
         </div>
         <div class="s-group">${g ? esc(g.name) : "Guruh taylanmagan"}</div>
         <div class="s-contacts">
-          <span class="s-contact"><span class="lbl">Login</span><code>${acc ? esc(acc.login) : '—'}</code></span>
+          <span class="s-contact"><span class="lbl">Login</span><span class="login-val">${acc ? esc(acc.login) : '—'}</span></span>
         </div>
         <div class="s-debt row between" style="margin-top:10px">
           <span class="lbl-strong">Speaking qarzi</span>
@@ -1631,7 +1631,7 @@ function profileScreen() {
 
   <div class="section-title">Xavfsizlik</div>
   <div class="card list-card">
-    <div class="list-row"><span>Login</span><code>${esc(u.login || '')}</code></div>
+    <div class="list-row"><span>Login</span><span class="login-val">${esc(u.login || '')}</span></div>
     <div class="list-row"><span>Parol</span><span class="muted">••••</span></div>
     <div class="list-row"><span>Ko'rinish</span><span class="muted">${isTeacher() ? 'Muzaffar Amirov' : "O'quvchi"}</span></div>
   </div>
@@ -1798,7 +1798,7 @@ function openResetPwd(sid) {
       <div class="avatar">${esc(initials(st.fullName))}</div>
       <div class="col">
         <div class="s-name">${esc(st.fullName)}</div>
-        <div class="muted small">${esc(st.schoolClass)} • login: <code>${acc ? esc(acc.login) : '—'}</code></div>
+        <div class="muted small">${esc(st.schoolClass)} • Login: <span class="login-val">${acc ? esc(acc.login) : '—'}</span></div>
       </div>
     </div>
     ${acc ? '' : `<label class="field-label" for="rp-login">Login</label>
@@ -1848,7 +1848,7 @@ function openChangePwd() {
       <div class="avatar">${esc(initials(u.name || u.login))}</div>
       <div class="col">
         <div class="s-name">${esc(u.name || u.login)}</div>
-        <div class="muted small">Login: <code>${esc(u.login)}</code></div>
+        <div class="muted small">Login: <span class="login-val">${esc(u.login)}</span></div>
       </div>
     </div>
 

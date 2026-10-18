@@ -40,6 +40,8 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 a { color: var(--accent); }
 h1, h2, h3, p { margin: 0; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; background: var(--bg); padding: 2px 6px; border-radius: 6px; }
+/* Login — oddiy matn (badge/monospace/ramka O'CHIRILDI) */
+.login-val { font-size: inherit; font-weight: 500; color: #334155; font-family: inherit; }
 
 .app {
   max-width: 480px;
