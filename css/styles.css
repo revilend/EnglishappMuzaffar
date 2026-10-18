@@ -922,7 +922,7 @@ body.auth-mode .toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
 }
 .confirm-emoji svg { width: 26px; height: 26px; }
 .modal-head h3 { display: flex; align-items: center; gap: 8px; }
-.modal-head h3 svg { width: 19px; height: 19px; flex: none; }
+.modal-head h3 svg { width: 20px; height: 20px; flex: none; }
 .confirm-text { font-size: 14.5px; line-height: 1.55; color: var(--text); }
 .confirm-text strong { font-weight: 800; }
 .confirm-actions { display: flex; gap: 10px; margin-top: 16px; }

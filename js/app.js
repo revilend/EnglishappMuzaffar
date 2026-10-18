@@ -1314,7 +1314,7 @@ function teacherHome() {
 
   <div class="screen-head" style="margin-top:6px">
     <div>
-      <h2 class="screen-title">${ico('bookOpen', 19)} Uyga vazifalar</h2>
+      <h2 class="screen-title">${ico('bookOpen', 20)} Uyga vazifalar</h2>
       <div class="muted small">${getHomework().length} ta vazifa • bot guruhga xabar qiladi</div>
     </div>
     <button type="button" class="btn btn-primary btn-sm" data-act="open-hw">+ Uyga vazifa</button>
@@ -1455,7 +1455,7 @@ function studentPortal() {
     ${Number(st.speakingDebt) > 0
       ? `<div class="debt-badge" style="margin-bottom:8px">${ico('alert', 15)} Speaking qarzingiz: ${Number(st.speakingDebt)} ta</div>`
       : `<div class="att-pill" style="margin-bottom:8px">${ico('checkCircle', 15)} Speaking qarzingiz yo'q</div>`}
-    <button type="button" class="btn btn-primary btn-block speak-cta" data-act="speak-cta">${ico('mic', 17)} Speaking topshirish</button>
+    <button type="button" class="btn btn-primary btn-block speak-cta" data-act="speak-cta">${ico('mic', 20)} Speaking topshirish</button>
     ${slotRows}
   </div>
 
@@ -2921,7 +2921,7 @@ function openChat(sid) {
   state.chatSid = sid;
   openModal(`
     <div class="modal-head">
-      <h3>${ico('message', 17)} Xabar yozish</h3>
+      <h3>${ico('message', 20)} Xabar yozish</h3>
       <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
     </div>
     <div class="editor-info">
@@ -3086,7 +3086,7 @@ document.addEventListener('click', function (e) {
     'speak-cta': function () {
       openModal(`
         <div class="modal-head">
-          <h3>${ico('mic', 17)} Speaking topshirish</h3>
+          <h3>${ico('mic', 20)} Speaking topshirish</h3>
           <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
         </div>
         <div class="confirm-body">
