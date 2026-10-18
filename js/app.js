@@ -36,6 +36,7 @@ const K = {
   speaking: 'et_speaking',
   messages: 'et_messages',
   homework: 'et_homework',
+  homeworkDone: 'et_hw_done',
   tgsubs: 'et_tg_subs'
 };
 
@@ -75,7 +76,8 @@ const state = {
   speakDate: '',
   slotMode: 'create',
   slotId: '',
-  chatSid: null
+  chatSid: null,
+  classHint: false
 };
 
 const AUTH_SCREENS = ['login'];
@@ -136,7 +138,7 @@ function fmtDMY(iso) { const p = String(iso).split('-'); return p[2] + '.' + p[1
 function lessonDates(groupId, count) {
   const g = groupById(groupId);
   if (!g) return [];
-  const names = String(g.days).split(',').map(x => x.trim());
+  const names = String(g.days).split(',').map(x => x.trim().split(/\s+/)[0]).filter(Boolean); /* "Dushanba 09:15" → kun nomi */
   const jsDays = names
     .map(n => APP_DATA.days.indexOf(n))
     .filter(i => i >= 0)
@@ -627,6 +629,13 @@ const CloudSync = (function () {
     if (del.error) throw del.error;
   }
 
+  /* --- Uyga vazifani o'chirish (homework jadvalidan qator) --- */
+  async function deleteHomework(dbId) {
+    if (!ready() || !hasHomework || dbId == null) return;
+    const res = await client.from('homework').delete().eq('id', dbId);
+    if (res.error) throw res.error;
+  }
+
   /* --- Zaxira: jadvallarni olish / qayta tiklash --- */
   const BACKUP_TABLES = ['groups', 'students', 'attendance', 'grades', 'messages', 'speaking_submissions', 'audio_submissions'];
 
@@ -787,6 +796,7 @@ const CloudSync = (function () {
     subscribe: subscribe,
     deleteStudent: deleteStudent,
     deleteGroup: deleteGroup,
+    deleteHomework: deleteHomework,
     fetchBackup: fetchBackup,
     restoreBackup: restoreBackup,
     clearTable: clearTable,
@@ -1107,6 +1117,7 @@ const ICON = {
   brush: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 11 8-8a2.8 2.8 0 0 1 4 4l-8 8"/><path d="M7.2 13.9c-1.6 0-3 1.4-3 3 0 1.3-2.4 1.6-1.9 2.1 1.1 1.1 2.5 2 4 2 2.2 0 4-1.8 4-4a3 3 0 0 0-3.1-3.1Z"/></svg>',
   lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10.5" width="16" height="11" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>',
   alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.2 18-8-14a1.9 1.9 0 0 0-3.3 0l-8 14A1.9 1.9 0 0 0 3.6 21h16.8a1.9 1.9 0 0 0 1.7-3Z"/><path d="M12 9.5v4"/><path d="M12 17.2h.01"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 9.5 17.5 19.5 6.5"/></svg>',
   checkCircle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.4 12.3 2.5 2.5 4.7-5.2"/></svg>',
   star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3.4 2.75 5.6 6.15.9-4.45 4.3 1.05 6.15L12 17.45l-5.5 2.9 1.05-6.15L3.1 9.9l6.15-.9Z"/></svg>',
   fileText: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9 13.5h6M9 17h4"/></svg>'
@@ -1206,13 +1217,112 @@ function blockedScreen(msg) {
 
 /* ==================== BOSH SAHIFA: USTOZ ==================== */
 /* ==================== UYGA VAZIFALAR ==================== */
+function hwDoneMap() { return store.get(K.homeworkDone, {}) || {}; }
+function isHwDone(hid) {
+  const st = linkedStudent();
+  if (!st) return false;
+  const arr = hwDoneMap()[st.id] || [];
+  return arr.some(id => String(id) === String(hid));
+}
+
 function hwRowHTML(h) {
   const g = groupById(h.groupId);
-  return `<div class="hw-item">
-    <div class="row between"><strong>${esc(h.title)}</strong><span class="chip-class">${g ? esc(g.name) : '—'}</span></div>
-    ${h.description ? `<div class="muted small" style="margin-top:3px">${esc(h.description)}</div>` : ''}
-    <div class="muted small" style="margin-top:3px">${ico('calendar', 13)} Topshirish muddati: ${h.dueDate ? fmtDMY(h.dueDate) : '—'}</div>
+  const chip = `<span class="chip-class">${g ? esc(g.name) : '—'}</span>`;
+  const meta = h.description ? `<div class="muted small" style="margin-top:3px">${esc(h.description)}</div>` : '';
+  const due = `<div class="muted small" style="margin-top:3px">${ico('calendar', 13)} Topshirish muddati: ${h.dueDate ? fmtDMY(h.dueDate) : '—'}</div>`;
+
+  /* --- Ustoz: karta yuqori o'ng burchagida o'chirish tugmasi --- */
+  if (isTeacher()) {
+    return `<div class="hw-item">
+      <div class="row between hw-head">
+        <strong>${esc(h.title)}</strong>
+        <span class="hw-head-right">${chip}
+          <button type="button" class="hw-del" data-act="del-hw" data-hid="${esc(String(h.id))}" aria-label="Uyga vazifani o'chirish">${ico('trash', 15)}</button>
+        </span>
+      </div>
+      ${meta}
+      ${due}
+    </div>`;
+  }
+
+  /* --- O'quvchi: aylantirish checkbox (○ / ✓) + bajarildi nishoni --- */
+  const done = isHwDone(h.id);
+  const metaStruck = meta ? (done ? meta.replace('class="muted small"', 'class="muted small hw-struck"') : meta) : '';
+  return `<div class="hw-item hw-task${done ? ' is-done' : ''}">
+    <div class="hw-task-row">
+      <button type="button" class="hw-check${done ? ' on' : ''}" data-act="toggle-hw"
+              data-hid="${esc(String(h.id))}" aria-pressed="${done ? 'true' : 'false'}"
+              aria-label="Bajarildi deb belgilash">${done ? ico('check', 15) : ''}</button>
+      <div class="hw-task-body">
+        <div class="row between"><strong class="${done ? 'hw-struck' : ''}">${esc(h.title)}</strong>${chip}</div>
+        ${done ? `<span class="hw-done-badge">${ico('check', 12)} Bajarildi</span>` : ''}
+        ${metaStruck}
+        ${due}
+      </div>
+    </div>
   </div>`;
+}
+
+/* --- O'quvchi: vazifani bajarilgan/qayta faol holatga o'tkazish (localStorage'da saqlanadi) --- */
+function toggleHwDone(hid) {
+  const st = linkedStudent();
+  if (!st) { toast("Ruxsat yo'q", 'error'); return; }
+  const map = hwDoneMap();
+  const key = String(hid);
+  const arr = (map[st.id] || []).map(String);
+  const i = arr.indexOf(key);
+  if (i >= 0) arr.splice(i, 1); else arr.push(key);
+  if (arr.length) map[st.id] = arr; else delete map[st.id];
+  store.set(K.homeworkDone, map);
+  render();
+}
+
+/* --- Ustoz: uyga vazifani o'chirish (tasdiq modali) --- */
+function openDeleteHw(hid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const norm = String(hid);
+  const h = getHomework().filter(x => String(x.id) === norm)[0];
+  if (!h) return;
+  openModal(`
+    <div class="modal-head">
+      <h3>O'chirish</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+    <div class="confirm-body">
+      <div class="confirm-emoji tint-rose">${ICON.trash}</div>
+      <p class="confirm-text">Haqiqatan ham ushbu uyga vazifani o'chirmoqchimisiz?</p>
+      <p class="muted small" style="margin-top:7px"><strong>${esc(h.title)}</strong></p>
+    </div>
+    <div class="confirm-actions">
+      <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
+      <button type="button" class="btn btn-danger" data-act="do-del-hw" data-hid="${esc(norm)}">Ha, o'chirish</button>
+    </div>
+  `);
+}
+
+function doDeleteHw(hid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const norm = String(hid);
+  const list = getHomework();
+  const h = list.filter(x => String(x.id) === norm)[0];
+  if (!h) return;
+
+  store.set(K.homework, list.filter(x => String(x.id) !== norm));
+  if (h.dbId != null) CloudSync.deleteHomework(h.dbId).catch(e => console.warn('[cloud] del hw:', (e && e.message) || e));
+
+  /* o'chirilgan vazifaning bajarilganlik izlarini ham tozalash */
+  const map = hwDoneMap();
+  let touched = false;
+  Object.keys(map).forEach(sid => {
+    const before = (map[sid] || []).map(String);
+    const next = before.filter(id => id !== norm);
+    if (next.length !== before.length) { map[sid] = next; touched = true; }
+  });
+  if (touched) store.set(K.homeworkDone, map);
+
+  closeModal();
+  render();
+  toast("Uyga vazifa o'chirildi");
 }
 
 function homeworkListHTML(list) {
@@ -1297,9 +1407,9 @@ function teacherHome() {
   </section>
 
   <div class="stat-grid">
-    <div class="card stat"><span class="stat-ico">${ICON.groups}</span><span class="stat-num">${groups.length}</span><span class="stat-label">Guruhlar</span></div>
-    <div class="card stat"><span class="stat-ico">${ICON.students}</span><span class="stat-num">${students.length}</span><span class="stat-label">O'quvchilar</span></div>
-    <div class="card stat"><span class="stat-ico">${ICON.cal}</span><span class="stat-num">${Object.keys(classSet).length}</span><span class="stat-label">Sinflar</span></div>
+    <button type="button" class="card stat" data-act="stat-groups"><span class="stat-ico">${ICON.groups}</span><span class="stat-num">${groups.length}</span><span class="stat-label">Guruhlar</span></button>
+    <button type="button" class="card stat" data-act="stat-students"><span class="stat-ico">${ICON.students}</span><span class="stat-num">${students.length}</span><span class="stat-label">O'quvchilar</span></button>
+    <button type="button" class="card stat" data-act="stat-classes"><span class="stat-ico">${ICON.cal}</span><span class="stat-num">${Object.keys(classSet).length}</span><span class="stat-label">Sinflar</span></button>
   </div>
 
   <div class="section-title">Tez amallar</div>
@@ -1488,16 +1598,37 @@ function studentPortal() {
 function homeScreen() { return isTeacher() ? teacherHome() : studentPortal(); }
 
 /* ==================== GURUHLAR (faqat ustoz) ==================== */
+/* Kunlar stringi: "Dushanba 09:15, Shanba 11:00" → kun+vaqt; eski "Dushanba" → vaqtsiz */
+function parseGroupDays(g) {
+  return String(g && g.days || '').split(',').map(function (x) {
+    const t = x.trim().replace(/\s+/g, ' ');
+    if (!t) return null;
+    const p = t.split(' ');
+    return { day: p[0], time: p.slice(1).join(' ') };
+  }).filter(Boolean);
+}
+/* Hammasida vaqt bo'lsa → "Dushanba 09:15 • Shanba 11:00", aks holda null (eski format) */
+function groupScheduleText(g) {
+  const list = parseGroupDays(g);
+  if (list.length && list.every(x => x.time)) {
+    return list.map(x => x.day + ' ' + x.time).join(' • ');
+  }
+  return null;
+}
+
 function groupCard(g, students) {
   const cnt = students.filter(s => s.groupId === g.id).length;
+  const sched = groupScheduleText(g);
   return `<div class="card group-card" data-act="filter-group" data-gid="${g.id}" style="cursor:pointer" role="button" title="O'quvchilarni ko'rsatish">
     <div class="row between">
       <h3 class="card-h">${esc(g.name)}</h3>
       <span class="pill">${cnt} o'quvchi</span>
     </div>
     <div class="meta-rows">
-      <div class="meta-row">${ico('calendar', 15)} <span>${esc(g.days)}</span></div>
-      <div class="meta-row">${ico('clock', 15)} <span>${esc(g.time)}</span></div>
+      ${sched
+        ? `<div class="meta-row">${ico('calendar', 15)} <span>${esc(sched)}</span></div>`
+        : `<div class="meta-row">${ico('calendar', 15)} <span>${esc(g.days)}</span></div>
+           <div class="meta-row">${ico('clock', 15)} <span>${esc(g.time)}</span></div>`}
     </div>
     <div class="muted small" style="margin-top:7px">Bosib, guruh o'quvchilarini ko'rish</div>
     <div class="row g8" style="margin-top:11px">
@@ -1605,7 +1736,7 @@ function studentsScreen() {
     <input class="input" id="s-search" type="search" placeholder="O'quvchi ismini kiriting..." value="${esc(state.search)}" />
   </div>
 
-  <div class="chips">
+  <div class="chips${state.classHint ? ' is-hl' : ''}">
     ${chips.map(c => `<button type="button" class="chip-btn ${state.filterClass === c ? 'active' : ''}" data-act="filter-class" data-class="${esc(c)}">${esc(c)}</button>`).join('')}
   </div>
 
@@ -1692,11 +1823,31 @@ function openAddGroup() {
         </label>`).join('')}
     </div>
 
-    <label class="field-label" for="f-gtime">Dars vaqti</label>
-    <input class="input" id="f-gtime" type="time" value="18:00" />
+    <div id="f-times" class="day-times" aria-live="polite"></div>
+    <p class="muted small" style="margin-top:8px">Kunni tanlang — har bir kun uchun alohida vaqtni belgilang (masalan Dushanba 09:15, Shanba 11:00).</p>
 
     <button type="button" class="btn btn-primary btn-block" data-act="save-group">Saqlash</button>
   `);
+}
+
+/* Tanlangan kunlar uchun dinamik vaqt tanlagichlari (yagona vaqt inputi YO'Q) */
+function renderDayTimes() {
+  const wrap = $('#f-days') ? $('#f-times') : null;
+  if (!wrap) return;
+  const prev = {};
+  $$('.dt-time', wrap).forEach(inp => {
+    const d = inp.getAttribute('data-day');
+    if (d) prev[d] = inp.value;
+  });
+  const days = $$('input:checked', $('#f-days')).map(i => i.value);
+  if (!days.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = `
+    <div class="field-label">Dars vaqtlari (har kun uchun)</div>
+    ${days.map(d => `
+      <div class="day-time-row">
+        <span class="dt-day">${esc(d)}</span>
+        <input class="input dt-time" type="time" data-day="${esc(d)}" value="${esc(prev[d] || '')}" aria-label="${esc(d)} dars vaqti" />
+      </div>`).join('')}`;
 }
 
 function openAddStudent() {
@@ -1740,14 +1891,21 @@ function openAddStudent() {
 function saveGroup() {
   const name = ($('#f-gname').value || '').trim();
   const days = $$('input:checked', $('#f-days')).map(i => i.value);
-  const time = $('#f-gtime').value;
+  const times = {};
+  $$('#f-times .dt-time').forEach(inp => {
+    const d = inp.getAttribute('data-day');
+    if (d) times[d] = (inp.value || '').trim();
+  });
 
   if (!name) { toast("Guruh nomini kiriting", 'error'); $('#f-gname').focus(); return; }
   if (!days.length) { toast("Dars kunlarini tanlang", 'error'); return; }
-  if (!time) { toast("Dars vaqtini kiriting", 'error'); return; }
+
+  /* Kun + vaqt bir xatorda saqlanadi: "Dushanba 09:15, Shanba 11:00" */
+  const encoded = days.map(d => (times[d] ? d + ' ' + times[d] : d)).join(', ');
+  const firstTime = days.map(d => times[d] || '').filter(Boolean)[0] || '';
 
   const groups = getGroups();
-  groups.push({ id: 'g' + Date.now(), name, days: days.join(', '), time });
+  groups.push({ id: 'g' + Date.now(), name, days: encoded, time: firstTime });
   store.set(K.groups, groups);
   CloudSync.pushGroup(groups[groups.length - 1]);
   closeModal();
@@ -3034,6 +3192,32 @@ document.addEventListener('click', function (e) {
     'do-login': doLogin,
     'logout': logout,
     'nav': function () { go(btn.getAttribute('data-screen')); },
+
+    /* --- Dashboard stat kartalari (bosiladigan) --- */
+    'stat-groups': function () {
+      if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+      go('groups');
+    },
+    'stat-students': function () {
+      if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+      state.filterGroup = null;
+      state.filterClass = 'Barchasi';
+      state.search = '';
+      go('students');
+    },
+    'stat-classes': function () {
+      if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+      state.filterGroup = null;
+      state.filterClass = 'Barchasi';
+      state.search = '';
+      state.classHint = true;
+      go('students');
+      clearTimeout(state.classHintTimer);
+      state.classHintTimer = setTimeout(function () {
+        state.classHint = false;
+        render();
+      }, 1800);
+    },
     'filter-class': function () {
       state.filterClass = btn.getAttribute('data-class');
       render();
@@ -3188,6 +3372,9 @@ document.addEventListener('click', function (e) {
     /* --- Uyga vazifalar --- */
     'open-hw': openHwModal,
     'save-hw': saveHomework,
+    'del-hw': function () { openDeleteHw(btn.getAttribute('data-hid')); },
+    'do-del-hw': function () { doDeleteHw(btn.getAttribute('data-hid')); },
+    'toggle-hw': function () { toggleHwDone(btn.getAttribute('data-hid')); },
 
     /* --- Tozalash (avval zaxira) --- */
     'cleanup-pick': function () {
@@ -3271,6 +3458,8 @@ document.addEventListener('change', function (e) {
   if (!t) return;
   if (t.id === 'att-date' && t.value) { state.attDate = t.value; render(); }
   if (t.id === 'sp-date' && t.value) { state.speakDate = t.value; render(); }
+  /* Guruh modali: yangi kun belgilandi → o'sha kun uchun vaqt picker chiqadi */
+  if (t.closest && t.closest('#f-days')) { renderDayTimes(); }
   if (t.id === 'backup-file' && t.files && t.files[0]) {
     readBackupFile(t.files[0]);
     t.value = '';

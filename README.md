@@ -181,6 +181,18 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 - Tasdiqlangach tanlangan jadval Supabase'da va lokalda tozalanadi.
   (Botda zaxirani Telegram'ga olish uchun `/backup` buyrug'i bor.)
 
+### 17. Bosiladigan stat kartalar va har kun uchun alohida dars vaqtlari
+- Dashboardning **3 ta yuqori stat kartasi** bosiladi (`cursor-pointer`, bosilganda `scale-0.95`):
+  **Guruhlar** → Guruhlar ekrani, **O'quvchilar** → O'quvchilar ekrani,
+  **Sinflar** → O'quvchilar ekrani + **sinf filtri** chiplari animatsiya bilan ajratib ko'rsatiladi.
+- **"Guruh qo'shish"** modali: haftaning istalgan kunlari (Dushanba–Yakshanba) belgilanadi va
+  **har bir tanlangan kun uchun alohida `<input type="time">`** paydo bo'ladi —
+  vaqt hardcode qilinmasdan ustoz istagan vaqtni tanlaydi (masalan Dushanba 09:15, Shanba 11:00).
+  Kun o'chirilsa, o'sha kunning vaqt picker ham yo'qoladi.
+- Guruh kartasi jadvalni dinamik formatda ko'rsatadi: **"Dushanba 09:15 • Shanba 11:00"**.
+  Eski guruhlar (kunlar + bitta `time`) avvalgi ko'rinishida qoladi; `groups` jadvali ustunlari
+  **o'zgarmagan** — kun+vaqt `days` ustunida saqlanadi, yangi migration shart emas.
+
 ## Telegram bot (aiogram 3.x)
 
 `bot.py` — bu ilovaning xabar yuborish boti. `/start` buyrug'i pastki chapdagi

@@ -351,23 +351,38 @@ svg { display: inline-block; vertical-align: -3px; }
 .stat:nth-child(3) .stat-ico { background: rgba(180, 83, 9, 0.12); color: #b45309; }
 .stat-num { display: block; font-size: 23px; font-weight: 800; letter-spacing: -0.045em; line-height: 1.1; }
 .stat-label { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: -0.005em; }
+/* Stat kartalari bosiladigan tutqich (cursor-pointer + active:scale-95) */
+.stat { cursor: pointer; transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease); }
+.stat:active { transform: scale(0.95); }
 
-.quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* --- Tez amallar: barcha 6 ta karta qat'iy 88px, bir xil qator balandligi --- */
+.quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; grid-auto-rows: 88px; align-items: stretch; }
 .quick {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 7px;
+  justify-content: space-between;
+  height: 88px;
+  min-height: 88px;
   padding: 14px;
-  font-size: 14px;
+  overflow: hidden;
+  font-size: 13.5px;
   font-weight: 600;
+  line-height: 1.22;
   text-align: left;
   transition: all 0.2s var(--ease);
 }
+/* Matn uzs ham balandlik o'zgarmaydi: 2 qator bilan cheklanadi */
+.quick > span:not(.quick-ico) {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 /* --- Tez amallar: vektor ikonka + yumshoq rangli badge --- */
 .quick-ico {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -429,6 +444,12 @@ svg { display: inline-block; vertical-align: -3px; }
 .search-wrap .input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
 .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; -webkit-overflow-scrolling: touch; scroll-behavior: smooth; }
 .chips::-webkit-scrollbar { display: none; }
+/* "Sinflar" kartasidan kirilganda sinf filtri bir zumda ajratib ko'rsatiladi */
+.chips.is-hl .chip-btn { animation: chipPulse 1.5s ease; }
+@keyframes chipPulse {
+  0%, 100% { box-shadow: none; }
+  30%, 60% { box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.18); }
+}
 .chip-btn {
   white-space: nowrap;
   padding: 8px 14px;
@@ -524,6 +545,11 @@ svg { display: inline-block; vertical-align: -3px; }
 .modal-head h3 { font-size: 17px; font-weight: 800; }
 
 .day-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 6px; }
+/* Har bir tanlangan kun uchun alohida vaqt picker (dinamik) */
+.day-times { margin-top: 2px; }
+.day-time-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.day-time-row .dt-day { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--text); }
+.day-time-row .dt-time { width: auto; min-width: 130px; flex: none; padding: 9px 12px; border-radius: 12px; font-size: 15px; font-variant-numeric: tabular-nums; }
 .day-opt { position: relative; display: block; }
 .day-opt input { position: absolute; opacity: 0; pointer-events: none; }
 .day-box {
@@ -1021,3 +1047,59 @@ body.auth-mode .toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
 /* --- Uyga vazifa qatori --- */
 .hw-item { padding: 9px 0; border-bottom: 1px solid var(--line); }
 .hw-item:last-child { border-bottom: 0; }
+.hw-head { align-items: center; gap: 8px; }
+.hw-head-right { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+
+/* Ustoz: o'chirish tugmasi (karta yuqori o'ng burchagi) */
+.hw-del {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 10px;
+  background: #fff1f2;
+  color: #e11d48;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  cursor: pointer;
+  transition: all 0.16s var(--ease);
+}
+.hw-del:hover { background: #ffe4e6; }
+.hw-del:active { transform: scale(0.9); }
+
+/* O'quvchi: aylantirish checkbox (○ / ✓) */
+.hw-task-row { display: flex; align-items: flex-start; gap: 10px; }
+.hw-check {
+  width: 26px;
+  height: 26px;
+  margin-top: 1px;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  background: var(--card);
+  color: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  cursor: pointer;
+  transition: all 0.16s var(--ease);
+}
+.hw-check:active { transform: scale(0.88); }
+.hw-check.on { background: #10b981; border-color: #10b981; color: #fff; }
+.hw-task-body { flex: 1; min-width: 0; }
+.hw-title { color: inherit; }
+.hw-struck { text-decoration: line-through; color: #94a3b8; opacity: 0.6; }
+.hw-done-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  margin-top: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #059669;
+  font-size: 11px;
+  font-weight: 700;
+}

@@ -224,6 +224,21 @@ check(!!q('.screen-title svg') && !!q('.stat-ico svg'), 'icon: bo"lim sarlavhasi
 check(!/[\u{1F300}-\u{1FAFF}]/u.test(q('#screen').textContent),
   "icon: dashboardda cartoon emoji qolmagan (faqat vektor ikonka)");
 
+/* --- Stat kartalari bosiladigan (Guruhlar / O'quvchilar / Sinflar) --- */
+check(qa('.stat-grid .card.stat').length === 3, 'stat: 3 ta stat karta render bo\'ldi');
+check(!!q('[data-act="stat-groups"]') && !!q('[data-act="stat-students"]') && !!q('[data-act="stat-classes"]'),
+  "stat: Guruhlar/O'quvchilar/Sinflar kartalari interaktiv (button)");
+clickAct('stat-groups');
+check(text().includes('Guruhlar') && groupCards() === 2, "stat: 'Guruhlar' kartasi → Guruhlar ekrani (2 ta)");
+click('[data-act="nav"][data-screen="home"]');
+clickAct('stat-students');
+check(text().includes("O'quvchilar") && studentCards() === 6, "stat: 'O'quvchilar' kartasi → O'quvchilar ekrani (6 ta)");
+click('[data-act="nav"][data-screen="home"]');
+clickAct('stat-classes');
+check(studentCards() === 6 && qa('.chips.is-hl').length === 1 && qa('[data-act="filter-class"]').length >= 4,
+  "stat: 'Sinflar' kartasi → O'quvchilar + sinf filtri ajratib ko'rsatildi");
+click('[data-act="nav"][data-screen="home"]');
+
 /* Moliyaviy ma'lumotlar UMUMAN yo'q */
 check(!text().includes("so'm"), 'moliya: dashboardda narx yo\'q');
 check(!text().includes("To'lov") && !text().includes('Narx'), 'moliya: to\'lov/narx kartasi yo\'q');
@@ -234,6 +249,56 @@ check(text().includes('Guruhlar'), 'guruhlar: ekran');
 check(groupCards() === 2, 'guruhlar: 2 ta guruh');
 check(text().includes('IELTS Band 7.0') && text().includes('18:00'), 'guruhlar: nom + dars vaqti');
 check(!text().includes("so'm"), 'moliya: guruh kartasida narx yo\'q');
+
+/* --- Kunlik vaqt picker: har bir kun uchun alohida <input type=time> --- */
+clickAct('open-add-group');
+check(q('#modal-overlay').hidden === false && qa('#f-days input').length === 7,
+  "guruh: modalda haftaning 7 ta kuni (Dushanba–Yakshanba)");
+check(!q('#f-gtime'), "vaqt: eski yagona #f-gtime hardcode input olib tashlandi");
+check(qa('#f-times .dt-time').length === 0, "vaqt: kun tanlanmaguncha picker yo'q");
+setVal('#f-gname', 'Vaqtli Guruh');
+const pickDay = name => {
+  const box = qa('#f-days input').filter(i => i.value === name)[0];
+  box.checked = true;
+  box.dispatchEvent(new win.Event('change', { bubbles: true }));
+};
+const clearDay = name => {
+  const box = qa('#f-days input').filter(i => i.value === name)[0];
+  box.checked = false;
+  box.dispatchEvent(new win.Event('change', { bubbles: true }));
+};
+const timeFor = name => qa('#f-times .dt-time').filter(i => i.getAttribute('data-day') === name)[0];
+pickDay('Dushanba');
+check(qa('#f-times .dt-time').length === 1, "vaqt: Dushanba ✓ → bitta picker paydo bo'ldi");
+pickDay('Shanba');
+check(qa('#f-times .dt-time').length === 2, "vaqt: Shanba ✓ → ikkinchi alohida picker paydo bo'ldi");
+check(timeFor('Dushanba') && timeFor('Shanba') && timeFor('Seshanba') == null,
+  "vaqt: pickerlar FAQAT tanlangan kunlar uchun (Dushanba, Shanba)");
+timeFor('Shanba').value = '11:00';
+clearDay('Dushanba');
+check(qa('#f-times .dt-time').length === 1 && timeFor('Shanba').value === '11:00',
+  "vaqt: kun o'chirildi → picker ketdi, qolgan kun qiymati saqlandi");
+pickDay('Dushanba');
+timeFor('Dushanba').value = '09:15';
+
+/* --- "Guruh qo'shish" ni saqlash --- */
+clickAct('save-group');
+check(q('#modal-overlay').hidden === true, "guruh: modal saqlanib yopildi");
+const newGrp = JSON.parse(win.localStorage.getItem('et_groups')).filter(g => g.name === 'Vaqtli Guruh')[0];
+check(!!newGrp && newGrp.days === 'Dushanba 09:15, Shanba 11:00', "vaqt: 'kun + vaqt' har bir kun uchun saqlandi");
+check(newGrp.time === '09:15', "vaqt: legacy time maydoni birinchi tanlangan vaqt bilan to'ldirildi");
+check(groupCards() === 3, "guruh: yangi guruh karta bo'ldi (3 ta)");
+check(text().includes('Dushanba 09:15') && text().includes('Shanba 11:00') && text().includes(' • '),
+  "vaqt: karta formati 'Dushanba 09:15 • Shanba 11:00'");
+check(text().includes('Dushanba, Chorshanba, Juma') && text().includes('18:00'),
+  "vaqt: eski guruhlarda format o'zgarmagan (Dushanba, Chorshanba, Juma + 18:00)");
+
+/* sinov guruhi o'chiriladi — keyingi bosqichlardagi '2 guruh' invarianti saqlanadi */
+click(qa('.group-card').filter(c => c.textContent.includes('Vaqtli Guruh'))[0].querySelector('[data-act="del-group"]'));
+click('[data-act="do-del-group"]');
+check(groupCards() === 2, "vaqt: sinov guruhi o'chirildi → yana 2 ta guruh");
+check(!JSON.parse(win.localStorage.getItem('et_groups')).some(g => g.name === 'Vaqtli Guruh'),
+  "vaqt: sinov guruhi bazadan ham o'chdi");
 
 /* --- Guruh kartasini bosish → faqat shu guruh o'quvchilari --- */
 click(qa('.group-card').filter(c => c.textContent.includes('IELTS Band 7.0'))[0]);
@@ -866,6 +931,69 @@ const until = async (fn, ms) => {
   check(text().includes('10 ta gap tuzing'), "uyga vazifa: tavsif portalda ko'rinadi");
   check(text().includes('Uyga vazifalar') && !!q('.section-title svg'),
     "uyga vazifa: portal bo'limi SVG BookOpen ikonka bilan mavjud");
+
+  /* ================= 20b. O'QUVCHI: BAJARILGANLIK CHECKBOXI (○ / ✓) ================= */
+  const hwToggle1 = q('[data-act="toggle-hw"]');
+  check(!!hwToggle1, "bajarildi: portalda har bir vazifa yonida aylantirish checkboxi bor");
+  check(!q('.hw-check.on') && !q('.hw-done-badge'), "bajarildi: standart holat — ○ (bosh)");
+  click(hwToggle1);
+  check(!!q('.hw-check.on'), "bajarildi: bosildi → ✓ (yashil)");
+  check(qa('.hw-struck').length >= 2, "bajarildi: sarlavha va tavsifda line-through");
+  check(!!q('.hw-done-badge') && q('.hw-done-badge').textContent.includes('Bajarildi'),
+    "bajarildi: '✓ Bajarildi' yashil badge paydo bo'ldi");
+  const hwDone1 = JSON.parse(win.localStorage.getItem('et_hw_done') || '{}');
+  check(!!hwDone1['s77'] && hwDone1['s77'].length === 1, "bajarildi: holat localStorage'da saqlandi (s77)");
+  click(q('[data-act="toggle-hw"]'));
+  check(!q('.hw-check.on') && !q('.hw-done-badge') && qa('.hw-struck').length === 0,
+    "bajarildi: qayta bosildi → ○ (qayta faol)");
+  const hwDone2 = JSON.parse(win.localStorage.getItem('et_hw_done') || '{}');
+  check(!hwDone2['s77'] || hwDone2['s77'].length === 0, "bajarildi: ochilganda localStorage'dan ham o'chdi");
+  /* Qayta bajarilgan qoldirib, chiqish→kirish bilan eslab qolinishini tekshiramiz */
+  click(q('[data-act="toggle-hw"]'));
+  check(!!q('.hw-check.on'), "bajarildi: yana yoqildi");
+  logout();
+  loginAs('restore1', '9876');
+  check(!!q('.hw-check.on') && qa('.hw-struck').length >= 2 && !!q('.hw-done-badge'),
+    "bajarildi: kirishdan keyin holat saqlanib qoldi (persist)");
+
+  /* ================= 20c. USTOZ: UYGA VAZIFANI O'CHIRISH ================= */
+  logout();
+  loginAs('m_amirov', '123');
+  check(!!q('[data-act="del-hw"]'), "o'chirish: ustoz kartasida 🗑 (SVG) tugma bor");
+  click(q('[data-act="del-hw"]'));
+  check(q('#modal-overlay').hidden === false &&
+    q('#modal-sheet').textContent.includes("Haqiqatan ham ushbu uyga vazifani o'chirmoqchimisiz?"),
+    "o'chirish: tasdiq modali aniq matn bilan ochildi");
+  check(!!q('.confirm-actions [data-act="close-modal"]') &&
+    q('.confirm-actions [data-act="close-modal"]').textContent.includes('Bekor qilish'),
+    "o'chirish: 'Bekor qilish' tugmasi");
+  check(!!q('[data-act="do-del-hw"]') && q('[data-act="do-del-hw"]').textContent.includes('Ha, o\'chirish'),
+    "o'chirish: 'Ha, o'chirish' tugmasi");
+  /* Bekor qilish — vazifa joyida qoladi */
+  click('.confirm-actions [data-act="close-modal"]');
+  check(q('#modal-overlay').hidden === true && text().includes('Present Perfect shakli'),
+    "o'chirish: bekor qilindi — vazifa o'chirilmadi");
+  /* Tasdiqlash — Supabase+lokal o'chiriladi */
+  click(q('[data-act="del-hw"]'));
+  click('[data-act="do-del-hw"]');
+  check(q('#modal-overlay').hidden === true, "o'chirish: modal yopildi");
+  check(!text().includes('Present Perfect shakli'), "o'chirish: karta UI'dan darhol olib tashlandi");
+  check(q('#toast').textContent.includes("Uyga vazifa o'chirildi"), "o'chirish: success toast");
+  const hwAfterDel = JSON.parse(win.localStorage.getItem('et_homework') || '[]');
+  check(hwAfterDel.length === 0, "o'chirish: lokal ro'yxat bo'sh (1 ta vazifa o'chirildi)");
+
+  /* ================= 20d. TEZ AMALLAR: QAT'IY 88px KARTALAR ================= */
+  const cssText = fs.readFileSync(path.join(root, 'css', 'styles.css'), 'utf8');
+  check(/\.quick-grid\s*\{[^}]*grid-auto-rows:\s*88px/.test(cssText),
+    "tez amallar: .quick-grid qator balandligi qat'iy 88px");
+  check(/\.quick\s*\{[^}]*height:\s*88px/.test(cssText) && /\.quick\s*\{[^}]*min-height:\s*88px/.test(cssText),
+    "tez amallar: .quick height + min-height = 88px (h-[88px] min-h-[88px])");
+  check(/\.quick\s*\{[^}]*justify-content:\s*space-between/.test(cssText),
+    'tez amallar: flex-col justify-between (ichki tekislash)');
+  check(/\.quick\s*\{[^}]*padding:\s*14px/.test(cssText), 'tez amallar: p-3.5 (14px) padding');
+  check(/\.quick-ico\s*\{[^}]*width:\s*36px;\s*\n?\s*height:\s*36px/.test(cssText),
+    'tez amallar: ikonka badge bir xil 36×36px');
+  check(qa('.quick-grid .quick').length === 6, "tez amallar: 6 ta karta (barchasi bir xil balandlikda)");
 
   /* ================= 21. VOICE RUXSAT KALITI (kartada) ================= */
   logout();
