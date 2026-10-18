@@ -239,7 +239,19 @@ select.input {
 .field-error.show { display: block; }
 
 .empty { text-align: center; color: var(--muted); padding: 30px 12px; font-size: 14px; }
-.empty .emoji { display: block; font-size: 32px; margin-bottom: 8px; }
+.empty .empty-ico {
+  display: flex;
+  justify-content: center;
+  color: var(--muted);
+  opacity: 0.75;
+  margin-bottom: 9px;
+}
+.empty .empty-ico svg { width: 34px; height: 34px; stroke-width: 1.6; }
+
+/* ---------- Vektor ikonkalar (inline SVG, emoji o'rniga) ---------- */
+svg { display: inline-block; vertical-align: -3px; }
+.pw-toggle svg { width: 18px; height: 18px; }
+.btn svg, .chip-btn svg, .att-pill svg, .list-row svg { flex: none; }
 
 /* ---------- Auth screens ---------- */
 .auth { text-align: center; padding-top: 6px; }
@@ -248,10 +260,10 @@ select.input {
   border-radius: 22px;
   background: var(--accent-grad);
   display: flex; align-items: center; justify-content: center;
-  font-size: 36px;
   margin: 6px auto 14px;
   box-shadow: 0 14px 30px rgba(79, 70, 229, 0.34);
 }
+.auth-logo svg { width: 36px; height: 36px; color: #fff; }
 .auth-title { font-size: 24px; font-weight: 800; letter-spacing: -0.04em; }
 .auth-sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
 .auth-card { margin-top: 18px; text-align: left; }
@@ -350,7 +362,26 @@ select.input {
   text-align: left;
   transition: all 0.2s var(--ease);
 }
-.quick-ico { font-size: 22px; }
+/* --- Tez amallar: vektor ikonka + yumshoq rangli badge --- */
+.quick-ico {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.quick-ico svg { width: 20px; height: 20px; }
+
+/* --- Soft badge tints (indigo / emerald / sky / amber / purple / slate) --- */
+.tint-indigo  { background: #eef2ff; color: #4f46e5; }
+.tint-emerald { background: #ecfdf5; color: #059669; }
+.tint-sky     { background: #f0f9ff; color: #0284c7; }
+.tint-amber   { background: #fffbeb; color: #d97706; }
+.tint-purple  { background: #faf5ff; color: #9333ea; }
+.tint-slate   { background: #f1f5f9; color: #334155; }
+.tint-rose    { background: #fff1f2; color: #e11d48; }
 .quick:active { transform: scale(0.97); }
 
 /* ---------- Guruhlar: yumshoq pastel aksent ---------- */
@@ -758,7 +789,14 @@ body.auth-mode .toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
 
 /* Yopiq (bloklangan) ekran */
 .blocked { text-align: center; padding: 30px 12px; color: var(--muted); }
-.blocked .emoji { display: block; font-size: 34px; margin-bottom: 10px; }
+.blocked .empty-ico {
+  display: flex;
+  justify-content: center;
+  color: var(--muted);
+  opacity: 0.7;
+  margin-bottom: 10px;
+}
+.blocked .empty-ico svg { width: 34px; height: 34px; stroke-width: 1.6; }
 .bj-date-btn { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; width: 100%; }
 
 /* ==================== Step 3: Speaking (1-on-1) ==================== */
@@ -869,7 +907,22 @@ body.auth-mode .toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
 
 /* ==================== Step 6: O'chirish tasdig'i ==================== */
 .confirm-body { text-align: center; padding: 4px 0 2px; }
-.confirm-emoji { font-size: 34px; line-height: 1; margin-bottom: 10px; animation: sheetUp .22s ease; }
+.confirm-emoji {
+  width: 56px;
+  height: 56px;
+  border-radius: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1;
+  margin-bottom: 12px;
+  animation: sheetUp .22s ease;
+}
+.confirm-emoji svg { width: 26px; height: 26px; }
+.modal-head h3 { display: flex; align-items: center; gap: 8px; }
+.modal-head h3 svg { width: 19px; height: 19px; flex: none; }
 .confirm-text { font-size: 14.5px; line-height: 1.55; color: var(--text); }
 .confirm-text strong { font-weight: 800; }
 .confirm-actions { display: flex; gap: 10px; margin-top: 16px; }
@@ -934,7 +987,7 @@ body.auth-mode .toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
   }
 }
 
-/* --- 🎙 Ovozli topshirishga ruxsat kaliti (neytral, rangli emas) --- */
+/* --- Ovozli topshirishga ruxsat kaliti (neytral, rangli emas) --- */
 .switch {
   position: relative;
   width: 44px;

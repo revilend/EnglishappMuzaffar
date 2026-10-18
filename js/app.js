@@ -890,7 +890,7 @@ const Notif = (function () {
     '<rect width="64" height="64" rx="14" fill="#2563eb"/>' +
     '<circle cx="32" cy="32" r="15" fill="#fff" opacity=".92"/></svg>'
   );
-  const PROMPT_TEXT = '🔔 Yangi baholar va xabarlarni o\'tkazib yubormaslik uchun bildirishnomalarni yoqing';
+  const PROMPT_TEXT = 'Yangi baholar va xabarlarni o\'tkazib yubormaslik uchun bildirishnomalarni yoqing';
   const PROMPT_BUTTON = 'Ruxsat berish';
   const shown = Object.create(null); /* bitta hodisa bir marta ko'rsatiladi */
 
@@ -924,10 +924,10 @@ const Notif = (function () {
 
   function request() {
     if (!supported()) return;
-    if (granted()) { toast('Bildirishnomalar yoqildi 🔔'); return; }
+    if (granted()) { toast('Bildirishnomalar yoqildi'); return; }
     if (permission() === 'denied') { toast("Brauzerda bildirishnomalar bloklangan", 'error'); return; }
     const onDone = function (p) {
-      if (p === 'granted') toast('Bildirishnomalar yoqildi 🔔');
+      if (p === 'granted') toast('Bildirishnomalar yoqildi');
       else toast("Bildirishnomalar o'chirib qoldi", 'error');
     };
     try {
@@ -1087,8 +1087,38 @@ const ICON = {
   cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/><path d="M9 15l2 2 4-4"/></svg>',
   mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>',
   profile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5c0-3.7 3.3-6.2 7.5-6.2s7.5 2.5 7.5 6.2"/></svg>',
-  groups: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.2 20c0-3.2 2.6-5.4 5.8-5.4s5.8 2.2 5.8 5.4"/><circle cx="17.3" cy="9.3" r="2.3"/><path d="M16.5 14.7c2.7.1 4.6 2.3 4.6 4.6"/></svg>'
+  groups: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.2 20c0-3.2 2.6-5.4 5.8-5.4s5.8 2.2 5.8 5.4"/><circle cx="17.3" cy="9.3" r="2.3"/><path d="M16.5 14.7c2.7.1 4.6 2.3 4.6 4.6"/></svg>',
+  /* --- Yangi Lucide-uslubidagi vektor ikonkalar (emoji o'rniga) --- */
+  gradCap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12.5V17c0 1.7 2.7 3 6 3s6-1.3 6-3v-4.5"/><path d="M22 10v6"/></svg>',
+  userPlus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-1.8a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V21"/><circle cx="8.5" cy="7" r="3.6"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>',
+  bookOpen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>',
+  clipboardCheck: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 13.5 2 2 4-4"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.2l3.2 1.8"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>',
+  key: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 8.6-8.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg>',
+  eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.7-7 10-7 10 7 10 7-3.7 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>',
+  eyeOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.7 5.1A10.7 10.7 0 0 1 12 5c6.3 0 10 7 10 7a18.3 18.3 0 0 1-2.6 3.5"/><path d="M6.6 6.6A17.4 17.4 0 0 0 2 12s3.7 7 10 7a10.4 10.4 0 0 0 5.4-1.5"/><path d="M9.9 9.9a3 3 0 1 0 4.2 4.2"/><path d="m3 3 18 18"/></svg>',
+  message: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.4 8.9 8.9 0 0 1-4-.9L3 21l1.9-5A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></svg>',
+  video: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 10.2 5.2-3.2v10L16 13.8Z"/></svg>',
+  smartphone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18.5h2"/></svg>',
+  download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10.5 5 5 5-5"/><path d="M4 20h16"/></svg>',
+  upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 7 5-4 5 4"/><path d="M4 20h16"/></svg>',
+  brush: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 11 8-8a2.8 2.8 0 0 1 4 4l-8 8"/><path d="M7.2 13.9c-1.6 0-3 1.4-3 3 0 1.3-2.4 1.6-1.9 2.1 1.1 1.1 2.5 2 4 2 2.2 0 4-1.8 4-4a3 3 0 0 0-3.1-3.1Z"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10.5" width="16" height="11" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>',
+  alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.2 18-8-14a1.9 1.9 0 0 0-3.3 0l-8 14A1.9 1.9 0 0 0 3.6 21h16.8a1.9 1.9 0 0 0 1.7-3Z"/><path d="M12 9.5v4"/><path d="M12 17.2h.01"/></svg>',
+  checkCircle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.4 12.3 2.5 2.5 4.7-5.2"/></svg>',
+  star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3.4 2.75 5.6 6.15.9-4.45 4.3 1.05 6.15L12 17.45l-5.5 2.9 1.05-6.15L3.1 9.9l6.15-.9Z"/></svg>',
+  fileText: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9 13.5h6M9 17h4"/></svg>'
 };
+
+/* Matndagi mayda vektor ikonka: o'lchami aniq (SVG width/height) */
+function ico(name, size) {
+  const px = Number(size) || 16;
+  const svg = ICON[name] || '';
+  if (!svg) return '';
+  return svg.replace('<svg', '<svg width="' + px + '" height="' + px + '"');
+}
 
 /* ==================== Header / Bottom nav ==================== */
 function scrLabel(s) {
@@ -1144,7 +1174,7 @@ function renderNav() {
 /* ==================== KIRISH EKRANI (login / parol) ==================== */
 function loginScreen() {
   return `<div class="auth">
-    <div class="auth-logo">🎓</div>
+    <div class="auth-logo">${ICON.gradCap}</div>
     <h1 class="auth-title">English Tutor</h1>
     <p class="auth-sub">Ingliz tili darslari — Muzaffar Amirov paneli va o'quvchi kabineti</p>
 
@@ -1157,7 +1187,7 @@ function loginScreen() {
       <div class="pw-wrap">
         <input class="input" id="password-input" type="password"
                autocomplete="current-password" placeholder="••••" />
-        <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="password-input" aria-label="Parolni ko'rsatish">👁</button>
+        <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="password-input" aria-label="Parolni ko'rsatish">${ico('eye', 18)}</button>
       </div>
 
       <div class="field-error" id="login-error"></div>
@@ -1167,11 +1197,11 @@ function loginScreen() {
 }
 
 /* ==================== Yordamchilar ==================== */
-function emptyState(text) {
-  return `<div class="empty"><span class="emoji">📭</span>${esc(text)}</div>`;
+function emptyState(text, icoName) {
+  return `<div class="empty"><span class="empty-ico">${ICON[icoName] || ICON.clipboardCheck}</span>${esc(text)}</div>`;
 }
 function blockedScreen(msg) {
-  return `<div class="blocked"><span class="emoji">🔒</span>${esc(msg)}</div>`;
+  return `<div class="blocked"><span class="empty-ico">${ICON.lock}</span>${esc(msg)}</div>`;
 }
 
 /* ==================== BOSH SAHIFA: USTOZ ==================== */
@@ -1181,12 +1211,12 @@ function hwRowHTML(h) {
   return `<div class="hw-item">
     <div class="row between"><strong>${esc(h.title)}</strong><span class="chip-class">${g ? esc(g.name) : '—'}</span></div>
     ${h.description ? `<div class="muted small" style="margin-top:3px">${esc(h.description)}</div>` : ''}
-    <div class="muted small" style="margin-top:3px">📅 Topshirish muddati: ${h.dueDate ? fmtDMY(h.dueDate) : '—'}</div>
+    <div class="muted small" style="margin-top:3px">${ico('calendar', 13)} Topshirish muddati: ${h.dueDate ? fmtDMY(h.dueDate) : '—'}</div>
   </div>`;
 }
 
 function homeworkListHTML(list) {
-  return list.length ? list.map(hwRowHTML).join('') : emptyState("Hozircha uyga vazifa yo'q");
+  return list.length ? list.map(hwRowHTML).join('') : emptyState("Hozircha uyga vazifa yo'q", 'clipboardCheck');
 }
 
 function openHwModal() {
@@ -1242,7 +1272,7 @@ function saveHomework() {
   CloudSync.pushHomework(hw);
   closeModal();
   render();
-  toast('Uyga vazifa qo\'shildi 📚');
+  toast('Uyga vazifa qo\'shildi');
 }
 
 function teacherHome() {
@@ -1274,17 +1304,17 @@ function teacherHome() {
 
   <div class="section-title">Tez amallar</div>
   <div class="quick-grid">
-    <button type="button" class="card quick" data-act="nav" data-screen="grades"><span class="quick-ico">📊</span><span>Baholar jurnali</span></button>
-    <button type="button" class="card quick" data-act="nav" data-screen="attendance"><span class="quick-ico">🗓️</span><span>Tezkor davomat</span></button>
-    <button type="button" class="card quick" data-act="nav" data-screen="speaking"><span class="quick-ico">🗣️</span><span>Speaking slotlari</span></button>
-    <button type="button" class="card quick" data-act="nav" data-screen="students"><span class="quick-ico">🧒</span><span>O'quvchilar</span></button>
-    <button type="button" class="card quick" data-act="nav" data-screen="groups"><span class="quick-ico">👥</span><span>Guruhlar</span></button>
-    <button type="button" class="card quick" data-act="open-add-student"><span class="quick-ico">➕</span><span>O'quvchi qo'shish</span></button>
+    <button type="button" class="card quick" data-act="nav" data-screen="grades"><span class="quick-ico tint-indigo">${ICON.grades}</span><span>Baholar jurnali</span></button>
+    <button type="button" class="card quick" data-act="nav" data-screen="attendance"><span class="quick-ico tint-emerald">${ICON.cal}</span><span>Tezkor davomat</span></button>
+    <button type="button" class="card quick" data-act="nav" data-screen="speaking"><span class="quick-ico tint-sky">${ICON.mic}</span><span>Speaking slotlari</span></button>
+    <button type="button" class="card quick" data-act="nav" data-screen="students"><span class="quick-ico tint-amber">${ICON.gradCap}</span><span>O'quvchilar</span></button>
+    <button type="button" class="card quick" data-act="nav" data-screen="groups"><span class="quick-ico tint-purple">${ICON.groups}</span><span>Guruhlar</span></button>
+    <button type="button" class="card quick" data-act="open-add-student"><span class="quick-ico tint-slate">${ICON.userPlus}</span><span>O'quvchi qo'shish</span></button>
   </div>
 
   <div class="screen-head" style="margin-top:6px">
     <div>
-      <h2 class="screen-title" style="font-size:17px">📚 Uyga vazifalar</h2>
+      <h2 class="screen-title">${ico('bookOpen', 19)} Uyga vazifalar</h2>
       <div class="muted small">${getHomework().length} ta vazifa • bot guruhga xabar qiladi</div>
     </div>
     <button type="button" class="btn btn-primary btn-sm" data-act="open-hw">+ Uyga vazifa</button>
@@ -1292,7 +1322,7 @@ function teacherHome() {
   <div class="card">${homeworkListHTML(getHomework())}</div>
 
   <div class="section-title">So'nggi o'quvchilar</div>
-  ${recent.length ? recent.map(studentCard).join('') : emptyState("Hozircha o'quvchi yo'q")}
+  ${recent.length ? recent.map(studentCard).join('') : emptyState("Hozircha o'quvchi yo'q", 'students')}
   <button type="button" class="btn btn-ghost btn-block" data-act="nav" data-screen="students">Barchasini ko'rish</button>
   `;
 }
@@ -1333,7 +1363,7 @@ function studentPortal() {
         ${r.note ? `<div class="gr-note">${esc(r.note)}</div>` : ''}
       </span>
     </div>`;
-  }).join('') : `<div class="empty"><span class="emoji">📊</span>Hozircha baho yo'q</div>`;
+  }).join('') : `<div class="empty"><span class="empty-ico">${ICON.grades}</span>Hozircha baho yo'q</div>`;
 
   /* --- Davomat --- */
   const ownAtt = [];
@@ -1348,7 +1378,7 @@ function studentPortal() {
     <div class="att-line">
       <span class="gr-date">${fmtDM(a.date)}</span>
       <span class="att-tag on-${a.status}">${statusLabel[a.status]}</span>
-    </div>`).join('') : `<div class="empty"><span class="emoji">🗓️</span>Davomat yozuvi yo'q</div>`;
+    </div>`).join('') : `<div class="empty"><span class="empty-ico">${ICON.cal}</span>Davomat yozuvi yo'q</div>`;
 
   /* --- Speaking vaqti --- */
   const mineSlots = getSpeaking()
@@ -1363,19 +1393,19 @@ function studentPortal() {
         <span class="gr-note">1-on-1 speaking</span>
       </span>
       <span class="slot-badge ${x.score == null ? 'wait' : 'done'}">${x.score == null ? 'Kutilmoqda' : 'Baho: ' + x.score}</span>
-    </div>`).join('') : `<div class="empty"><span class="emoji">🗣️</span>Hozircha slot biriktirilmagan</div>`;
+    </div>`).join('') : `<div class="empty"><span class="empty-ico">${ICON.mic}</span>Hozircha slot biriktirilmagan</div>`;
 
   /* --- Mening topshiriklarim (Telegram orqali) --- */
   const myTg = getTgSubs().filter(x => x.sid === st.id).slice().reverse();
   const mySubs = myTg.map(t => `
     <div class="audio-item">
       <div class="audio-item__meta">
-        ${t.mediaType === 'voice' ? '🎙 Ovozli xabar' : '📹 Video'} ·
+        ${t.mediaType === 'voice' ? ico('mic', 14) + ' Ovozli xabar' : ico('video', 14) + ' Video'} ·
         ${t.status === 'baholandi' || t.status === 'graded'
-          ? `✅ Baho: ${t.score}/10`
-          : "⏳ Muzaffar Amirov ko'rib chiqmoqda"}
+          ? `${ico('checkCircle', 14)} Baho: ${t.score}/10`
+          : `${ico('clock', 14)} Muzaffar Amirov ko'rib chiqmoqda`}
       </div>
-    </div>`).join('') || `<div class="empty"><span class="emoji">🎙</span>Hozircha topshirilmagan</div>`;
+    </div>`).join('') || `<div class="empty"><span class="empty-ico">${ICON.mic}</span>Hozircha topshirilmagan</div>`;
 
   /* --- Uyga vazifalar (faqat o'z guruhi) --- */
   const myHw = getHomework().filter(h => h.groupId && h.groupId === st.groupId);
@@ -1394,7 +1424,7 @@ function studentPortal() {
     </div>
   </section>
 
-  <div class="section-title">📚 Uyga vazifalar</div>
+  <div class="section-title">${ico('bookOpen', 13)} Uyga vazifalar</div>
   <div class="card">${homeworkListHTML(myHw)}</div>
 
   <div class="section-title">Mening baholarim</div>
@@ -1423,16 +1453,16 @@ function studentPortal() {
   <div class="section-title">Speaking vaqtim</div>
   <div class="card">
     ${Number(st.speakingDebt) > 0
-      ? `<div class="debt-badge" style="margin-bottom:8px">⚠️ Speaking qarzingiz: ${Number(st.speakingDebt)} ta</div>`
-      : `<div class="att-pill" style="margin-bottom:8px">✅ Speaking qarzingiz yo'q</div>`}
-    <button type="button" class="btn btn-primary btn-block speak-cta" data-act="speak-cta">🎙 Speaking topshirish</button>
+      ? `<div class="debt-badge" style="margin-bottom:8px">${ico('alert', 15)} Speaking qarzingiz: ${Number(st.speakingDebt)} ta</div>`
+      : `<div class="att-pill" style="margin-bottom:8px">${ico('checkCircle', 15)} Speaking qarzingiz yo'q</div>`}
+    <button type="button" class="btn btn-primary btn-block speak-cta" data-act="speak-cta">${ico('mic', 17)} Speaking topshirish</button>
     ${slotRows}
   </div>
 
   <div class="section-title">Speaking topshirish (Telegram orqali)</div>
   <div class="card">
-    <div class="muted small">🎙 Muzaffar Amirovga <b>Telegram botga</b> ovozli xabar (voice) yoki dumaloq video (krujok) yuboring — brauzerda yozish shart emas.</div>
-    <div class="hw-item small" style="margin-top:8px">1) Telegramda botga kiring → 2) 🎙 ovozli xabar yuboring → 3) Muzaffar Amirov baholaydi</div>
+    <div class="muted small">${ico('mic', 14)} Muzaffar Amirovga <b>Telegram botga</b> ovozli xabar (voice) yoki dumaloq video (krujok) yuboring — brauzerda yozish shart emas.</div>
+    <div class="hw-item small" style="margin-top:8px">1) Telegramda botga kiring → 2) ${ico('mic', 13)} ovozli xabar yuboring → 3) Muzaffar Amirov baholaydi</div>
     <div id="my-submissions" class="audio-list">${mySubs}</div>
   </div>
 
@@ -1451,7 +1481,7 @@ function studentPortal() {
     <div class="list-row"><span>Login</span><code>${esc(u.login || '')}</code></div>
     <div class="list-row"><span>Parol</span><span class="muted">••••</span></div>
   </div>
-  <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">🔑 Parolni o'zgartirish</button>
+  <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">${ico('key', 16)} Parolni o'zgartirish</button>
   `;
 }
 
@@ -1466,14 +1496,14 @@ function groupCard(g, students) {
       <span class="pill">${cnt} o'quvchi</span>
     </div>
     <div class="meta-rows">
-      <div class="meta-row">📅 <span>${esc(g.days)}</span></div>
-      <div class="meta-row">🕒 <span>${esc(g.time)}</span></div>
+      <div class="meta-row">${ico('calendar', 15)} <span>${esc(g.days)}</span></div>
+      <div class="meta-row">${ico('clock', 15)} <span>${esc(g.time)}</span></div>
     </div>
-    <div class="muted small" style="margin-top:7px">👆 Bosib, guruh o'quvchilarini ko'rish</div>
+    <div class="muted small" style="margin-top:7px">Bosib, guruh o'quvchilarini ko'rish</div>
     <div class="row g8" style="margin-top:11px">
-      <button type="button" class="btn btn-ghost btn-sm" data-act="grade-group-go" data-group="${g.id}">📊 Baholar</button>
-      <button type="button" class="btn btn-ghost btn-sm" data-act="open-attendance" data-group="${g.id}">🗓️ Davomat</button>
-      <button type="button" class="btn btn-danger btn-sm" data-act="del-group" data-gid="${g.id}">🗑 O'chirish</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-act="grade-group-go" data-group="${g.id}">${ico('grades', 15)} Baholar</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-act="open-attendance" data-group="${g.id}">${ico('cal', 15)} Davomat</button>
+      <button type="button" class="btn btn-danger btn-sm" data-act="del-group" data-gid="${g.id}">${ico('trash', 15)} O'chirish</button>
     </div>
   </div>`;
 }
@@ -1490,7 +1520,7 @@ function groupsScreen() {
     </div>
     <button type="button" class="btn btn-primary btn-sm" data-act="open-add-group">+ Guruh</button>
   </div>
-  ${groups.length ? groups.map(g => groupCard(g, students)).join('') : emptyState("Hozircha guruh yo'q")}
+  ${groups.length ? groups.map(g => groupCard(g, students)).join('') : emptyState("Hozircha guruh yo'q", 'groups')}
   `;
 }
 
@@ -1519,14 +1549,14 @@ function studentCard(s) {
           </div>
         </div>
         <div class="row between" style="margin-top:9px">
-          <span class="lbl-strong">🎙 Ovozli topshirishga ruxsat</span>
+          <span class="lbl-strong">${ico('mic', 15)} Ovozli topshirishga ruxsat</span>
           <button type="button" class="switch${s.voiceAllowed !== false ? ' on' : ''}" data-act="voice-toggle" data-sid="${s.id}"
-                  role="switch" aria-checked="${s.voiceAllowed !== false}" aria-label="🎙 Ovozli topshirishga ruxsat"></button>
+                  role="switch" aria-checked="${s.voiceAllowed !== false}" aria-label="Ovozli topshirishga ruxsat"></button>
         </div>
         <div class="row g8" style="margin-top:10px">
-          <button type="button" class="btn btn-xs ghost" data-act="open-chat" data-sid="${s.id}">💬 Xabar yozish</button>
-          <button type="button" class="btn btn-xs ghost" data-act="reset-pwd" data-sid="${s.id}">🔑 Parolni yangilash</button>
-          <button type="button" class="btn btn-xs danger" data-act="del-student" data-sid="${s.id}">🗑 O'chirish</button>
+          <button type="button" class="btn btn-xs ghost" data-act="open-chat" data-sid="${s.id}">${ico('message', 14)} Xabar yozish</button>
+          <button type="button" class="btn btn-xs ghost" data-act="reset-pwd" data-sid="${s.id}">${ico('key', 14)} Parolni yangilash</button>
+          <button type="button" class="btn btn-xs danger" data-act="del-student" data-sid="${s.id}">${ico('trash', 14)} O'chirish</button>
         </div>
       </div>
     </div>
@@ -1544,7 +1574,7 @@ function filteredStudents() {
 }
 function studentListHTML() {
   const list = filteredStudents();
-  return list.length ? list.map(studentCard).join('') : emptyState("O'quvchi topilmadi");
+  return list.length ? list.map(studentCard).join('') : emptyState("O'quvchi topilmadi", 'students');
 }
 function refreshStudentList() {
   const list = $('#students-list');
@@ -1567,7 +1597,7 @@ function studentsScreen() {
   </div>
 
   ${gf ? `<div class="card row between" style="margin-bottom:9px">
-    <span class="muted small">👥 <b>${esc(gf.name)}</b> guruhidagi o'quvchilar</span>
+    <span class="muted small">${ico('groups', 14)} <b>${esc(gf.name)}</b> guruhidagi o'quvchilar</span>
     <button type="button" class="chip-btn" data-act="filter-group-all">Barcha o'quvchilar</button>
   </div>` : ''}
 
@@ -1580,7 +1610,7 @@ function studentsScreen() {
   </div>
 
   <div id="students-list">${studentListHTML()}</div>
-  <button type="button" class="btn btn-ghost btn-block" data-act="nav" data-screen="groups">👥 Guruhlar</button>
+  <button type="button" class="btn btn-ghost btn-block" data-act="nav" data-screen="groups">${ico('groups', 16)} Guruhlar</button>
   `;
 }
 
@@ -1605,14 +1635,14 @@ function profileScreen() {
     <div class="list-row"><span>Parol</span><span class="muted">••••</span></div>
     <div class="list-row"><span>Ko'rinish</span><span class="muted">${isTeacher() ? 'Muzaffar Amirov' : "O'quvchi"}</span></div>
   </div>
-  <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">🔑 Parolni o'zgartirish</button>
+  <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">${ico('key', 16)} Parolni o'zgartirish</button>
 
   ${isTeacher() ? `
   <div class="section-title">Ma'lumotlar Bazasi Zaxirasi</div>
   <div class="card backup-card">
     <div class="muted small">Guruhlar, o'quvchilar, davomat, baholar, xabarlar va speaking topshiriqlari JSON faylda saqlanadi.</div>
-    <button type="button" class="btn btn-primary btn-block" data-act="backup-dl">📥 Bazani yuklab olish (Backup)</button>
-    <button type="button" class="btn btn-ghost btn-block" data-act="backup-pick">📤 Bazani qayta tiklash (Restore)</button>
+    <button type="button" class="btn btn-primary btn-block" data-act="backup-dl">${ico('download', 16)} Bazani yuklab olish (Backup)</button>
+    <button type="button" class="btn btn-ghost btn-block" data-act="backup-pick">${ico('upload', 16)} Bazani qayta tiklash (Restore)</button>
     <input type="file" id="backup-file" accept="application/json,.json" hidden />
 
     <div class="section-title" style="margin-top:14px">Tozalash</div>
@@ -1620,7 +1650,7 @@ function profileScreen() {
     <div class="chips">
       ${CLEANUP_TABLES.map(t => `<button type="button" class="chip-btn${(state.cleanupTable || 'grades') === t[0] ? ' active' : ''}" data-act="cleanup-pick" data-table="${t[0]}">${t[1]}</button>`).join('')}
     </div>
-    <button type="button" class="btn btn-danger btn-block" data-act="cleanup-go">🧹 Tanlangan jadvalni tozalash</button>
+    <button type="button" class="btn btn-danger btn-block" data-act="cleanup-go">${ico('brush', 16)} Tanlangan jadvalni tozalash</button>
   </div>` : ''}
 
   <button type="button" class="btn btn-danger btn-block" data-act="logout">Hisobdan chiqish</button>
@@ -1700,7 +1730,7 @@ function openAddStudent() {
     <label class="field-label" for="f-spass">Dastlabki parol</label>
     <div class="pw-wrap">
       <input class="input" id="f-spass" type="password" inputmode="numeric" placeholder="Masalan: 1234" />
-      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="f-spass" aria-label="Parolni ko'rsatish">👁</button>
+      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="f-spass" aria-label="Parolni ko'rsatish">${ico('eye', 18)}</button>
     </div>
 
     <button type="button" class="btn btn-primary btn-block" data-act="save-student">Saqlash</button>
@@ -1776,7 +1806,7 @@ function openResetPwd(sid) {
     <label class="field-label" for="rp-pass">Yangi parol</label>
     <div class="pw-wrap">
       <input class="input" id="rp-pass" type="password" inputmode="numeric" placeholder="Masalan: 1234" />
-      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="rp-pass" aria-label="Parolni ko'rsatish">👁</button>
+      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="rp-pass" aria-label="Parolni ko'rsatish">${ico('eye', 18)}</button>
     </div>
     <button type="button" class="btn btn-primary btn-block" data-act="save-reset" data-sid="${sid}">Saqlash</button>
   `);
@@ -1825,19 +1855,19 @@ function openChangePwd() {
     <label class="field-label" for="cp-old">Joriy parol</label>
     <div class="pw-wrap">
       <input class="input" id="cp-old" type="password" autocomplete="current-password" placeholder="••••" />
-      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="cp-old" aria-label="Parolni ko'rsatish">👁</button>
+      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="cp-old" aria-label="Parolni ko'rsatish">${ico('eye', 18)}</button>
     </div>
 
     <label class="field-label" for="cp-new">Yangi parol</label>
     <div class="pw-wrap">
       <input class="input" id="cp-new" type="password" autocomplete="new-password" placeholder="••••" />
-      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="cp-new" aria-label="Parolni ko'rsatish">👁</button>
+      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="cp-new" aria-label="Parolni ko'rsatish">${ico('eye', 18)}</button>
     </div>
 
     <label class="field-label" for="cp-new2">Yangi parolni tasdiqlang</label>
     <div class="pw-wrap">
       <input class="input" id="cp-new2" type="password" autocomplete="new-password" placeholder="••••" />
-      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="cp-new2" aria-label="Parolni ko'rsatish">👁</button>
+      <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="cp-new2" aria-label="Parolni ko'rsatish">${ico('eye', 18)}</button>
     </div>
 
     <button type="button" class="btn btn-primary btn-block" data-act="save-change-pwd">Saqlash</button>
@@ -1873,7 +1903,7 @@ function openDeleteStudent(sid) {
       <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
     </div>
     <div class="confirm-body">
-      <div class="confirm-emoji">🗑</div>
+      <div class="confirm-emoji tint-rose">${ICON.trash}</div>
       <p class="confirm-text">Haqiqatan ham <strong>${esc(st.fullName)}ni</strong> o'chirmoqchimisiz? Uning barcha baholari va davomat tarixi ham o'chiriladi.</p>
     </div>
     <div class="confirm-actions">
@@ -1927,7 +1957,7 @@ function openDeleteGroup(gid) {
       <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
     </div>
     <div class="confirm-body">
-      <div class="confirm-emoji">🗑</div>
+      <div class="confirm-emoji tint-rose">${ICON.trash}</div>
       <p class="confirm-text">Haqiqatan ham <strong>${esc(g.name)}</strong> guruhini o'chirmoqchimisiz?</p>
     </div>
     <div class="confirm-actions">
@@ -2087,9 +2117,9 @@ async function startCleanup() {
       <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
     </div>
     <div class="confirm-body">
-      <div class="confirm-emoji">🧹</div>
+      <div class="confirm-emoji tint-amber">${ICON.brush}</div>
       <p class="confirm-text">Eski ma'lumotlar fayl ko'rinishida yuklandi. Bazani tozalashni tasdiqlaysizmi?</p>
-      <p class="muted small" style="margin-top:9px">📋 ${esc(label)} jadvalidagi yozuvlar o'chiriladi</p>
+      <p class="muted small" style="margin-top:9px">${ico('fileText', 14)} ${esc(label)} jadvalidagi yozuvlar o'chiriladi</p>
     </div>
     <div class="confirm-actions">
       <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
@@ -2241,9 +2271,9 @@ function openRestoreConfirm(fileName, nStudents, nGroups) {
       <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
     </div>
     <div class="confirm-body">
-      <div class="confirm-emoji">📤</div>
+      <div class="confirm-emoji tint-indigo">${ICON.upload}</div>
       <p class="confirm-text">Haqiqatan ham bazani ushbu fayldan qayta tiklamoqchimisiz? Hozirgi ma'lumotlar yangilanadi.</p>
-      <p class="muted small" style="margin-top:9px">📄 ${esc(fileName)} • ${nGroups} guruh, ${nStudents} o'quvchi</p>
+      <p class="muted small" style="margin-top:9px">${ico('fileText', 14)} ${esc(fileName)} • ${nGroups} guruh, ${nStudents} o'quvchi</p>
     </div>
     <div class="confirm-actions">
       <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
@@ -2299,7 +2329,7 @@ function gradesScreen() {
   ensureGradeState();
   const groups = getGroups();
   if (!groups.length) {
-    return `<div class="screen-head"><h2 class="screen-title">Baholar</h2></div>` + emptyState("Avval guruh yarating");
+    return `<div class="screen-head"><h2 class="screen-title">Baholar</h2></div>` + emptyState("Avval guruh yarating", 'grades');
   }
 
   const dates = journalDates(state.gradeGroup, 6);
@@ -2457,7 +2487,7 @@ function attendanceScreen() {
   ensureAttState();
   const groups = getGroups();
   if (!groups.length) {
-    return `<div class="screen-head"><h2 class="screen-title">Davomat</h2></div>` + emptyState("Avval guruh yarating");
+    return `<div class="screen-head"><h2 class="screen-title">Davomat</h2></div>` + emptyState("Avval guruh yarating", 'cal');
   }
 
   const students = getStudents().filter(s => s.groupId === state.attGroup);
@@ -2492,7 +2522,7 @@ function attendanceScreen() {
       <h2 class="screen-title">Tezkor davomat</h2>
       <div class="muted small">${marked}/${students.length} belgilandi</div>
     </div>
-    <button type="button" class="btn btn-ghost btn-sm" data-act="nav" data-screen="speaking">🗣️ Speaking</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-act="nav" data-screen="speaking">${ico('mic', 15)} Speaking</button>
   </div>
 
   <div class="selector-row">
@@ -2514,7 +2544,7 @@ function attendanceScreen() {
   </div>
 
   <div class="card" style="padding-top:4px;padding-bottom:4px">
-    ${students.length ? rows : emptyState("Bu guruhda o'quvchi yo'q")}
+    ${students.length ? rows : emptyState("Bu guruhda o'quvchi yo'q", 'students')}
   </div>
 
   <button type="button" class="btn btn-primary btn-block" data-act="att-save">Davomatni saqlash</button>
@@ -2536,8 +2566,8 @@ function speakRowHTML(x) {
       <span class="slot-badge ${scored ? 'done' : 'wait'}">${scored ? 'Baho: ' + x.score : (st ? 'Baholanmagan' : 'Bo\'sh')}</span>
     </div>
     <div class="speak-actions">
-      ${st ? '' : `<button type="button" class="btn btn-xs ghost" data-act="slot-assign" data-id="${esc(x.id)}">👤 Tayinlash</button>`}
-      <button type="button" class="btn btn-xs ${scored ? 'ghost' : 'primary'}" data-act="slot-score" data-id="${esc(x.id)}">${scored ? "Bahoni o'zgartirish" : '⭐ Baholash'}</button>
+      ${st ? '' : `<button type="button" class="btn btn-xs ghost" data-act="slot-assign" data-id="${esc(x.id)}">${ico('profile', 14)} Tayinlash</button>`}
+      <button type="button" class="btn btn-xs ${scored ? 'ghost' : 'primary'}" data-act="slot-score" data-id="${esc(x.id)}">${scored ? "Bahoni o'zgartirish" : ico('star', 14) + ' Baholash'}</button>
       <button type="button" class="btn btn-xs danger" data-act="slot-del" data-id="${esc(x.id)}">O'chirish</button>
     </div>
   </div>`;
@@ -2607,8 +2637,8 @@ function renderTgInbox() {
     <div class="audio-item" data-tgcard="${esc(t.id)}">
       <div class="audio-item__meta">
         <strong>${st ? esc(st.fullName) : '—'}</strong> ${st ? `<span class="chip-class">${esc(st.schoolClass)}</span>` : ''} ·
-        ${t.mediaType === 'voice' ? '🎙 Ovozli xabar' : '📹 Video'}${day ? ' · ' + fmtDMY(day) : ''} ·
-        ⏳ Kutilmoqda
+        ${t.mediaType === 'voice' ? ico('mic', 14) + ' Ovozli xabar' : ico('video', 14) + ' Video'}${day ? ' · ' + fmtDMY(day) : ''} ·
+        ${ico('clock', 14)} Kutilmoqda
       </div>
       <div class="grade-row">
         ${[1,2,3,4,5,6,7,8,9,10].map(n => `
@@ -2777,7 +2807,7 @@ function doLogin() {
       return;
     }
     startSession(login);
-    toast('Xush kelibsiz! 👋');
+    toast('Xush kelibsiz!');
   };
 
   /* Boshqa qurilmadan kirish: avval bulutdan hisoblarni tekshiramiz */
@@ -2856,7 +2886,7 @@ function messagesFor(sid) {
 }
 function chatListHTML(sid, viewer) {
   const msgs = messagesFor(sid);
-  if (!msgs.length) return `<div class="empty"><span class="emoji">💬</span>Hozircha xabar yo'q</div>`;
+  if (!msgs.length) return `<div class="empty"><span class="empty-ico">${ICON.message}</span>Hozircha xabar yo'q</div>`;
   return msgs.map(m => `<div class="chat-msg ${m.sender === viewer ? 'mine' : 'theirs'}" data-message-id="${esc(String(m.id))}">
       <div class="chat-text">${esc(m.text)}</div>
       <div class="chat-time">${fmtHM(m.createdAt)}</div>
@@ -2864,7 +2894,7 @@ function chatListHTML(sid, viewer) {
 }
 function chatHint() {
   if (CloudSync.messagesAvailable()) return '';
-  return `<div class="chat-hint">⚠️ Supabase'da <code>messages</code> jadvali topilmadi — xabarlar shu qurilmada saqlanadi (<code>supabase.sql</code> ni ishga tushiring).</div>`;
+  return `<div class="chat-hint">${ico('alert', 14)} Supabase'da <code>messages</code> jadvali topilmadi — xabarlar shu qurilmada saqlanadi (<code>supabase.sql</code> ni ishga tushiring).</div>`;
 }
 function activeChat() {
   if (state.chatSid) return { sid: state.chatSid, viewer: 'teacher' };
@@ -2891,7 +2921,7 @@ function openChat(sid) {
   state.chatSid = sid;
   openModal(`
     <div class="modal-head">
-      <h3>💬 Xabar yozish</h3>
+      <h3>${ico('message', 17)} Xabar yozish</h3>
       <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
     </div>
     <div class="editor-info">
@@ -3048,7 +3078,7 @@ document.addEventListener('click', function (e) {
       if (!inp) return;
       const show = inp.type === 'password';
       inp.type = show ? 'text' : 'password';
-      btn.textContent = show ? '🙈' : '👁';
+      btn.innerHTML = show ? ICON.eyeOff : ICON.eye;
       btn.setAttribute('aria-label', show ? "Parolni yashirish" : "Parolni ko'rsatish");
     },
 
@@ -3056,12 +3086,12 @@ document.addEventListener('click', function (e) {
     'speak-cta': function () {
       openModal(`
         <div class="modal-head">
-          <h3>🎙 Speaking topshirish</h3>
+          <h3>${ico('mic', 17)} Speaking topshirish</h3>
           <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
         </div>
         <div class="confirm-body">
-          <div class="confirm-emoji">📱</div>
-          <p class="confirm-text">Ovozli topshirish uchun <b>Telegram botga</b> kiring va u yerga 🎙 ovozli xabar (voice) yoki 📹 krujok (video note) yuboring.</p>
+          <div class="confirm-emoji tint-sky">${ICON.smartphone}</div>
+          <p class="confirm-text">Ovozli topshirish uchun <b>Telegram botga</b> kiring va u yerga ${ico('mic', 14)} ovozli xabar (voice) yoki ${ico('video', 14)} krujok (video note) yuboring.</p>
           <p class="muted small" style="margin-top:9px">Muzaffar Amirov baholagach, natijani shu kabinetda ko'rasiz.</p>
         </div>
         <div class="confirm-actions">
@@ -3152,7 +3182,7 @@ document.addEventListener('click', function (e) {
       store.set(K.students, list);
       CloudSync.pushStudent(st.id);
       render();
-      toast(st.voiceAllowed ? "🎙 Ovozli topshirishga ruxsat berildi" : "⛔ Ovozli topshirish cheklandi");
+      toast(st.voiceAllowed ? "Ovozli topshirishga ruxsat berildi" : "Ovozli topshirish cheklandi");
     },
 
     /* --- Uyga vazifalar --- */

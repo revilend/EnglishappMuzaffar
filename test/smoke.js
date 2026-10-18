@@ -191,7 +191,7 @@ check(q('#login-input').placeholder === 'Login' && q('#login-input').placeholder
 check(!text().includes('Ustoz Paneli') && !text().includes('Ustoz:'), "login: 'Ustoz Paneli'/demo yozuvlari yo'q");
 check(!text().includes('Ustoz: admin') && !text().includes("O'quvchi: jasur"), "login: login/parollar endi ko'rinmaydi");
 const pwBtnLogin = q('[data-act="toggle-pw"][data-target="password-input"]');
-check(!!pwBtnLogin, "login: parol ko'zgusi tugmasi (👁) mavjud");
+check(!!pwBtnLogin && !!pwBtnLogin.querySelector('svg'), "login: parol ko'zgusi tugmasi SVG ikonka");
 if (pwBtnLogin) {
   click(pwBtnLogin);
   check(q('#password-input').type === 'text', "login: ko'zgusi bosildi — parol ko'rindi");
@@ -213,6 +213,16 @@ loginAs('m_amirov', '123');
 check(text().includes('Xush kelibsiz') && text().includes('Muzaffar Amirov'), 'ustoz: dashboard salomi "Xush kelibsiz, Muzaffar Amirov!"');
 check(q('#app-header').textContent.includes('Muzaffar Amirov'), 'ustoz: headerda "Muzaffar Amirov" brendi');
 check(navLabels().length === 6, 'ustoz: 6 ta nav tabi (' + navLabels().join(', ') + ')');
+
+/* --- Vektor ikonka tizimi: barcha emoji o'rniga SVG badge'lar --- */
+check(qa('.quick-grid .quick-ico').length === 6, 'icon: TEZ AMALLAR gridida 6 ta ikonka badge');
+check(qa('.quick-grid .quick-ico svg').length === 6, "icon: har bir badge ichida SVG (emoji o'rniga)");
+check(['tint-indigo', 'tint-emerald', 'tint-sky', 'tint-amber', 'tint-purple', 'tint-slate']
+  .every(t => qa('.quick-ico.' + t).length === 1),
+  'icon: indigo/emerald/sky/amber/purple/slate tints har biri bittadan');
+check(!!q('.screen-title svg') && !!q('.stat-ico svg'), 'icon: bo"lim sarlavhasi va status kartalari SVG ikonka');
+check(!/[\u{1F300}-\u{1FAFF}]/u.test(q('#screen').textContent),
+  "icon: dashboardda cartoon emoji qolmagan (faqat vektor ikonka)");
 
 /* Moliyaviy ma'lumotlar UMUMAN yo'q */
 check(!text().includes("so'm"), 'moliya: dashboardda narx yo\'q');
@@ -569,7 +579,8 @@ win.localStorage.setItem('et_tg_subs', JSON.stringify([
 forceNav('speaking');
 check(qa('.audio-item').length >= 1, 'inbox: Telegram topshirik paydo bo\'ldi');
 check(text().includes('Jasur Karimov'), 'inbox: o\'quvchi ismi ko\'rinadi');
-check(text().includes('🎙 Ovozli xabar'), 'inbox: media turi (voice) ko\'rinadi');
+check(text().includes('Ovozli xabar') && !!q('.audio-item__meta svg'),
+  'inbox: media turi (voice) SVG ikonka bilan ko\'rinadi');
 check(qa('[data-act="tg-grade"]').length === 10, 'inbox: 10 ta ball tugmasi');
 check(q('[data-act="tg-feedback"]'), 'inbox: izoh maydoni mavjud');
 check(!q('[data-act="rec-start"]') && !q('#recorder'), 'recorder: brauzer yozgich olib tashlangan');
@@ -601,7 +612,8 @@ check(text().includes('Telegram orqali'), "student: 'Telegram orqali topshirish'
 check(!q('#recorder') && !q('[data-act="rec-start"]') && !q('[data-act="rec-send"]'),
   "student: brauzer recorder butunlay olib tashlangan");
 check(text().includes('Uyga vazifalar'), "student: 'Uyga vazifalar' bo'limi portalda");
-check(text().includes('✅ Baho: 9/10'), 'student: baholangan Telegram topshirigi ko\'rinadi');
+check(text().includes('Baho: 9/10') && !!q('.audio-item__meta svg'),
+  'student: baholangan Telegram topshirigi SVG check bilan ko\'rinadi');
 clickAct('speak-cta');
 check(q('#modal-overlay').hidden === false && q('#modal-sheet').textContent.includes('Telegram'),
   "student: CTA → Telegram yo'riqnomasi modali");
@@ -849,7 +861,8 @@ const until = async (fn, ms) => {
   loginAs('restore1', '9876');
   check(text().includes('Present Perfect shakli'), "uyga vazifa: o'quvchi portalida ko'rinadi");
   check(text().includes('10 ta gap tuzing'), "uyga vazifa: tavsif portalda ko'rinadi");
-  check(text().includes('📚 Uyga vazifalar'), "uyga vazifa: portal bo'limi mavjud");
+  check(text().includes('Uyga vazifalar') && !!q('.section-title svg'),
+    "uyga vazifa: portal bo'limi SVG BookOpen ikonka bilan mavjud");
 
   /* ================= 21. VOICE RUXSAT KALITI (kartada) ================= */
   logout();
@@ -931,8 +944,8 @@ const until = async (fn, ms) => {
 
     check(typeof win.Notif.notifyOnce === 'function' && typeof win.Notif.showPrompt === 'function',
       'notif: Notif moduli mavjud');
-    check(win.Notif.PROMPT_TEXT === "🔔 Yangi baholar va xabarlarni o'tkazib yubormaslik uchun bildirishnomalarni yoqing",
-      "notif: so'rov matni specda aniq");
+    check(win.Notif.PROMPT_TEXT === "Yangi baholar va xabarlarni o'tkazib yubormaslik uchun bildirishnomalarni yoqing",
+      "notif: so'rov matni specda aniq (emoji yo'q)");
     check(win.Notif.PROMPT_BUTTON === 'Ruxsat berish', 'notif: [Ruxsat berish] tugma nomi');
     check(win.Notif.permission() === 'default', "notif: ruxsat hali default — so'rov kerak");
 
