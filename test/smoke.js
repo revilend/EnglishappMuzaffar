@@ -479,6 +479,41 @@ check(text().includes('Nilufar Ergasheva'), 'reset: ustoz yangilagan parol bilan
 check(text().includes('9-sinf'), 'reset: Nilufar portali ko\'rinadi');
 check(!text().includes('Jasur Karimov'), 'reset: boshqa o\'quvchi ko\'rinmaydi');
 
+/* ================= 12b. USTOZ PAROLI — o'zgartirish + qat'iy qayta kirish ================= */
+check(typeof win.__cloud.pushTeacherPassword === 'function',
+  'ustoz paroli: CloudSync.pushTeacherPassword (bot_settings) eksport qilingan');
+logout();
+loginAs('m_amirov', '123');
+click('[data-act="nav"][data-screen="profile"]');
+clickAct('open-change-pwd');
+setVal('#cp-old', '123');
+setVal('#cp-new', '9111');
+setVal('#cp-new2', '9111');
+clickAct('save-change-pwd');
+check(q('#modal-overlay').hidden === true && q('#toast').textContent.includes("Parol o'zgartirildi"),
+  'ustoz paroli: o' + "'" + 'zgartirildi (bot_settings ga yoziladi)');
+logout();
+loginAs('m_amirov', '123');
+check(q('#login-error').textContent.includes("noto'g'ri"),
+  "ustoz paroli: eski '123' bilan KIRIB BO'LMAYDI");
+loginAs('m_amirov', '9111');
+check(text().includes('Xush kelibsiz') && text().includes('Muzaffar Amirov'),
+  'ustoz paroli: yangi parol bilan kirdi');
+/* keyingi bosqichlar uchun parolni 123 ga qaytaramiz */
+click('[data-act="nav"][data-screen="profile"]');
+clickAct('open-change-pwd');
+setVal('#cp-old', '9111');
+setVal('#cp-new', '123');
+setVal('#cp-new2', '123');
+clickAct('save-change-pwd');
+logout();
+loginAs('m_amirov', '123');
+check(text().includes('Xush kelibsiz') && text().includes('Muzaffar Amirov'),
+  'ustoz paroli: 123 ga qaytarildi — kirish ishlaydi');
+logout();
+loginAs('nilufar', '7777');
+check(text().includes('Nilufar Ergasheva'), 'ustoz paroli: holat tiklandi (nilufar kirgan)');
+
 /* ================= 13. STEP 4: YANGI FEATURE'LAR ================= */
 
 /* --- 1. Telefon raqamlari butunlay yo'q --- */
@@ -1020,6 +1055,42 @@ const until = async (fn, ms) => {
 
     win.onCloudNotifChange('grades', { id: 8009, student_id: S5_DB, grade: 10 }, null);
     check(shownNotifs.length === 2, "notif: ustozga o'quvchi bahosi xabari ketmaydi (faqat o'quvchiga)");
+
+    /* ================= 26. JONLI INBOX & QARZ BADGE (zero refresh) ================= */
+    /* (a) INSERT → yangi topshirik INCHKda darhol paydo bo'ladi */
+    click('[data-act="nav"][data-screen="speaking"]');
+    const inboxBefore = qa('.audio-item').length;
+    win.onCloudNotifChange('speaking_submissions',
+      { id: 8101, student_id: S5_DB, media_type: 'voice', status: 'kutilmoqda',
+        score: null, created_at: '2026-10-15T12:00:00.000Z' }, null);
+    check(qa('.audio-item').length === inboxBefore + 1,
+      'realtime: INSERT → yangi karta INBOXda darhol (qayta yuklashsiz)');
+    check(!!q('[data-tgcard="t8101"]'), 'realtime: karta data-tgcard bilan chiqdi');
+    check(JSON.parse(win.localStorage.getItem('et_tg_subs') || '[]')
+        .some(x => x.dbId === 8101),
+      'realtime: INSERT → lokal inbox keshga yozildi (optimistic)');
+
+    /* (b) UPDATE (botda baholandi) → holat yangilanadi + karta silliq chiqadi */
+    win.onCloudNotifChange('speaking_submissions',
+      { id: 8101, student_id: S5_DB, media_type: 'voice', status: 'baholandi',
+        score: 9, created_at: '2026-10-15T12:00:00.000Z' }, { status: 'kutilmoqda' });
+    const t8101 = JSON.parse(win.localStorage.getItem('et_tg_subs') || '[]')
+      .filter(x => x.dbId === 8101)[0];
+    check(!!t8101 && t8101.status === 'baholandi' && t8101.score === 9,
+      'realtime: UPDATE(baholandi) → lokal holat darhol yangilandi');
+    check(!!q('[data-tgcard="t8101"]') &&
+      q('[data-tgcard="t8101"]').classList.contains('is-leaving'),
+      'realtime: baholangan karta INBOXdan silliq chiqmoqda (is-leaving)');
+
+    /* (c) students UPDATE → qarz badge 2 → 1 sahifaniyangilashmasdan */
+    win.onCloudNotifChange('students',
+      { id: S5_DB, speaking_debt: 1, voice_allowed: true }, {});
+    const debtStu = JSON.parse(win.localStorage.getItem('et_students'))
+      .filter(x => x.dbId === S5_DB)[0];
+    check(!!debtStu && debtStu.speakingDebt === 1,
+      'realtime: speaking_debt lokal keshda jonli yangilandi → 1');
+    check(qa('.debt-num').filter(d => d.textContent.trim() === '1 ta').length >= 1,
+      "realtime: qarz badge ekranda '1 ta' bo'ldi (refreshsiz)");
 
     /* Kirganda ruxsat 'default' bo'lsa — so'rov rejalashtiriladi */
     FakeNotification.permission = 'default';

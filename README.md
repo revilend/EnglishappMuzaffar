@@ -23,6 +23,9 @@ Guruhlarda, dashboardda va o'quvchi profilida narx/to'lov/qarz kartalari **olib 
 - O'quvchi qo'shishda ustoz **Login** va **Dastlabki parol** belgilaydi (masalan `jasur09` / `1234`)
 - O'quvchi: profilda **"Parolni o'zgartirish"** modali
 - Ustoz: har bir o'quvchi kartasida **"Parolni yangilash"** (parolni unutgan uchun qayta tiklash)
+- **Parollar Supabase'ga saqlanadi:** o'quvchi paroli → `students.password`,
+  ustoz paroli → `bot_settings` (`key: 'teacher_password'`). Kirishda **aynan bazadagi
+  parol** tekshiriladi — eski parol bilan qayta kirib bo'lmaydi.
 
 ### 3. Tezkor davomat
 Guruh + sana (bugun) → [✓ Keldi] [✕ Kelmadi] [? Sababli] → "Davomatni saqlash" + toast.
@@ -69,10 +72,15 @@ Barcha sinf variantlari va filtrlari qat'iy: `5-sinf, 6-sinf, 7-sinf, 8-sinf, 9-
 - **Ustoz ruxsati:** har bir o'quvchi kartasida **"🎙 Ovozli topshirishga ruxsat"**
   kaliti → `students.voice_allowed`. Yopiq bo'lsa bot rad etadi:
   *"⛔ Kechirasiz! Ustoz hozircha sizga ovozli topshirishga ruxsat bermagan. Darsda topshiring."*
-- **Bot qabul qilganda:** `speaking_submissions` jadvaliga yoziladi, qarz +1 va
+- **Bot qabul qilganda:** `speaking_submissions` jadvaliga yoziladi —
+  **speaking qarzi HECH QACHON +1 BO'LMAYDI** (faqat baholash kamaytiradi) — va
   ustozga **[📝 Mini App'da Baholash]** tugmasi bilan forward qilinadi.
 - **Ustoz (Speaking → Telegram topshiriklari):** **1–10 ball** + izoh qo'yadi —
   **qarz avtomatik 1 ga kamayadi**, ball baholar jurnaliga ("Speaking") tushadi.
+- **Jonli INBOX (realtime, qayta yuklashsiz):** yangi topshirik **Speaking**
+  ekranida darhol paydo bo'ladi; baho qo'yganda (botda yoki saytda) karta
+  **silliq** chiqib ketadi; `students.speaking_debt` o'zgarsa badge (masalan 2 → 1)
+  **sahifani yangilashmasdan** jonli yangilanadi.
 
 ### 11. Ko'p qurilmali bulut sinxronizatsiyasi (Supabase) ✅ JOYIDA ULANGAN
 Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
@@ -87,6 +95,7 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 | `homework` | uyga vazifalar (mavzu, tavsif, muddat) — bot guruhga xabar qiladi |
 | `speaking_submissions` | Telegram voice/video topshiriklar (holat, ball) |
 | `audio_submissions` | eski brauzer topshiriklari (zaxira uchun) |
+| `bot_settings` | tizim sozlamalari — ustoz paroli (`teacher_password`) |
 
 - **Loyiha ulanishi** `index.html` ichida: `window.SUPABASE_URL` +
   `window.SUPABASE_ANON_KEY` (publishable kalit).

@@ -97,6 +97,17 @@ drop policy if exists "demo messages all" on public.messages;
 create policy "demo messages all" on public.messages
   for all using (true) with check (true);
 
+-- 6) Tizim sozlamalari — ustoz paroli shu jadvalda saqlanadi
+--    (key: 'teacher_password' → login ekranida shu qiymat tekshiriladi)
+create table if not exists public.bot_settings (
+  key   text primary key,
+  value text not null default ''
+);
+alter table public.bot_settings enable row level security;
+drop policy if exists "demo bot_settings all" on public.bot_settings;
+create policy "demo bot_settings all" on public.bot_settings
+  for all using (true) with check (true);
+
 -- Realtime (ixtiyoriy): chat xabarlarini jonli yangilash uchun
 -- Supabase Dashboard → Database → Replication → "messages" jadvalini yoqing.
 --

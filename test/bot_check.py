@@ -585,14 +585,15 @@ async def main():
     check(sub_voice["media_type"] == "voice" and sub_voice["telegram_file_id"] == "V3",
           "voice: speaking_submissions ga yozildi")
     check(sub_voice["status"] == "kutilmoqda", "voice: status='kutilmoqda'")
-    check(FAKE_ROWS["students"][0]["speaking_debt"] == 5, "voice: speaking_debt 4 -> 5")
+    check(FAKE_ROWS["students"][0]["speaking_debt"] == 4,
+          "voice: TOPSHIRISH speaking_debtni OSHIRMAYDI (4 -> 4)")
 
     fwd = [s for s in fb.sent if s["kind"] == "voice" and s["chat_id"] == ADMIN]
     check(len(fwd) == 1, "voice: ustozga forward qilindi")
     capv = fwd[0]["caption"] if fwd else ""
     check("YANGI SPEAKING TOPSHIRILDI" in capv, "voice: ustozga kaptor sarlavhasi")
     check("Jasur Karimov" in capv and "8-sinf" in capv, "voice: kaptorda ism + sinf")
-    check("Speaking qarzi:</b> 5 ta" in capv, "voice: kaptorda joriy speaking qarzi (5)")
+    check("Speaking qarzi:</b> 4 ta" in capv, "voice: kaptorda joriy speaking qarzi (4)")
 
     gtexts = [t for t, _ in btn_texts(fwd[0]["reply_markup"])]
     check(all(str(n) in gtexts for n in (10, 9, 8, 7, 6, 5)),
@@ -613,8 +614,8 @@ async def main():
     check(bool(vn_cap) and "📝 Saytda ochish" in
           [t for t, _ in btn_texts(vn_cap[0]["reply_markup"])],
           "video_note: kaptor matni baho tugmalari bilan keldi")
-    check(FAKE_ROWS["students"][0]["speaking_debt"] == 6,
-          "video_note: speaking_debt 5 -> 6 (+1)")
+    check(FAKE_ROWS["students"][0]["speaking_debt"] == 4,
+          "video_note: TOPSHIRISH qarzni OSHIRMAYDI (4 -> 4)")
 
     # video (MP4)
     fb.sent.clear()
@@ -623,8 +624,9 @@ async def main():
     sub_video = FAKE_ROWS["speaking_submissions"][-1]
     check(any(s["kind"] == "video" and s["chat_id"] == ADMIN for s in fb.sent),
           "video: MP4 ustozga yuborildi")
-    check(FAKE_ROWS["students"][0]["speaking_debt"] == 7, "video: speaking_debt 6 -> 7 (+1)")
-    debt_before = FAKE_ROWS["students"][0]["speaking_debt"]  # 3 ta topshirikdan keyin
+    check(FAKE_ROWS["students"][0]["speaking_debt"] == 4,
+          "video: 3 ta topshirikdan keyin ham qarz 4 (qo'shilmaydi)")
+    debt_before = FAKE_ROWS["students"][0]["speaking_debt"]  # topshiriklardan keyin ham o'zgarmagan
 
     # ---- 1-tap baho: [9] bosildi ----
     fb.sent.clear()
@@ -643,11 +645,13 @@ async def main():
     check(sub_video["status"] == "baholandi" and sub_video["score"] == 9,
           "baho: speaking_submissions baholandi belgilandi")
     notes = [s["text"] for s in fb.sent if s["kind"] == "message" and s["chat_id"] == 555]
-    check(notes == ["🎉 Muzaffar Amirov speakingingizga 9/10 ball qo'ydi! "
-                    "Qarzingiz 1 taga kamaydi."],
+    check(notes == ["🎉 Muzaffar Amirov sizga 9/10 ball qo'ydi! "
+                    "Speaking qarzingiz 1 taga kamaydi."],
           "baho: o'quvchiga aynan spec xabar yuborildi")
-    check(any("Baholandi" in e for e in call.message.edits),
-          "baho: ustoz xabari yangilandi (Baholandi)")
+    _edits_plain = [re.sub(r"<[^>]+>", "", e) for e in call.message.edits]
+    check(any("✅ Baholandi! Speaking qarzi 1 taga kamaytirildi." in e
+              for e in _edits_plain),
+          "baho: ustozga aynan spec tasdiq (Baholandi! ... kamaytirildi)")
     check(any(a["text"] == "✅ 9 ball qo'yildi" for a in call.answers),
           "baho: ustozga tasdiq (answer)")
 

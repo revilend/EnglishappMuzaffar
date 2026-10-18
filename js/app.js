@@ -354,6 +354,44 @@ const CloudSync = (function () {
     }
   }
 
+  /* --- Ustoz paroli: Supabase bot_settings (key: 'teacher_password') --- */
+  let hasSettings = true;
+  async function pullTeacherPassword() {
+    if (!ready() || !hasSettings) return null;
+    try {
+      const res = await client.from('bot_settings')
+        .select('value').eq('key', 'teacher_password').limit(1);
+      if (res.error) {
+        if (missing(res.error)) hasSettings = false;
+        return null;
+      }
+      return res.data && res.data.length ? (res.data[0].value || null) : null;
+    } catch (e) { return null; }
+  }
+
+  async function pushTeacherPassword(pass) {
+    if (!ready() || !hasSettings) return;
+    try {
+      let res = await client.from('bot_settings')
+        .update({ value: pass }).eq('key', 'teacher_password').select('key');
+      if (res.error) {
+        if (missing(res.error)) { hasSettings = false; return; }
+        throw res.error;
+      }
+      if (!res.data || !res.data.length) {
+        /* qator hali yo'q — yangi qator sifatida qo'shamiz */
+        res = await client.from('bot_settings')
+          .insert({ key: 'teacher_password', value: pass }).select('key');
+        if (res.error) {
+          if (missing(res.error)) hasSettings = false;
+          else throw res.error;
+        }
+      }
+    } catch (e) {
+      console.warn('[cloud] teacher password:', (e && e.message) || e);
+    }
+  }
+
   /* --- Barcha jadvallarni tortib, lokal modelni qayta qurish --- */
   async function pullAll() {
     if (!ready()) return false;
@@ -433,6 +471,11 @@ const CloudSync = (function () {
       await fetchMessages(null);
       try { await pullHomework(); } catch (e) { /* homework jadvali yo'q — SQL hali ishga tushmagan */ }
       try { await pullSpeaking(); } catch (e) { /* speaking_submissions yo'q */ }
+      /* Ustoz paroli — bot_settings ('teacher_password') dan o'qiladi */
+      let teachPw = null;
+      try { teachPw = await pullTeacherPassword(); } catch (e) { /* bot_settings yo'q */ }
+      next[TEACHER_LOGIN].password = teachPw || TEACHER_PASSWORD;
+      persistAccounts();
       return true;
     } catch (e) {
       console.warn('[cloud] pull:', (e && e.message) || e);
@@ -739,6 +782,7 @@ const CloudSync = (function () {
     pushHomework: pushHomework,
     pullSpeaking: pullSpeaking,
     pushSpeakingGrade: pushSpeakingGrade,
+    pushTeacherPassword: pushTeacherPassword,
     sendMessage: sendMessage,
     subscribe: subscribe,
     deleteStudent: deleteStudent,
@@ -950,6 +994,19 @@ function onCloudNotifChange(table, row, old) {
   }
 
   if (table === 'students') {
+    /* --- Jonli speaking qarz badge'i (masalan 2 → 1) — sahifani yangilashsiz --- */
+    if (row.speaking_debt != null) {
+      const dl = getStudents();
+      const dt = dl.filter(function (x) { return x.dbId === row.id; })[0];
+      const nd = Number(row.speaking_debt) || 0;
+      if (dt && (Number(dt.speakingDebt) || 0) !== nd) {
+        dt.speakingDebt = nd;
+        store.set(K.students, dl);
+        if (state.screen === 'speaking' || state.screen === 'students' ||
+            (!isTeacher() && state.screen === 'home')) render();
+      }
+    }
+
     const st = linkedStudent();
     if (!st || st.dbId == null || row.id !== st.dbId) return;
     if (row.voice_allowed !== true) return;
@@ -984,6 +1041,36 @@ function onCloudNotifChange(table, row, old) {
   }
 
   if (table === 'speaking_submissions') {
+    /* --- Jonli INBOX (zero refresh):
+       INSERT → yangi topshirik karta darhol INBOX boshiga chiqadi;
+       UPDATE (baholangan) → karta INBOXdan silliq chiqib ketadi. --- */
+    const rec = {
+      id: 't' + row.id,
+      dbId: row.id,
+      sid: 's' + row.student_id,
+      mediaType: row.media_type || 'voice',
+      status: row.status || 'kutilmoqda',
+      score: row.score == null ? null : Number(row.score),
+      feedback: row.feedback || '',
+      createdAt: row.created_at || ''
+    };
+    if (rec.sid !== 'snull') {
+      const subs = getTgSubs();
+      const i = subs.map(function (x) { return x.dbId; }).indexOf(row.id);
+      if (i < 0) subs.push(rec);  /* INSERT — render teskari yig'adi, ya'ni yuqorida */
+      else subs[i] = rec;         /* UPDATE — lokal holat darhol yangilanadi */
+      store.set(K.tgsubs, subs);
+    }
+
+    const done = rec.status === 'baholandi' || rec.status === 'graded';
+    const node = done ? document.querySelector('[data-tgcard="' + rec.id + '"]') : null;
+    if (node && node.classList) {
+      node.classList.add('is-leaving');
+      setTimeout(function () { render(); }, 200); /* animatsiyadan keyin qayta chizish */
+    } else if (isTeacher() && state.screen === 'speaking') {
+      render(); /* yangi karta darhol ekranda — qayta yuklash yo'q */
+    }
+
     if (!isTeacher()) return;
     const s = getStudents().filter(function (x) { return x.dbId === row.student_id; })[0];
     if (!s) return;
@@ -1769,6 +1856,7 @@ function saveChangePwd() {
   u.password = n1;
   persistAccounts();
   if (u.role === 'student' && u.studentId) CloudSync.pushStudent(u.studentId);
+  if (u.role === 'teacher') CloudSync.pushTeacherPassword(n1); /* bot_settings */
   closeModal();
   render();
   toast("Parol o'zgartirildi ✓");
@@ -2505,20 +2593,22 @@ function speakingScreen() {
 
 /* ---- Telegram topshiriklari (ustoz uchun inbox) ---- */
 function renderTgInbox() {
-  const subs = getTgSubs().slice().reverse(); /* yangisi yuqorida */
+  /* Baholangan topshirik kartalari INBOXdan chiqadi (silliq ravishda) */
+  const subs = getTgSubs().filter(function (t) {
+    return t.status !== 'baholandi' && t.status !== 'graded';
+  }).slice().reverse(); /* yangisi yuqorida */
   if (!subs.length) return emptyState("Hozircha Telegram orqali topshirik yo'q");
   const byId = {};
   getStudents().forEach(s => { byId[s.id] = s; });
   return subs.map(t => {
     const st = byId[t.sid];
-    const graded = t.status === 'baholandi' || t.status === 'graded';
     const day = t.createdAt ? String(t.createdAt).slice(0, 10) : '';
     return `
-    <div class="audio-item">
+    <div class="audio-item" data-tgcard="${esc(t.id)}">
       <div class="audio-item__meta">
         <strong>${st ? esc(st.fullName) : '—'}</strong> ${st ? `<span class="chip-class">${esc(st.schoolClass)}</span>` : ''} ·
         ${t.mediaType === 'voice' ? '🎙 Ovozli xabar' : '📹 Video'}${day ? ' · ' + fmtDMY(day) : ''} ·
-        ${graded ? `<span class="gr-score ${gradeClassOf(t.score)}">${t.score}</span>` : '⏳ Kutilmoqda'}
+        ⏳ Kutilmoqda
       </div>
       <div class="grade-row">
         ${[1,2,3,4,5,6,7,8,9,10].map(n => `
@@ -2893,7 +2983,14 @@ function gradeTgSub(tid, score) {
   }
 
   CloudSync.pushSpeakingGrade(tid);
-  render();
+  /* Baholangan karta INBOXdan silliq chiqib ketadi */
+  const card = document.querySelector('[data-tgcard="' + tid + '"]');
+  if (card && card.classList) {
+    card.classList.add('is-leaving');
+    setTimeout(function () { render(); }, 200);
+  } else {
+    render();
+  }
   toast("Baho saqlandi ✓ (qarz kamaydi)");
 }
 

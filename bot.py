@@ -566,8 +566,8 @@ async def handle_speaking_submission(message: types.Message):
         )
         return
 
-    # 3) Supabase'ga yozish + speaking qarzi +1
-    debt = int(student.get("speaking_debt") or 0) + 1
+    # 3) Supabase'ga yozish — TOPSHIRISH SPEAKING QARZINI HECH QACHON OSHIRMAYDI!
+    #    (mantiq: qarzni faqat BAHOLASH kamaytiradi — botda yoki saytda)
     sub_id = None
     try:
         res = supabase.table("speaking_submissions").insert({
@@ -580,11 +580,6 @@ async def handle_speaking_submission(message: types.Message):
             sub_id = res.data[0].get("id")
     except Exception as e:
         logging.error(f"Supabase error (speaking_submissions): {e}")
-    try:
-        supabase.table("students").update({"speaking_debt": debt}).eq("id", student["id"]).execute()
-        student["speaking_debt"] = debt
-    except Exception as e:
-        logging.error(f"Supabase error (speaking_debt): {e}")
 
     # 4) Ustozga yuborish (ism, sinf, qarz + 1-tap baho tugmalari bilan)
     try:
@@ -630,6 +625,8 @@ async def on_grade_tap(call: types.CallbackQuery):
         await call.answer(f"Bu topshirik allaqachon baholangan ({sub.get('score')}/10)", show_alert=True)
         return
 
+    # O'quvchi HAR BIR tapda to'g'ridan-to'g'ri Supabase'dan o'qiladi
+    # (in-memory lug'at/kesh ishlatilmaydi) — telegram_chat_id ham shu yangi qatordan.
     try:
         studs = supabase.table("students").select("id, name, school_class, speaking_debt, telegram_chat_id").\
             eq("id", sub["student_id"]).limit(1).execute().data
@@ -670,23 +667,30 @@ async def on_grade_tap(call: types.CallbackQuery):
     except Exception as e:
         logging.error(f"sub update: {e}")
 
-    # 4) O'quvchiga xabar
+    # 4) O'quvchiga xabar (telegram_chat_id — Supabase qatordan)
     chat_id = st.get("telegram_chat_id")
     notified = False
     if chat_id:
         try:
-            if debt_before >= 1:
-                note = f"🎉 Muzaffar Amirov speakingingizga {score}/10 ball qo'ydi! Qarzingiz 1 taga kamaydi."
+            if debt_after < debt_before:
+                note = (f"🎉 Muzaffar Amirov sizga {score}/10 ball qo'ydi! "
+                        "Speaking qarzingiz 1 taga kamaydi.")
             else:
-                note = f"🎉 Muzaffar Amirov speakingingizga {score}/10 ball qo'ydi! Qarzingiz yo'q."
+                note = (f"🎉 Muzaffar Amirov sizga {score}/10 ball qo'ydi! "
+                        "Speaking qarzingiz yo'q.")
             await bot.send_message(chat_id=int(chat_id), text=note)
             notified = True
         except Exception as e:
             logging.error(f"notify student {chat_id}: {e}")
 
-    # 5) Ustoz xabarini yangilash
+    # 5) Ustozga tasdiq (xabar yangilanadi)
     name = html.escape(str(st.get("name") or "?"))
-    done_text = f"✅ <b>Baholandi:</b> {name} — {score}/10\n💰 Qarz: {debt_before} → {debt_after} ta"
+    if debt_after < debt_before:
+        done_text = ("✅ <b>Baholandi!</b> Speaking qarzi 1 taga kamaytirildi.\n"
+                     f"{name} — {score}/10\n💰 Qarz: {debt_before} → {debt_after} ta")
+    else:
+        done_text = ("✅ <b>Baholandi!</b>\n"
+                     f"{name} — {score}/10\n💰 Qarz: {debt_after} ta (qarz yo'q — kamaymadi)")
     if not notified:
         done_text += "\n⚠️ O'quvchi Telegramga ulanmagan — xabar yuborilmadi."
     try:
