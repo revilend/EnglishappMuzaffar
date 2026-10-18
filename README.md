@@ -192,6 +192,10 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 - Guruh kartasi jadvalni dinamik formatda ko'rsatadi: **"Dushanba 09:15 • Shanba 11:00"**.
   Eski guruhlar (kunlar + bitta `time`) avvalgi ko'rinishida qoladi; `groups` jadvali ustunlari
   **o'zgarmagan** — kun+vaqt `days` ustunida saqlanadi, yangi migration shart emas.
+- **"Guruhni tahrirlash"** modali: guruh kartasidagi **Tahrirlash** tugmasi orqali ochiladi —
+  kunlar belgilangan holda, har bir kun uchun alohida vaqt picker prefilled bo'ladi
+  (eski guruhlar uchun — bitta `time` qiymati barcha kunlarga avtomatik tarqatiladi).
+  Saqlangach `groups.days` "kun+vaqt" formatida yangilanadi va Supabase'ga push qilinadi.
 
 ## Telegram bot (aiogram 3.x)
 

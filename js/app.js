@@ -1634,6 +1634,7 @@ function groupCard(g, students) {
     <div class="row g8" style="margin-top:11px">
       <button type="button" class="btn btn-ghost btn-sm" data-act="grade-group-go" data-group="${g.id}">${ico('grades', 15)} Baholar</button>
       <button type="button" class="btn btn-ghost btn-sm" data-act="open-attendance" data-group="${g.id}">${ico('cal', 15)} Davomat</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-act="edit-group" data-gid="${g.id}">${ico('brush', 15)} Tahrirlash</button>
       <button type="button" class="btn btn-danger btn-sm" data-act="del-group" data-gid="${g.id}">${ico('trash', 15)} O'chirish</button>
     </div>
   </div>`;
@@ -1911,6 +1912,83 @@ function saveGroup() {
   closeModal();
   render();
   toast("Guruh qo'shildi ✓");
+}
+
+/* --- Guruhni tahrirlash: har bir kun uchun alohida vaqt (qo'shish modali bilan bir xil UI) --- */
+function openEditGroup(gid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const g = groupById(gid);
+  if (!g) return;
+  const short = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
+  const checked = {};
+  const preset = {};
+  parseGroupDays(g).forEach(x => {
+    checked[x.day] = true;
+    if (x.time) preset[x.day] = x.time;
+  });
+  /* Eski format (kunlar + bitta time) — barcha tanlangan kunlar o'sha vaqt bilan to'ldiriladi */
+  if (!Object.keys(preset).length && g.time) {
+    Object.keys(checked).forEach(d => { preset[d] = g.time; });
+  }
+  openModal(`
+    <div class="modal-head">
+      <h3>Guruhni tahrirlash</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+
+    <label class="field-label" for="f-gname">Guruh nomi</label>
+    <input class="input" id="f-gname" value="${esc(g.name)}" />
+
+    <div class="field-label">Dars kunlari</div>
+    <div class="day-grid" id="f-days">
+      ${APP_DATA.days.map((d, i) => `
+        <label class="day-opt">
+          <input type="checkbox" value="${d}" ${checked[d] ? 'checked' : ''} />
+          <span class="day-box" title="${d}">${short[i]}</span>
+        </label>`).join('')}
+    </div>
+
+    <div id="f-times" class="day-times" aria-live="polite"></div>
+    <p class="muted small" style="margin-top:8px">Har bir tanlangan kun uchun alohida dars vaqtini belgilang.</p>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
+      <button type="button" class="btn btn-primary" data-act="save-edit-group" data-gid="${esc(String(gid))}">Saqlash</button>
+    </div>
+  `);
+  renderDayTimes();
+  $$('#f-times .dt-time').forEach(inp => {
+    const d = inp.getAttribute('data-day');
+    if (d && preset[d]) inp.value = preset[d];
+  });
+}
+
+function saveEditGroup(gid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const name = (($('#f-gname') && $('#f-gname').value) || '').trim();
+  const days = $$('input:checked', $('#f-days')).map(i => i.value);
+  const times = {};
+  $$('#f-times .dt-time').forEach(inp => {
+    const d = inp.getAttribute('data-day');
+    if (d) times[d] = (inp.value || '').trim();
+  });
+
+  if (!name) { toast("Guruh nomini kiriting", 'error'); if ($('#f-gname')) $('#f-gname').focus(); return; }
+  if (!days.length) { toast("Dars kunlarini tanlang", 'error'); return; }
+
+  /* "Dushanba 09:15, Shanba 11:00" — yangi format; legacy time = birinchi tanlangan vaqt */
+  const encoded = days.map(d => (times[d] ? d + ' ' + times[d] : d)).join(', ');
+  const firstTime = days.map(d => times[d] || '').filter(Boolean)[0] || '';
+
+  const list = getGroups().map(x => String(x.id) === String(gid)
+    ? Object.assign({}, x, { name: name, days: encoded, time: firstTime })
+    : x);
+  store.set(K.groups, list);
+  const updated = list.filter(x => String(x.id) === String(gid))[0];
+  CloudSync.pushGroup(updated);
+  closeModal();
+  render();
+  toast("Guruh yangilandi ✓");
 }
 
 function saveStudent() {
@@ -3240,6 +3318,8 @@ document.addEventListener('click', function (e) {
 
     /* --- Guruhlar / o'quvchilar --- */
     'open-add-group': openAddGroup,
+    'edit-group': function () { openEditGroup(btn.getAttribute('data-gid')); },
+    'save-edit-group': function () { saveEditGroup(btn.getAttribute('data-gid')); },
     'open-add-student': openAddStudent,
     'close-modal': closeModal,
     'save-group': saveGroup,

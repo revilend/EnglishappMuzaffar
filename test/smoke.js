@@ -293,6 +293,43 @@ check(text().includes('Dushanba 09:15') && text().includes('Shanba 11:00') && te
 check(text().includes('Dushanba, Chorshanba, Juma') && text().includes('18:00'),
   "vaqt: eski guruhlarda format o'zgarmagan (Dushanba, Chorshanba, Juma + 18:00)");
 
+/* --- "Guruhni tahrirlash": har bir kun uchun alohida vaqt (prefilled) --- */
+const sheet = () => q('#modal-sheet').textContent;
+const isChk = name => { const b = qa('#f-days input').filter(i => i.value === name)[0]; return !!(b && b.checked); };
+click(qa('.group-card').filter(c => c.textContent.includes('Vaqtli Guruh'))[0].querySelector('[data-act="edit-group"]'));
+check(q('#modal-overlay').hidden === false && sheet().includes('Guruhni tahrirlash'), "tahrirlash: modali ochildi");
+check(!!q('#f-gname') && q('#f-gname').value === 'Vaqtli Guruh', "tahrirlash: guruh nomi prefilled");
+check(isChk('Dushanba') && isChk('Shanba') && !isChk('Juma'), "tahrirlash: kunlar prefilled (Dushanba, Shanba)");
+check(qa('#f-times .dt-time').length === 2, "tahrirlash: tanlangan kunlar sonida vaqt picker");
+check(timeFor('Dushanba').value === '09:15' && timeFor('Shanba').value === '11:00',
+  "tahrirlash: vaqtlar prefilled (09:15 / 11:00)");
+clearDay('Dushanba');
+check(qa('#f-times .dt-time').length === 1 && timeFor('Shanba').value === '11:00',
+  "tahrirlash: kun o'chirildi → picker ketdi, qolgan qiymat saqlandi");
+pickDay('Chorshanba');
+check(qa('#f-times .dt-time').length === 2 && !!timeFor('Chorshanba'), "tahrirlash: Chorshanba ✓ → yangi picker");
+timeFor('Shanba').value = '14:30';
+timeFor('Chorshanba').value = '10:00';
+click('[data-act="save-edit-group"]');
+check(q('#modal-overlay').hidden === true, "tahrirlash: modal yopildi");
+const edGrp = JSON.parse(win.localStorage.getItem('et_groups')).filter(g => g.name === 'Vaqtli Guruh')[0];
+check(!!edGrp && edGrp.days === 'Chorshanba 10:00, Shanba 14:30',
+  "tahrirlash: 'kun + vaqt' formatida saqlandi (hafta tartibida: Chorshanba 10:00, Shanba 14:30)");
+check(edGrp.time === '10:00', "tahrirlash: legacy time = haftaning birinchi kunning vaqti (10:00)");
+check(text().includes('Shanba 14:30') && text().includes('Chorshanba 10:00') && text().includes(' • '),
+  "tahrirlash: karta 'Shanba 14:30 • Chorshanba 10:00' ko'rinishida");
+check(q('#toast').textContent.includes('Guruh yangilandi'), "tahrirlash: success toast");
+
+/* Eski guruhni tahrirlash — bitta time barcha kunlarga tarqatilib, bekor qilinadi */
+click(qa('.group-card').filter(c => c.textContent.includes('IELTS Band 7.0'))[0].querySelector('[data-act="edit-group"]'));
+check(qa('#f-days input').filter(i => i.checked).length === 3, "tahrirlash: eski guruh — 3 ta kun belgilangan");
+check(qa('#f-times .dt-time').length === 3 && qa('#f-times .dt-time').every(i => i.value === '18:00'),
+  "tahrirlash: eski bitta time → barcha kun pickerlarida prefilled (18:00)");
+click('.modal-actions [data-act="close-modal"]');
+const legacyGrp = JSON.parse(win.localStorage.getItem('et_groups')).filter(g => g.name === 'IELTS Band 7.0')[0];
+check(legacyGrp.days === 'Dushanba, Chorshanba, Juma' && legacyGrp.time === '18:00',
+  "tahrirlash: bekor qilindi — eski guruh ma'lumoti o'zgarmadi");
+
 /* sinov guruhi o'chiriladi — keyingi bosqichlardagi '2 guruh' invarianti saqlanadi */
 click(qa('.group-card').filter(c => c.textContent.includes('Vaqtli Guruh'))[0].querySelector('[data-act="del-group"]'));
 click('[data-act="do-del-group"]');
