@@ -44,12 +44,75 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .login-val { font-size: inherit; font-weight: 500; color: #334155; font-family: inherit; }
 
 .app {
-  max-width: 480px;
+  max-width: 100%;
   margin: 0 auto;
   min-height: 100vh;
   background: var(--bg);
   position: relative;
 }
+
+@media (min-width: 768px) {
+  .app {
+    max-width: 2xl;
+    padding: 0 1rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .app {
+    max-width: 6xl;
+  }
+}
+
+/* ---------- Desktop navigation tabs (hidden on mobile) ---------- */
+.top-nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 50;
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.80);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.60);
+  display: none;
+}
+.top-nav.md-block {
+  display: block;
+}
+.top-nav .header-inner {
+  max-width: 100%;
+  height: calc(54px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 24px 14px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.top-nav .brand {
+  font-weight: 800; font-size: 20px; letter-spacing: -0.035em;
+}
+.top-nav .brand-wrap { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.top-nav .brand-sub { font-size: 11.5px; font-weight: 600; color: var(--muted); letter-spacing: -0.005em; }
+.top-nav .role-badge {
+  font-size: 12.5px; padding: 4px 12px; margin-right: 12px;
+}
+.top-nav .nav-item { display: none; }
+.top-nav .nav-item:first-child { display: flex; }
+
+/* ---------- Content ---------- */
+.app-content {
+  max-width: 100%;
+  margin: 0 auto;
+  padding: calc(54px + env(safe-area-inset-top) + 14px) 14px calc(74px + env(safe-area-inset-bottom) + 12px);
+}
+body.auth-mode .app-content { padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
+@media (min-width: 768px) {
+  .app-content { padding-left: 2rem; padding-right: 2rem; }
+}
+@media (min-width: 1024px) {
+  .app-content { padding-left: 1rem; padding-right: 1rem; }
+}
+
 
 /* ---------- Header ---------- */
 /* Ajoyib shisha (glassmorphism) effekt — suzuvchi, yarim shaffof */
@@ -108,6 +171,50 @@ body.auth-mode .app-content { padding-bottom: calc(30px + env(safe-area-inset-bo
   display: flex;
   padding-bottom: env(safe-area-inset-bottom);
 }
+@media (min-width: 768px) {
+  .bottom-nav { display: none; }
+}
+
+/* ---------- Desktop navigation tabs (hidden on mobile) ---------- */
+.top-nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 50;
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.80);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.60);
+  display: none;
+}
+.top-nav.md-block {
+  display: block;
+}
+.top-nav .header-inner {
+  max-width: 100%;
+  height: calc(54px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 24px 14px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.top-nav .brand {
+  font-weight: 800; font-size: 20px; letter-spacing: -0.035em;
+}
+.top-nav .brand-wrap { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.top-nav .brand-sub { font-size: 11.5px; font-weight: 600; color: var(--muted); letter-spacing: -0.005em; }
+.top-nav .role-badge {
+  font-size: 12.5px; padding: 4px 12px; margin-right: 12px;
+}
+.top-nav .nav-item { display: none; }
+.top-nav .nav-item:first-child { display: flex; }
+
+@media (min-width: 768px) {
+  .top-nav { display: block; }
+  .bottom-nav { display: none; }
+}
+
 .nav-item {
   flex: 1;
   min-width: 0;
@@ -333,6 +440,29 @@ svg { display: inline-block; vertical-align: -3px; }
 .greet-name { font-size: 18px; font-weight: 800; letter-spacing: -0.035em; margin-bottom: 6px; }
 
 .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+@media (min-width: 768px) {
+  .stat-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 1024px) {
+  .stat-grid { grid-template-columns: repeat(6, 1fr); gap: 12px; }
+}
+
+@media (min-width: 768px) {
+  .stat { padding: 20px 12px 16px; }
+  .stat-ico { width: 44px; height: 44px; margin: 0 auto 10px; }
+  .stat-ico svg { width: 24px; height: 24px; }
+  .stat-num { font-size: 28px; }
+  .stat-label { font-size: 13px; }
+}
+
+@media (min-width: 1024px) {
+  .stat-grid { grid-template-columns: repeat(12, 1fr); gap: 8px; }
+  .stat { padding: 24px 8px 18px; }
+  .stat-ico { width: 56px; height: 56px; margin: 0 auto 12px; }
+  .stat-ico svg { width: 32px; height: 32px; }
+  .stat-num { font-size: 36px; }
+  .stat-label { font-size: 14px; }
+}
 /* Dashboard kartalari — yumshoq pastel aksent + vektor ikonka */
 .stat { text-align: center; padding: 14px 6px 12px; }
 .stat-ico {
@@ -355,8 +485,19 @@ svg { display: inline-block; vertical-align: -3px; }
 .stat { cursor: pointer; transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease); }
 .stat:active { transform: scale(0.95); }
 
-/* --- Tez amallar: barcha 6 ta karta qat'iy 88px, bir xil qator balandligi --- */
+/* --- Tez amallar: barcha 6 ta karta qat'iy 88px, bir xil qorizontalda --- */
 .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; grid-auto-rows: 88px; align-items: stretch; }
+@media (min-width: 768px) {
+  .quick-grid { grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+}
+@media (min-width: 1024px) {
+  .quick-grid { grid-template-columns: repeat(6, 1fr); gap: 16px; grid-auto-rows: auto; }
+}
+
+@media (min-width: 1024px) {
+  .quick { height: auto; min-height: auto; padding: 18px; }
+  .quick > span:not(.quick-ico) { -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+}
 .quick {
   display: flex;
   flex-direction: column;

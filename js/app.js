@@ -3767,3 +3767,46 @@ $('#modal-overlay').addEventListener('click', function (e) {
     });
   }
 })();
+
+/* --- Week-by-week navigation (createElement approach, avoids template literal issues) --- */
+const gradeWeekNav = function() {
+  // Create navigator elements using createElement (avoids template literal issues)
+  const selectorRow = document.createElement('div');
+  selectorRow.className = 'selector-row';
+  selectorRow.style.cssText = '--gap: 12px; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; width: 100%;';
+  const btnPrev = document.createElement('button');
+  btnPrev.type = 'button';
+  btnPrev.className = 'btn btn-ghost btn-xs';
+  btnPrev.setAttribute('data-act', 'grade-week');
+  btnPrev.setAttribute('data-dir', '-1');
+  btnPrev.setAttribute('aria-label', 'Oldingi hafta');
+  btnPrev.textContent = '‹';
+  const label = document.createElement('span');
+  label.className = 'selector-label';
+  label.style.cssText = 'margin: 0 12px; white-space: nowrap;';
+  label.textContent = '12-Okt — 18-Okt, 2026';
+  const btnNext = document.createElement('button');
+  btnNext.type = 'button';
+  btnNext.className = 'btn btn-ghost btn-xs';
+  btnNext.setAttribute('data-act', 'grade-week');
+  btnNext.setAttribute('data-dir', '1');
+  btnNext.setAttribute('aria-label', 'Keyingi hafta');
+  btnNext.textContent = '›';
+  const btnToday = document.createElement('button');
+  btnToday.type = 'button';
+  btnToday.className = 'btn btn-primary btn-xs';
+  btnToday.setAttribute('data-act', 'grade-week');
+  btnToday.setAttribute('data-dir', '0');
+  btnToday.style.cssText = 'flex: 0 0 56px;';
+  btnToday.textContent = '📅 Bugun';
+  selectorRow.appendChild(btnPrev);
+  selectorRow.appendChild(label);
+  selectorRow.appendChild(btnNext);
+  selectorRow.appendChild(btnToday);
+  // Insert after the group selector row
+  const groupSelector = document.querySelector('.selector-row:first');
+  if (groupSelector) {
+    groupSelector.parentNode.insertBefore(selectorRow, groupSelector.nextSibling);
+  }
+};
+document.addEventListener('DOMContentLoaded', gradeWeekNav);
