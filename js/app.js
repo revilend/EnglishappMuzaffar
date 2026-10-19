@@ -2744,11 +2744,11 @@ function gradesScreen() {
   </div>
 
   <div class="week-nav-bar">
-    <button type="button" class="week-btn prev" data-act="grade-week" data-dir="-1">&#8249; Oldingi hafta</button>
-    <div class="week-label">${weekLabel(state.weekOffset || 0)}</div>
+    <button type="button" id="btn-prev-week" class="week-btn prev" data-act="grade-week" data-dir="-1">&#8249; Oldingi hafta</button>
+    <div class="week-label" id="current-week-label">${weekLabel(state.weekOffset || 0)}</div>
     <div style="display:flex;align-items:center;gap:6px;">
-      <button type="button" class="week-btn today" data-act="grade-week" data-dir="0">Bugun</button>
-      <button type="button" class="week-btn next" data-act="grade-week" data-dir="1">Keyingi hafta &#8250;</button>
+      <button type="button" id="btn-today-week" class="week-btn today" data-act="grade-week" data-dir="0">Bugun</button>
+      <button type="button" id="btn-next-week" class="week-btn next" data-act="grade-week" data-dir="1">Keyingi hafta &#8250;</button>
     </div>
   </div>
 
