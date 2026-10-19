@@ -1186,12 +1186,12 @@ function scrLabel(s) {
 function renderHeader() {
   const scr = state.screen;
   if (AUTH_SCREENS.indexOf(scr) >= 0) {
-    return '<div class="header-inner"><span class="brand">English Tutor</span></div>';
+    return '<div class="header-inner"><span class="brand"><img class="brand-logo" src="logo.png" alt="" width="36" height="36" />English Tutor</span></div>';
   }
   const u = currentUser() || {};
   return `<div class="header-inner">
     <div class="brand-wrap">
-      <span class="brand">English Tutor</span>
+      <span class="brand"><img class="brand-logo" src="logo.png" alt="" width="36" height="36" />English Tutor</span>
       <span class="brand-sub">${esc(scrLabel(scr))}</span>
     </div>
     <span class="role-badge ${u.role === 'teacher' ? 'is-teacher' : 'is-student'}">${u.role === 'teacher' ? 'Muzaffar Amirov' : "O'quvchi"}</span>
@@ -1243,7 +1243,7 @@ function renderTopNavTabs() {
 /* ==================== KIRISH EKRANI (login / parol) ==================== */
 function loginScreen() {
   return `<div class="auth">
-    <div class="auth-logo">${ICON.gradCap}</div>
+    <img class="auth-logo" src="logo.png" alt="Gerb" width="74" height="74" />
     <h1 class="auth-title">English Tutor</h1>
     <p class="auth-sub">Ingliz tili darslari — Muzaffar Amirov paneli va o'quvchi kabineti</p>
 
@@ -1812,7 +1812,7 @@ function profileScreen() {
   const st = !isTeacher() ? linkedStudent() : null;
   return `
   <div class="card profile-head">
-    <div class="avatar avatar-xl">${esc(initials(st ? st.fullName : (u.name || 'U')))}</div>
+    <div class="avatar avatar-xl avatar-gerb"><img src="logo.png" alt="Gerb" /></div>
     <div class="profile-name">${esc(st ? st.fullName : (u.name || ''))}</div>
     <div class="muted">${esc(u.login || '')}</div>
     <div style="margin-top:9px">

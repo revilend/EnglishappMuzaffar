@@ -234,7 +234,7 @@ xabari "📝 Mini App'da Baholash" tugmasi bilan tushadi.
    |---|---|
    | `BOT_TOKEN` | @BotFather tokeni |
    | `ADMIN_ID` | Ustozning Telegram ID raqami |
-   | `WEBAPP_URL` | `https://revilend.github.io/EnglishappMuzaffar/` |
+   | `WEBAPP_URL` | `https://teachermuzaffar.uz/` |
    | `SUPABASE_URL` | `https://mvjoeqyqaylfccqcnwwe.supabase.co` |
    | `SUPABASE_KEY` | Supabase publishable kalit |
 
@@ -311,4 +311,4 @@ Ma'lumotlar avval brauzer `localStorage`'ida saqlanadi; **Supabase konfiguratsiy
 
 ## GitHub Pages
 
-https://revilend.github.io/EnglishappMuzaffar/
+https://teachermuzaffar.uz/
