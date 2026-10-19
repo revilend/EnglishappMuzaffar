@@ -71,6 +71,7 @@ const state = {
   gradeGroup: '',
   gradeClass: 'Barchasi',
   gradeDate: '',
+  weekOffset: 0,
   attGroup: '',
   attDate: '',
   attDraft: null,
@@ -166,6 +167,42 @@ function journalDates(groupId, count) {
     Object.keys(getGrades()[s.id] || {}).forEach(d => { set[d] = 1; });
   });
   return Object.keys(set).sort().slice(-count);
+}
+
+/* ---- Hafta navigatsiyasi: Dushanba–Yakshanba oralig'idagi dars sanalari ---- */
+const UZ_MONTHS_SHORT = ['Yan','Fev','Mar','Apr','May','Iyn','Iyl','Avg','Sen','Okt','Noy','Dek'];
+function weekMonday(offset) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dow = today.getDay(); /* 0=Yak, 1=Dush... */
+  const toMonday = dow === 0 ? -6 : 1 - dow;
+  const mon = new Date(today);
+  mon.setDate(today.getDate() + toMonday + (offset || 0) * 7);
+  return mon;
+}
+function weekDates(groupId, offset) {
+  const g = groupById(groupId);
+  if (!g) return [];
+  const names = String(g.days).split(',').map(x => x.trim().split(/\s+/)[0]).filter(Boolean);
+  const jsDays = names
+    .map(n => APP_DATA.days.indexOf(n))
+    .filter(i => i >= 0)
+    .map(i => (i + 1) % 7);
+  const mon = weekMonday(offset);
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(mon);
+    d.setDate(mon.getDate() + i);
+    if (jsDays.indexOf(d.getDay()) >= 0) out.push(dateKey(d));
+  }
+  return out;
+}
+function weekLabel(offset) {
+  const mon = weekMonday(offset);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  return mon.getDate() + '-' + UZ_MONTHS_SHORT[mon.getMonth()] + ' \u2014 ' +
+         sun.getDate() + '-' + UZ_MONTHS_SHORT[sun.getMonth()] + ', ' + sun.getFullYear();
 }
 
 /* ---- Baholar hisobi ---- */
@@ -1182,6 +1219,24 @@ function renderNav() {
   return navItems().map(it => {
     const active = state.screen === it[0] ? ' active' : '';
     return `<button type="button" class="nav-item${active}" data-act="nav" data-screen="${it[0]}">${it[2]}<span>${it[1]}</span></button>`;
+  }).join('');
+}
+function renderTopNavTabs() {
+  const el = document.getElementById('top-nav-tabs');
+  if (!el) return;
+  if (AUTH_SCREENS.indexOf(state.screen) >= 0) { el.innerHTML = ''; return; }
+  const labels = {
+    home: 'Bosh sahifa',
+    students: "O'quvchilar",
+    grades: 'Baholar jurnali',
+    attendance: 'Davomat',
+    speaking: 'Speaking',
+    profile: 'Profil',
+    groups: 'Guruhlar'
+  };
+  el.innerHTML = navItems().map(it => {
+    const active = state.screen === it[0] ? ' active' : '';
+    return `<button type="button" class="top-nav-item${active}" data-act="nav" data-screen="${it[0]}">${esc(labels[it[0]] || it[1])}</button>`;
   }).join('');
 }
 
@@ -2635,7 +2690,9 @@ function gradesScreen() {
     return `<div class="screen-head"><h2 class="screen-title">Baholar</h2></div>` + emptyState("Avval guruh yarating", 'grades');
   }
 
-  const dates = journalDates(state.gradeGroup, 6);
+  const dates = state.weekOffset !== 0
+    ? weekDates(state.gradeGroup, state.weekOffset)
+    : journalDates(state.gradeGroup, 6);
   const all = getStudents().filter(s => s.groupId === state.gradeGroup);
   const rows = all.filter(s => state.gradeClass === 'Barchasi' || s.schoolClass === state.gradeClass);
   const classChips = ['Barchasi'].concat(APP_DATA.classes);
@@ -2683,6 +2740,15 @@ function gradesScreen() {
     <span class="selector-label">Sinf</span>
     <div class="chips">
       ${classChips.map(c => `<button type="button" class="chip-btn ${state.gradeClass === c ? 'active' : ''}" data-act="grade-class" data-class="${esc(c)}">${esc(c)}</button>`).join('')}
+    </div>
+  </div>
+
+  <div class="week-nav-bar">
+    <button type="button" class="week-btn prev" data-act="grade-week" data-dir="-1">&#8249; Oldingi hafta</button>
+    <div class="week-label">${weekLabel(state.weekOffset || 0)}</div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <button type="button" class="week-btn today" data-act="grade-week" data-dir="0">Bugun</button>
+      <button type="button" class="week-btn next" data-act="grade-week" data-dir="1">Keyingi hafta &#8250;</button>
     </div>
   </div>
 
@@ -3277,6 +3343,7 @@ function render() {
   document.body.classList.toggle('auth-mode', AUTH_SCREENS.indexOf(scr) >= 0);
   $('#app-header').innerHTML = renderHeader();
   $('#bottom-nav').innerHTML = renderNav();
+  renderTopNavTabs();
   $('#screen').innerHTML = (SCREENS[scr] || loginScreen)();
   if (scr === 'students') refreshStudentList();
   if (scr === 'grades') ensureGradeState();
@@ -3580,6 +3647,16 @@ document.addEventListener('click', function (e) {
       state.gradeClass = btn.getAttribute('data-class');
       render();
     },
+    'grade-week': function () {
+      const dir = Number(btn.getAttribute('data-dir'));
+      if (dir === 0) {
+        state.weekOffset = 0;
+      } else {
+        state.weekOffset = (state.weekOffset || 0) + dir;
+      }
+      state.gradeDate = '';
+      render();
+    },
     'edit-grade': function () {
       openGradeEditor(btn.getAttribute('data-sid'), btn.getAttribute('data-date'));
     },
@@ -3768,45 +3845,5 @@ $('#modal-overlay').addEventListener('click', function (e) {
   }
 })();
 
-/* --- Week-by-week navigation (createElement approach, avoids template literal issues) --- */
-const gradeWeekNav = function() {
-  // Create navigator elements using createElement (avoids template literal issues)
-  const selectorRow = document.createElement('div');
-  selectorRow.className = 'selector-row';
-  selectorRow.style.cssText = '--gap: 12px; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; width: 100%;';
-  const btnPrev = document.createElement('button');
-  btnPrev.type = 'button';
-  btnPrev.className = 'btn btn-ghost btn-xs';
-  btnPrev.setAttribute('data-act', 'grade-week');
-  btnPrev.setAttribute('data-dir', '-1');
-  btnPrev.setAttribute('aria-label', 'Oldingi hafta');
-  btnPrev.textContent = '‹';
-  const label = document.createElement('span');
-  label.className = 'selector-label';
-  label.style.cssText = 'margin: 0 12px; white-space: nowrap;';
-  label.textContent = '12-Okt — 18-Okt, 2026';
-  const btnNext = document.createElement('button');
-  btnNext.type = 'button';
-  btnNext.className = 'btn btn-ghost btn-xs';
-  btnNext.setAttribute('data-act', 'grade-week');
-  btnNext.setAttribute('data-dir', '1');
-  btnNext.setAttribute('aria-label', 'Keyingi hafta');
-  btnNext.textContent = '›';
-  const btnToday = document.createElement('button');
-  btnToday.type = 'button';
-  btnToday.className = 'btn btn-primary btn-xs';
-  btnToday.setAttribute('data-act', 'grade-week');
-  btnToday.setAttribute('data-dir', '0');
-  btnToday.style.cssText = 'flex: 0 0 56px;';
-  btnToday.textContent = '📅 Bugun';
-  selectorRow.appendChild(btnPrev);
-  selectorRow.appendChild(label);
-  selectorRow.appendChild(btnNext);
-  selectorRow.appendChild(btnToday);
-  // Insert after the group selector row
-  const groupSelector = document.querySelector('.selector-row:first');
-  if (groupSelector) {
-    groupSelector.parentNode.insertBefore(selectorRow, groupSelector.nextSibling);
-  }
-};
-document.addEventListener('DOMContentLoaded', gradeWeekNav);
+
+/* Week navigation is now rendered directly in gradesScreen() template. */
