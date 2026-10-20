@@ -258,40 +258,28 @@ async def btn_admin_new_speakings(message: types.Message):
 
 
 # /start command
+@dp.message(Command("start"))
 @dp.message(CommandStart())
-async def cmd_start(message: types.Message, state: FSMContext):
-    await state.clear()
-    user_id = message.from_user.id
-    user_name = html.escape(message.from_user.full_name or "O'quvchi")
-
-    # Yangi/oldingi foydalanuvchini bazadan topish (single() ishlatilmaydi)
-    student = None
+async def cmd_start(message: types.Message):
     try:
-        res = supabase.table("students").select("*")
-        res = res.eq("telegram_chat_id", user_id).execute()
-        if res.data and len(res.data) > 0:
-            student = res.data[0]
-    except Exception as e:
-        logging.error(f"Student lookup: {e}")
-
-    if student:
-        st_name = html.escape(student.get("name", user_name))
-        text = (
-            f"Assalomu alaykum, <b>{st_name}</b>!\n\n"
-            f"Hisobingiz ulangan. Quyidagi menyudan foydalanishingiz mumkin:"
-        )
-    else:
+        user_name = html.escape(message.from_user.full_name or "O'quvchi")
         text = (
             f"Assalomu alaykum, <b>{user_name}</b>!\n\n"
-            f"Teacher Muzaffar Amirovning ingliz tili platformasiga xush kelibsiz!\n\n"
-            f"Botdan to'liq foydalanish uchun hisobingizni ulang:\n"
-            f"Pastdagi <b>🔑 Login orqali ulash</b> tugmasini bosing yoki:\n"
-            f"<code>/login login parol</code> shaklida yuboring "
-            f"(Masalan: <code>/login jasur 123</code>)."
+            "Teacher Muzaffar Amirovning ingliz tili platformasiga xush kelibsiz!\n\n"
+            "Botdan to'liq foydalanish uchun hisobingizni ulang:\n"
+            "Pastdagi <b>🔑 Login orqali ulash</b> tugmasini bosing yoki:\n"
+            "<code>/login login parol</code> shaklida yuboring "
+            "(Masalan: <code>/login jasur 123</code>)."
         )
-
-    await message.answer(text, reply_markup=get_main_keyboard(), parse_mode="HTML")
-
+        try:
+            await message.answer(text, reply_markup=get_main_keyboard(), parse_mode="HTML")
+        except Exception as kb_err:
+            logging.error(f"Klaviatura xatosi: {kb_err}")
+            await message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"cmd_start xatosi: {e}")
+        await message.answer(f"Assalomu alaykum! Bot faol.")
+        
 
 # /admin command — To'liq ustoz boshqaruv paneli
 @dp.message(Command("admin"))
