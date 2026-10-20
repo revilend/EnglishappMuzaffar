@@ -147,6 +147,11 @@ const doc = win.document;
 
 win.eval(dataJs + '\nwindow.APP_DATA = APP_DATA;');
 seedFixture(win);
+/* Qurilma aniqlash testi uchun deterministik user-agent (Android Chrome) */
+Object.defineProperty(win.navigator, 'userAgent', {
+  value: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+  configurable: true
+});
 win.eval(appJs);
 
 const q = sel => doc.querySelector(sel);
@@ -1472,6 +1477,115 @@ const until = async (fn, ms) => {
   check(q('[data-act="do-login"]').disabled === false, 'xavfsizlik: qulf tozalandi → tugma qayta yoqildi');
   loginAs('m_amirov', '123');
   check(text().includes('Xush kelibsiz'), 'xavfsizlik: oddiy kirish yana ishlaydi');
+
+  /* ============ 26. XAVFSIZLIK: QURILMA NAZORATI + FAOL QURILMALAR ============ */
+  /* Qurilma aniqlash (UA → nom) */
+  const dev = win.__sessions.detectDevice();
+  check(dev.os === 'Android' && dev.br === 'Chrome', 'qurilma: UA dan "Android" + "Chrome" aniqlandi');
+  check(dev.name === 'Android (Chrome)' && dev.short === 'Android • Chrome',
+    'qurilma: nom ko\'rinishi "Android (Chrome)" / "Android • Chrome"');
+  check(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(win.__sessions.getSessionId()),
+    'qurilma: session_id takrorlanmas UUID v4 formatida');
+  check(win.localStorage.getItem('et_session_id') !== null,
+    "qurilma: session_id localStorage'da saqlangan");
+
+  /* O'quvchi login qilganda last_device / last_seen yoziladi */
+  logout();
+  loginAs('restore1', '9876');
+  const stuAfterLogin = JSON.parse(win.localStorage.getItem('et_students') || '[]').filter(x => x.id === 's77')[0];
+  check(!!stuAfterLogin && stuAfterLogin.lastDevice === 'Android (Chrome)' && !!stuAfterLogin.lastSeen,
+    'o\'quvchi: login → last_device "Android (Chrome)" + last_seen yozildi');
+
+  /* Ustoz kartasida onlayn/qurilma ko'rinishi */
+  logout();
+  loginAs('m_amirov', '123');
+  forceNav('students');
+  const cardOn = qa('.student-card').filter(c => c.textContent.indexOf('Restored Student') >= 0)[0];
+  check(!!cardOn && cardOn.textContent.indexOf('🟢 Onlayn (Android)') >= 0,
+    'karta: 5 daqiqa ichida → "🟢 Onlayn (Android)"');
+  /* Eski vaqt → "20 daqiqa oldin" ko'rinishi */
+  const rowsOld = JSON.parse(win.localStorage.getItem('et_students') || '[]');
+  const jOld = rowsOld.filter(x => x.id === 's77')[0];
+  jOld.lastSeen = new Date(Date.now() - 20 * 60000).toISOString();
+  win.localStorage.setItem('et_students', JSON.stringify(rowsOld));
+  forceNav('students');
+  const cardOld = qa('.student-card').filter(c => c.textContent.indexOf('Restored Student') >= 0)[0];
+  check(!!cardOld && cardOld.textContent.replace(/\s+/g, ' ').indexOf('📱 Android • 20 daqiqa oldin') >= 0,
+    'karta: 20 daqiqa oldin → "📱 Android • 20 daqiqa oldin"');
+  /* last_seen o'chirilsa — qurilma satri umuman chiqmaydi */
+  const rowsNone = JSON.parse(win.localStorage.getItem('et_students') || '[]');
+  rowsNone.filter(x => x.id === 's77')[0].lastSeen = null;
+  win.localStorage.setItem('et_students', JSON.stringify(rowsNone));
+  forceNav('students');
+  const cardNone = qa('.student-card').filter(c => c.textContent.indexOf('Restored Student') >= 0)[0];
+  check(!!cardNone && cardNone.textContent.indexOf('Onlayn') < 0 && cardNone.textContent.indexOf('daqiqa oldin') < 0,
+    "karta: last_seen bo'sh → qurilma satri chiqmaydi");
+
+  /* Profil: 📱 Faol qurilmalar bloki */
+  forceNav('profile');
+  check(!!q('#sessions-card'), 'profil: "📱 Faol qurilmalar" bloki mavjud');
+  check(text().includes('Bu qurilma (Android • Chrome)'),
+    'profil: joriy qurilma "🟢 Bu qurilma (Android • Chrome)"');
+  check(!q('[data-act="session-logout"]') && !q('[data-act="session-logout-all"]'),
+    "profil: boshqa qurilma yo'q → chiqarib yuborish tugmalari yo'q");
+
+  /* Boshqa qurilma ulangan ko'rinishi */
+  win.__sessions.sessions.list = [
+    { id: win.__sessions.getSessionId(), user_type: 'teacher', user_id: 'm_amirov',
+      device_name: 'Android • Chrome', last_active: new Date().toISOString() },
+    { id: 'other-device-1', user_type: 'teacher', user_id: 'm_amirov',
+      device_name: 'iPhone • Safari', last_active: new Date(Date.now() - 3 * 60000).toISOString() }
+  ];
+  forceNav('home');
+  forceNav('profile');
+  check(text().includes('iPhone • Safari') && text().includes('3 daqiqa oldin'),
+    'profil: boshqa qurilma nomi + oxirgi faollik vaqti ko\'rinadi');
+  check(qa('[data-act="session-logout"]').length === 1,
+    'profil: qurilmada qizil "Chiqarib yuborish" tugmasi');
+  check(!!q('[data-act="session-logout-all"]'),
+    'profil: "⛔ Barcha boshqa qurilmalardan chiqish" tugmasi');
+  check(text().indexOf('Bu qurilma') >= 0 && text().indexOf('Bu qurilma') < text().indexOf('iPhone • Safari'),
+    'profil: joriy qurilma ENG TEPADE');
+
+  /* Bitta qurilmani chiqarib yuborish */
+  click(q('[data-act="session-logout"]'));
+  check(!q('[data-act="session-logout"]') && !text().includes('iPhone • Safari'),
+    'profil: qurilma chiqarib yuborildi (ro\'yxatdan o\'chdi)');
+
+  /* Barcha boshqa qurilmalardan chiqish */
+  win.__sessions.sessions.list = [
+    { id: win.__sessions.getSessionId(), user_type: 'teacher', user_id: 'm_amirov',
+      device_name: 'Android • Chrome', last_active: new Date().toISOString() },
+    { id: 'other-device-2', user_type: 'teacher', user_id: 'm_amirov',
+      device_name: 'Windows PC • Edge', last_active: new Date().toISOString() },
+    { id: 'other-device-3', user_type: 'teacher', user_id: 'm_amirov',
+      device_name: 'iPhone • Safari', last_active: new Date().toISOString() }
+  ];
+  forceNav('home');
+  forceNav('profile');
+  check(qa('[data-act="session-logout"]').length === 2, 'profil: 2 ta boshqa qurilma ro\'yxatda');
+  click(q('[data-act="session-logout-all"]'));
+  check(!q('[data-act="session-logout"]') && !q('[data-act="session-logout-all"]'),
+    'profil: "Barcha boshqa qurilmalardan chiqish" → ro\'yxat tozalandi');
+  check(text().includes('Bu qurilma (Android • Chrome)'),
+    'profil: joriy qurilma o\'z joyida qoldi');
+
+  /* 30 soniyalik nazorat: lokal rejimda xavfsiz o\'tadi */
+  const guardOk = await win.__sessions.sessions.check();
+  check(guardOk === true, 'nazorat: check() lokal rejimda xavfsiz true qaytaradi');
+
+  /* Boshqa qurilmadan o\'chirilgan → majburiy chiqish + xabar */
+  win.__sessions.forcedLogout();
+  check(q('#login-error').textContent.includes('Siz ushbu qurilmadan chiqarildingiz!'),
+    'majburiy chiqish: login ekranida "Siz ushbu qurilmadan chiqarildingiz!"');
+  check(q('#login-error').classList.contains('show'),
+    'majburiy chiqish: xabar "show" holatida ko\'rinadi');
+  check(win.localStorage.getItem('et_session') === null,
+    "majburiy chiqish: localStorage tozalandi (et_session yo'q)");
+  check(win.localStorage.getItem('et_session_id') === null,
+    "majburiy chiqish: session_id ham o'chirildi");
+  check(text().includes('English Tutor') && !q('.bottom-nav .nav-item'),
+    'majburiy chiqish: login ekraniga qaytdi');
 
   console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
   process.exit(failed ? 1 : 0);

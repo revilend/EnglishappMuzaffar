@@ -108,6 +108,29 @@ drop policy if exists "demo bot_settings all" on public.bot_settings;
 create policy "demo bot_settings all" on public.bot_settings
   for all using (true) with check (true);
 
+-- 7) O'quvchining oxirgi kirgan qurilmasi va vaqti (nazorat)
+--    brauzer navigator.userAgent dan yoziladi: 'Android (Chrome)', 'iPhone (Safari)'
+alter table public.students add column if not exists last_device text;
+alter table public.students add column if not exists last_seen timestamptz;
+
+-- 8) Faol qurilmalar (Telegram kabi seanslar) — uzokdan chiqarib yuborish uchun
+--    id: localStorage'dagi takrorlanmas session_id (UUID)
+--    user_id: hisob logini (ustoz: 'm_amirov', o'quvchi: jadvaldagi login)
+create table if not exists public.user_sessions (
+  id          uuid primary key,
+  user_type   text not null check (user_type in ('teacher', 'student')),
+  user_id     text not null,
+  device_name text not null default '',
+  last_active timestamptz not null default now(),
+  created_at  timestamptz not null default now()
+);
+create index if not exists user_sessions_user_idx
+  on public.user_sessions (user_type, user_id);
+alter table public.user_sessions enable row level security;
+drop policy if exists "demo user_sessions all" on public.user_sessions;
+create policy "demo user_sessions all" on public.user_sessions
+  for all using (true) with check (true);
+
 -- Realtime (ixtiyoriy): chat xabarlarini jonli yangilash uchun
 -- Supabase Dashboard → Database → Replication → "messages" jadvalini yoqing.
 --

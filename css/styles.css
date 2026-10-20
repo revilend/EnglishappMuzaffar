@@ -677,6 +677,8 @@ img.auth-logo {
   flex: none;
 }
 .s-group { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.s-presence { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.s-presence.is-on { color: #16a34a; font-weight: 600; }
 .s-contacts { margin-top: 7px; display: flex; flex-direction: column; gap: 4px; }
 .s-contact {
   display: flex;
@@ -1388,3 +1390,10 @@ body.auth-mode .toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
 .bj-date, .bj-cell { width: 56px !important; min-width: 56px !important; max-width: 56px !important; text-align: center; }
 .bj-sum { width: 72px; min-width: 72px; text-align: center; }
 .bj td.col-student .bj-name-cell, .bj .s-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ==================== Xavfsizlik: faol qurilmalar (Profil) ==================== */
+.session-row { align-items: center; }
+.session-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.session-name { font-size: 13.5px; font-weight: 600; }
+.session-row.is-current .session-name { color: #16a34a; }
+.session-row .btn.danger { flex: 0 0 auto; }

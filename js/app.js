@@ -39,7 +39,8 @@ const K = {
   homeworkDone: 'et_hw_done',
   loginFails: 'et_login_fails',
   speakLog: 'et_speak_log',
-  tgsubs: 'et_tg_subs'
+  tgsubs: 'et_tg_subs',
+  sessionId: 'et_session_id'
 };
 
 /* Toza start: demo guruh/o'quvchi seedlari YO'Q — barcha ma'lumot Supabase'dan keladi.
@@ -469,6 +470,8 @@ const CloudSync = (function () {
           password: r.password || '',
           speakingDebt: Number(r.speaking_debt) || 0,
           voiceAllowed: r.voice_allowed !== false,
+          lastDevice: r.last_device || '',
+          lastSeen: r.last_seen || null,
           audioSubmissions: (audioByOld[oldIdByDb[r.id]] || []).slice()
         };
       });
@@ -818,6 +821,75 @@ const CloudSync = (function () {
     } catch (e) { notifSubscribed = false; }
   }
 
+  /* --- Xavfsizlik: oxirgi qurilma/vaqt + faol qurilmalar (user_sessions) --- */
+  async function pushLastSeen(dbId, deviceName) {
+    if (!ready() || dbId == null) return false;
+    try {
+      const res = await client.from('students')
+        .update({ last_device: deviceName, last_seen: new Date().toISOString() })
+        .eq('id', dbId);
+      if (res.error) { if (missing(res.error)) return false; console.warn('[cloud] last_seen:', res.error.message); return false; }
+      return true;
+    } catch (e) { console.warn('[cloud] last_seen:', (e && e.message) || e); return false; }
+  }
+
+  function sessionRowOf(sess) {
+    return {
+      id: sess.id,
+      user_type: sess.userType,
+      user_id: sess.userId,
+      device_name: sess.deviceName,
+      last_active: sess.lastActive || new Date().toISOString()
+    };
+  }
+
+  async function upsertSession(sess) {
+    if (!ready()) return false;
+    try {
+      const res = await client.from('user_sessions').upsert(sessionRowOf(sess));
+      if (res.error) { if (missing(res.error)) return false; console.warn('[cloud] session upsert:', res.error.message); return false; }
+      return true;
+    } catch (e) { console.warn('[cloud] session upsert:', (e && e.message) || e); return false; }
+  }
+
+  async function touchSession(id) {
+    if (!ready()) return false;
+    try {
+      const res = await client.from('user_sessions')
+        .update({ last_active: new Date().toISOString() }).eq('id', id);
+      return !res.error;
+    } catch (e) { return false; }
+  }
+
+  async function deleteSession(id) {
+    if (!ready()) return false;
+    try {
+      const res = await client.from('user_sessions').delete().eq('id', id);
+      return !res.error;
+    } catch (e) { return false; }
+  }
+
+  async function listSessions(userType, userId) {
+    if (!ready()) return null;
+    try {
+      const res = await client.from('user_sessions').select('*')
+        .eq('user_type', userType).eq('user_id', userId)
+        .order('last_active', { ascending: false });
+      if (res.error) { if (missing(res.error)) return null; return null; }
+      return res.data || [];
+    } catch (e) { return null; }
+  }
+
+  /* Joriy qurilma seansda bormi? (lokal rejimda hech qachon chiqarmaydi) */
+  async function sessionExists(id) {
+    if (!ready()) return true;
+    try {
+      const res = await client.from('user_sessions').select('id').eq('id', id).limit(1);
+      if (res.error) return true;
+      return !!(res.data && res.data.length);
+    } catch (e) { return true; }
+  }
+
   return {
     ready: ready,
     pullAll: pullAll,
@@ -841,11 +913,242 @@ const CloudSync = (function () {
     restoreBackup: restoreBackup,
     clearTable: clearTable,
     messagesAvailable: function () { return ready() && hasMessages; },
+    pushLastSeen: pushLastSeen,
+    upsertSession: upsertSession,
+    touchSession: touchSession,
+    deleteSession: deleteSession,
+    listSessions: listSessions,
+    sessionExists: sessionExists,
     url: url
   };
 })();
 
 window.__cloud = CloudSync;
+
+/* ==================== QURILMA VA FAOL QURILMALAR (xavfsizlik nazorati) ==================== */
+/* Brauzer qurilmasini aniqlaydi: 'Android (Chrome)', 'iPhone (Safari)', 'Windows PC' ... */
+function detectDevice() {
+  const ua = (navigator && navigator.userAgent) || '';
+  let os = 'Boshqa qurilma';
+  if (/iPhone/.test(ua)) os = 'iPhone';
+  else if (/iPad/.test(ua)) os = 'iPad';
+  else if (/Android/.test(ua)) os = 'Android';
+  else if (/Windows/.test(ua)) os = 'Windows PC';
+  else if (/Macintosh|Mac OS X/.test(ua)) os = 'Mac';
+  else if (/Linux/.test(ua)) os = 'Linux';
+  let br = 'Brauzer';
+  if (/Edg\//.test(ua)) br = 'Edge';
+  else if (/OPR\//.test(ua) || /Opera/.test(ua)) br = 'Opera';
+  else if (/Firefox\//.test(ua)) br = 'Firefox';
+  else if (/Chrome\//.test(ua)) br = 'Chrome';
+  else if (/Safari\//.test(ua)) br = 'Safari';
+  return { os: os, br: br, name: os + ' (' + br + ')', short: os + ' \u2022 ' + br };
+}
+
+/* Takrorlanmas session_id (UUID v4) — har bir qurilma uchun bir marta saqlanadi */
+function uuidV4() {
+  try {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+  } catch (e) {}
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+function getSessionId() {
+  let id = store.get(K.sessionId, null);
+  if (!id) { id = uuidV4(); store.set(K.sessionId, id); }
+  return id;
+}
+
+/* Vaqt ko'rinishi: 'hozirgina' / '20 daqiqa oldin' / '3 soat oldin' / '2 kun oldin' */
+function timeAgoText(iso) {
+  const t = new Date(iso).getTime();
+  if (!t || isNaN(t)) return '\u2014';
+  const diff = Math.max(0, Date.now() - t);
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'hozirgina';
+  if (m < 60) return m + ' daqiqa oldin';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + ' soat oldin';
+  return Math.floor(h / 24) + ' kun oldin';
+}
+
+/* O'quvchi kartasi satri: 5 daqiqa ichida -> 'Onlayn (iPhone)',
+   aks holda -> 'Android \u2022 20 daqiqa oldin' */
+function presenceText(s) {
+  if (!s || !s.lastSeen) return '';
+  const t = new Date(s.lastSeen).getTime();
+  if (!t || isNaN(t)) return '';
+  const os = s.lastDevice ? String(s.lastDevice).split(' (')[0] : 'qurilma';
+  const mins = (Date.now() - t) / 60000;
+  if (mins < 5) return '\ud83d\udfe2 Onlayn (' + os + ')';
+  return '\ud83d\udcf1 ' + os + ' \u2022 ' + timeAgoText(s.lastSeen);
+}
+function presenceHTML(s) {
+  const t = presenceText(s);
+  if (!t) return '';
+  const on = t.indexOf('\ud83d\udfe2') === 0;
+  return '<div class="s-presence' + (on ? ' is-on' : '') + '">' + esc(t) + '</div>';
+}
+
+/* Lokal (localStorage) ga oxirgi qurilma/vaqt — kartalar offline ham ko'radi */
+function updateLocalPresence(deviceName) {
+  const u = currentUser();
+  if (!u || !u.studentId) return;
+  const list = getStudents();
+  const st = list.filter(function (x) { return x.id === u.studentId; })[0];
+  if (!st) return;
+  st.lastDevice = deviceName || '';
+  st.lastSeen = new Date().toISOString();
+  store.set(K.students, list);
+}
+
+const Sessions = {
+  list: [],
+  enabled: function () { return CloudSync.ready(); },
+
+  /* Login paytida: user_sessions ga seans + students.last_device/last_seen */
+  onLogin: async function () {
+    const u = currentUser();
+    if (!u) return;
+    const dev = detectDevice();
+    updateLocalPresence(dev.name);
+    if (!this.enabled()) return;
+    const id = getSessionId();
+    await CloudSync.upsertSession({
+      id: id,
+      userType: u.role === 'teacher' ? 'teacher' : 'student',
+      userId: u.login,
+      deviceName: dev.short,
+      lastActive: new Date().toISOString()
+    });
+    if (u.studentId) {
+      const st = studentById(u.studentId);
+      if (st && st.dbId != null) await CloudSync.pushLastSeen(st.dbId, dev.name);
+    }
+    this.refresh();
+  },
+
+  /* Harakat -> oxirgi faoliyat (60s throttle bilan chaqiriladi) */
+  touch: async function () {
+    const u = currentUser();
+    if (!u) return;
+    const dev = detectDevice();
+    updateLocalPresence(dev.name);
+    if (!this.enabled()) return;
+    CloudSync.touchSession(getSessionId());
+    if (u.studentId) {
+      const st = studentById(u.studentId);
+      if (st && st.dbId != null) CloudSync.pushLastSeen(st.dbId, dev.name);
+    }
+  },
+
+  /* Profil uchun seanslar ro'yxati */
+  refresh: async function () {
+    const u = currentUser();
+    if (!u) { this.list = []; return this.list; }
+    if (!this.enabled()) return this.list;
+    const rows = await CloudSync.listSessions(u.role === 'teacher' ? 'teacher' : 'student', u.login);
+    if (rows == null) return this.list;
+    const changed = JSON.stringify(rows) !== JSON.stringify(this.list);
+    this.list = rows;
+    if (changed && state.screen === 'profile') render();
+    return rows;
+  },
+
+  /* Har 30 soniyada: joriy qurilma seansda bormi? O'chirilgan bo'lsa — majburiy chiqish */
+  check: async function () {
+    const u = currentUser();
+    if (!u || !this.enabled()) return true;
+    const id = getSessionId();
+    const exists = await CloudSync.sessionExists(id);
+    if (exists === false) { forcedLogout(); return false; }
+    CloudSync.touchSession(id);
+    return true;
+  },
+
+  /* O'z seansimizni o'chirish (oddiy chiqish) */
+  onLogout: function () {
+    if (this.enabled()) CloudSync.deleteSession(getSessionId());
+    this.list = [];
+  },
+
+  /* Boshqa qurilmani chiqarib yuborish */
+  remove: async function (id) {
+    if (!id) return;
+    this.list = this.list.filter(function (s) { return s.id !== id; });
+    if (this.enabled()) { await CloudSync.deleteSession(id); await this.refresh(); }
+    else if (state.screen === 'profile') render();
+    toast('Qurilma chiqarib yuborildi');
+  },
+
+  /* Barcha boshqa qurilmalardan chiqish */
+  removeAllOthers: async function () {
+    const cur = getSessionId();
+    const others = this.list.filter(function (s) { return s.id !== cur; });
+    this.list = this.list.filter(function (s) { return s.id === cur; });
+    if (this.enabled()) {
+      for (let i = 0; i < others.length; i++) await CloudSync.deleteSession(others[i].id);
+      await this.refresh();
+    } else if (state.screen === 'profile') render();
+    toast(others.length ? 'Boshqa qurilmalar chiqarib yuborildi' : "Boshqa qurilmalar yo'q");
+  }
+};
+
+/* Boshqa qurilmadan chiqarildik: localStorage tozalanib, login ekraniga qaytamiz */
+function forcedLogout() {
+  Sessions.list = [];
+  try { localStorage.clear(); } catch (e) {}
+  state.attDraft = null;
+  state.editor = null;
+  state.forcedOut = true;
+  state.screen = 'login';
+  closeModal();
+  render();
+  toast('Siz ushbu qurilmadan chiqarildingiz!', 'error');
+}
+
+/* Profil: 📱 Faol qurilmalar bloki */
+function sessionsSectionHTML() {
+  const dev = detectDevice();
+  const cur = getSessionId();
+  const others = (Sessions.list || []).filter(function (s) { return s.id !== cur; });
+  return `
+  <div class="section-title">📱 Faol qurilmalar</div>
+  <div class="card list-card" id="sessions-card">
+    <div class="list-row session-row is-current">
+      <span class="session-info">
+        <span class="session-name">🟢 Bu qurilma (${esc(dev.short)})</span>
+        <span class="muted small">joriy sessiya</span>
+      </span>
+    </div>
+    ${others.length ? others.map(function (s) {
+      return `
+    <div class="list-row session-row">
+      <span class="session-info">
+        <span class="session-name">${esc(s.device_name || "Noma'lum qurilma")}</span>
+        <span class="muted small">${esc(timeAgoText(s.last_active))}</span>
+      </span>
+      <button type="button" class="btn btn-xs danger" data-act="session-logout" data-sess="${esc(s.id)}">Chiqarib yuborish</button>
+    </div>`;
+    }).join('') : `
+    <div class="list-row"><span class="muted small">Boshqa qurilmalar ulanmagan</span></div>`}
+  </div>
+  ${others.length ? `<button type="button" class="btn btn-danger btn-block" data-act="session-logout-all">⛔ Barcha boshqa qurilmalardan chiqish</button>` : ''}
+  `;
+}
+
+window.__sessions = {
+  detectDevice: detectDevice,
+  getSessionId: getSessionId,
+  timeAgoText: timeAgoText,
+  presenceText: presenceText,
+  sessions: Sessions,
+  forcedLogout: forcedLogout
+};
+
 
 /* ---- Hisob va sessiya (login/parol) ---- */
 function getSession() { return store.get(K.session, null); }
@@ -871,10 +1174,15 @@ function startSession(login) {
   refreshChat();
   /* Bildirishnomalar ruxsati hali so'ralmagan bo'lsa — so'raymiz (salomdan keyin) */
   Notif.afterLogin();
+  /* Xavfsizlik: sessiya + oxirgi qurilma/vaqt yoziladi (user_sessions / students) */
+  state.forcedOut = false;
+  Sessions.onLogin();
 }
 function go(screen) {
   state.screen = screen;
   render();
+  /* Faol qurilmalar ro'yxatini yangilash (Profil ekrani) */
+  if (screen === 'profile') Sessions.refresh();
   /* Ekranni bulutdan yangilaymiz (bir martalik pull — 5 soniyalik loop'siz) */
   if (!CloudSync.ready()) return;
   if (screen === 'home') {
@@ -1260,7 +1568,7 @@ function loginScreen() {
       </div>
       <input type="text" name="bot_check_field" id="login-bot-hp" style="display:none !important; position:absolute; left:-9999px;" tabindex="-1" autocomplete="off" aria-hidden="true" />
 
-      <div class="field-error" id="login-error"></div>
+      <div class="field-error${state.forcedOut ? ' show' : ''}" id="login-error">${state.forcedOut ? 'Siz ushbu qurilmadan chiqarildingiz!' : ''}</div>
       <button type="button" class="btn btn-primary btn-block" data-act="do-login">Kirish</button>
     </div>
   </div>`;
@@ -1728,6 +2036,7 @@ function studentCard(s) {
           <span class="chip-class">${esc(s.schoolClass)}</span>
         </div>
         <div class="s-group">${g ? esc(g.name) : "Guruh taylanmagan"}</div>
+        ${presenceHTML(s)}
         <div class="s-contacts">
           <span class="s-contact"><span class="lbl">Login</span><span class="login-val">${acc ? esc(acc.login) : '—'}</span></span>
         </div>
@@ -1844,6 +2153,8 @@ function profileScreen() {
     </div>
     <button type="button" class="btn btn-danger btn-block" data-act="cleanup-go">${ico('brush', 16)} Tanlangan jadvalni tozalash</button>
   </div>` : ''}
+
+  ${sessionsSectionHTML()}
 
   <button type="button" class="btn btn-danger btn-block" data-act="logout">Hisobdan chiqish</button>
   `;
@@ -3301,6 +3612,8 @@ function doLogin() {
 }
 
 function logout() {
+  /* Faol qurilmalar: o'z seansimiz user_sessions dan o'chiriladi */
+  Sessions.onLogout();
   store.del(K.session);
   state.attDraft = null;
   state.attDraftFor = '';
@@ -3773,6 +4086,8 @@ document.addEventListener('click', function (e) {
       render();
       toast("Slot o'chirildi");
     },
+    'session-logout': function () { Sessions.remove(btn.getAttribute('data-sess')); },
+    'session-logout-all': function () { Sessions.removeAllOthers(); },
     'save-slot': saveSlot,
     'save-score': function () {
       saveSlotScore(btn.getAttribute('data-id'), Number(btn.getAttribute('data-score')));
@@ -3835,6 +4150,24 @@ $('#modal-overlay').addEventListener('click', function (e) {
   if (!s || !accounts[s.login]) store.del(K.session);
   state.screen = currentUser() ? 'home' : 'login';
   render();
+  /* Faol qurilmalar nazorati: sahifa ochilganda + har 30 soniyada tekshiriladi */
+  Sessions.check();
+  if (!window.__etSessionGuard) {
+    window.__etSessionGuard = setInterval(function () {
+      if (currentUser()) Sessions.check();
+    }, 30000);
+  }
+  /* Harakat -> oxirgi faoliyat (kamida 60 soniyada bir marta yangilanadi) */
+  let lastPresenceTouch = 0;
+  const activityPresence = function () {
+    if (!currentUser()) return;
+    const now = Date.now();
+    if (now - lastPresenceTouch < 60000) return;
+    lastPresenceTouch = now;
+    Sessions.touch();
+  };
+  document.addEventListener('click', activityPresence, true);
+  document.addEventListener('keydown', activityPresence, true);
   /* Avval bulutdan ma'lumotni tiklaymiz (multi-device sync), keyin qayta chizamiz */
   if (CloudSync.ready()) {
     CloudSync.pullAll().then(function (ok) {
