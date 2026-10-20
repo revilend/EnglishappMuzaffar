@@ -10,7 +10,6 @@ from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command, CommandStart
-from aiogram.filters.state import StateFilter
 from aiogram.types import (
     InlineKeyboardMarkup, 
     InlineKeyboardButton, 
@@ -259,7 +258,7 @@ async def btn_admin_new_speakings(message: types.Message):
 
 
 # /start command
-@dp.message(CommandStart(), StateFilter("*"))
+@dp.message(CommandStart()
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     user_id = message.from_user.id
