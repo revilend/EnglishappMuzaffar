@@ -1304,6 +1304,9 @@ async def on_free_text(message: types.Message):
 
 
 # Asosiy ishga tushirish
+_bg_tasks: set = set()  # fon vazifalari GC'dan himoya uchun shu yerda saqlanadi
+
+
 async def main():
     if bot is None or not config.BOT_TOKEN or config.BOT_TOKEN.startswith("YOUR_"):
         logging.error("BOT_TOKEN o'rnatilmagan.")
@@ -1312,17 +1315,19 @@ async def main():
     # Render portini ochish
     await start_dummy_web_server()
 
-    # Uyga vazifalari kuzatuvchisi (yangi homework → guruhga xabar)
-    asyncio.create_task(homework_watcher())
-    # Ovozli topshirish ruxsati kuzatuvchisi (voice_allowed → o'quvchiga xabar)
-    asyncio.create_task(voice_watcher())
-    # Yangi baho kuzatuvchisi (grades → o'quvchiga tezkor xabar)
-    asyncio.create_task(grades_watcher())
-    # Yangi chat xabari kuzatuvchisi (messages → qabul qiluvchiga tezkor xabar)
-    asyncio.create_task(messages_watcher())
+    # Eski webhook tozalanadi — aks holda polling 409 Conflict bilan ishga tushmaydi
+    await bot.delete_webhook(drop_pending_updates=True)
+
+    # Supabase'ni kuzatuvchi FON vazifalari — hech qachon to'g'ridan-to'g'ri
+    # await qilinmaydi (event loop qotib qolmasin), ichida faqat
+    # await asyncio.sleep() ishlatiladi — time.sleep() TAQIQLANADI.
+    _bg_tasks.add(asyncio.create_task(homework_watcher()))   # uyga vazifalari
+    _bg_tasks.add(asyncio.create_task(voice_watcher()))      # voice_allowed ruxsati
+    _bg_tasks.add(asyncio.create_task(grades_watcher()))     # yangi baho
+    _bg_tasks.add(asyncio.create_task(messages_watcher()))   # yangi chat xabari
 
     logging.info("Bot starting with polling...")
-    await dp.start_polling(bot)
+    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
 if __name__ == "__main__":

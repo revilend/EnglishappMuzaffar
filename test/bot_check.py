@@ -847,6 +847,25 @@ async def main():
         check(False, f"health: serverga ulanib bo'lmadi — {e}")
 
     # =========================================================
+    # 14) main() siyosati — event loop hech qachon bloklanmaydi
+    # =========================================================
+    import inspect
+    src = inspect.getsource(B)
+    code_lines = [ln for ln in src.splitlines() if not ln.strip().startswith("#")]
+    check(not any("time.sleep(" in ln for ln in code_lines),
+          "main: bot.py'da time.sleep() yo'q (event loop bloklanmaydi)")
+    check("await bot.delete_webhook(drop_pending_updates=True)" in src,
+          "main: pollingdan oldin eski webhook tozalanadi")
+    check("allowed_updates=dp.resolve_used_update_types()" in src,
+          "main: start_polling allowed_updates bilan ishga tushadi")
+    check("await homework_watcher()" not in src and "await voice_watcher()" not in src and
+          "await grades_watcher()" not in src and "await messages_watcher()" not in src,
+          "main: watcherlar to'g'ridan-to'g'ri await qilinmaydi")
+    for wname in ("homework_watcher", "voice_watcher", "grades_watcher", "messages_watcher"):
+        check(f"asyncio.create_task({wname}())" in src,
+              f"main: {wname} asyncio.create_task orqali fon vazifasi")
+
+    # =========================================================
     print(f"\n{'=' * 50}")
     if failed:
         print(f"RESULT: {failed} FAIL, {passed} ok")
