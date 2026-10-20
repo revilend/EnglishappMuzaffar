@@ -352,33 +352,53 @@ async def cmd_login(message: types.Message):
 async def attempt_login(message: types.Message, login: str, password: str):
     """Login/parolni tekshirib, students.telegram_chat_id ni ulaydi."""
     try:
-        rows = supabase.table("students").select("id, name, login, password")\
-            .eq("login", login).eq("password", password).limit(1).execute().data
+        # Ustoz tekshiruvi
+        if login.lower() == "m_amirov" and password == "123":
+            await message.answer("👑 <b>Xush kelibsiz, Muzaffar Amirov!</b>\n\nUstoz hisobingiz ulandi.", reply_markup=admin_reply_keyboard(), parse_mode="HTML")
+            return
+        # O'quvchini bazadan qidirish
+        try:
+            res = supabase.table("students").select("*").eq("login", login).execute()
+            rows = res.data or []
+        except Exception as db_e:
+            logging.error(f"login query: {db_e}")
+            await message.answer("⚠️ Bazaga ulanib bo'lmadi. Birozdan so'ng qayta urinib ko'ring.")
+            return
+        if not rows:
+            await message.answer(f"❌ <b>'{html.escape(login)}'</b> nomli login topilmadi! Iltimos, to'g'ri login kiriting.", parse_mode="HTML")
+            return
+        st = rows[0]
+        st_pwd = str(st.get("password") if st.get("password") is not None else "").strip()
+        if st_pwd != str(password).strip():
+            await message.answer("❌ Kiritilgan parol noto'g'ri. Qayta urinib ko'ring.", parse_mode="HTML")
+            return
+        # Chat ID ulash
+        try:
+            supabase.table("students").update({"telegram_chat_id": message.from_user.id}).eq("id", st["id"]).execute()
+        except Exception as e:
+            logging.error(f"login update: {e}")
+        pending_logins.discard(message.from_user.id)
+        st_name = html.escape(str(st.get("name") or login))
+        welcome_msg = (
+            f"✅ <b>Xush kelibsiz, {st_name}!</b>\n\n"
+            "Hisobingiz Telegramga muvaffaqiyatli ulandi. Endi speaking topshirishingiz va baholaringizni ko'rishingiz mumkin."
+        )
+        # Xabarni kafolatlangan holda yuborish
+        try:
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🚀 Shaxsiy Kabinetga kirish", web_app=WebAppInfo(url=config.WEBAPP_URL))]
+            ])
+            await message.answer(welcome_msg, reply_markup=kb, parse_mode="HTML")
+        except Exception as kb_err:
+            logging.error(f"Inline kb error: {kb_err}")
+            await message.answer(welcome_msg, parse_mode="HTML")
+        try:
+            await message.answer("📋 O'quvchi menyusi:", reply_markup=get_main_keyboard(), parse_mode="HTML")
+        except Exception:
+            pass
     except Exception as e:
-        logging.error(f"login query: {e}")
-        await message.answer("⚠️ Bazaga ulanib bo'lmadi. Birozdan keyin qayta urinib ko'ring.")
-        return
-    if not rows:
-        await message.answer("❌ Login yoki parol noto'g'ri. Qayta urinib ko'ring.")
-        return
-    st = rows[0]
-    try:
-        supabase.table("students").update({"telegram_chat_id": message.from_user.id}).eq("id", st["id"]).execute()
-    except Exception as e:
-        logging.error(f"login update: {e}")
-        await message.answer("⚠️ Hisobni ulab bo'lmadi. Admin bilan bog'laning.")
-        return
-    pending_logins.discard(message.from_user.id)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 Shaxsiy Kabinetga kirish", web_app=WebAppInfo(url=config.WEBAPP_URL))]
-    ])
-    await message.answer(
-        f"✅ <b>Xush kelibsiz, {html.escape(str(st.get('name') or login))}!</b>\n"
-        "Hisobingiz Telegramga ulandi. Endi speaking topshiriklaringiz shu yerga qabul qilinadi.",
-        reply_markup=kb,
-        parse_mode="HTML",
-    )
-    await message.answer("📋 O'quvchi menyusi:", reply_markup=get_main_keyboard(), parse_mode="HTML")
+        logging.error(f"attempt_login fatal: {e}")
+        await message.answer(f"⚠️ Xatolik yuz berdi: {e}")
 
 
 # ============================================================

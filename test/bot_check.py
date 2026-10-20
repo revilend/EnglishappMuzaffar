@@ -561,6 +561,35 @@ async def main():
     await B.cmd_login(lg)
     check("noto'g'ri" in lg.answers[0]["text"], "login: yaroqsiz parol rad etiladi")
 
+    # attempt_login: alohida aniq xabarlar va kafolatli xush kelibsiz
+    # 1) Ustoz: /login m_amirov 123 -> tanishuv xabari
+    t = Msg(555, "/login m_amirov 123")
+    await B.attempt_login(t, "m_amirov", "123")
+    check(any("Xush kelibsiz, Muzaffar Amirov!" in (a["text"] or "") for a in t.answers),
+          "login: ustoz 'Xush kelibsiz, Muzaffar Amirov!' deb taniladi")
+    # 2) Login bazada topilmasa -> 'topilmadi' xabari
+    t = Msg(555, "/login yoqlogin 123")
+    await B.attempt_login(t, "yoqlogin", "123")
+    check(any("topilmadi" in (a["text"] or "") for a in t.answers),
+          "login: login topilmasa 'Login topilmadi' xabari qaytadi")
+    # 3) Parol noto'g'ri -> alohida 'parol noto'g'ri' xabari
+    t = Msg(555, "/login jasur wrong")
+    await B.attempt_login(t, "jasur", "wrong")
+    check(any("parol noto'g'ri" in (a["text"] or "") for a in t.answers),
+          "login: parol noto'g'ri -> alohida xabar qaytadi")
+    # 4) Inline kb/WebApp xatosida ham 'Xush kelibsiz' xabari YUBORILADI
+    class KbFailMsg(Msg):
+        async def answer(self, text=None, reply_markup=None, parse_mode=None, **kw):
+            if reply_markup is not None and hasattr(reply_markup, "inline_keyboard"):
+                raise RuntimeError("simulyatsiya: WebApp URL xatosi")
+            await super().answer(text, reply_markup=reply_markup, parse_mode=parse_mode, **kw)
+    t = KbFailMsg(666, "")
+    await B.attempt_login(t, "nilufar", "123")
+    check(any("Xush kelibsiz" in (a["text"] or "") for a in t.answers),
+          "login: inline kb xatosida ham 'Xush kelibsiz' xabari ketadi (kafolatli)")
+    mal2 = [s for s in FAKE_ROWS["students"] if s["login"] == "nilufar"][0]
+    check(mal2["telegram_chat_id"] == 666, "login: kb xatosida ham hisob ulanib qoldi")
+
     # =========================================================
     # 7) 📊 Baholarim va Qarzim
     # =========================================================
