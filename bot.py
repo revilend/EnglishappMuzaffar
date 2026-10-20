@@ -10,6 +10,7 @@ from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command, CommandStart
+from aiogram.filters.state import StateFilter
 from aiogram.types import (
     InlineKeyboardMarkup, 
     InlineKeyboardButton, 
@@ -258,19 +259,38 @@ async def btn_admin_new_speakings(message: types.Message):
 
 
 # /start command
-@dp.message(Command("start"))
-@dp.message(CommandStart())
-async def cmd_start(message: types.Message):
+@dp.message(CommandStart(), StateFilter("*"))
+async def cmd_start(message: types.Message, state: FSMContext):
+    await state.clear()
     try:
+        user_id = message.from_user.id
         user_name = html.escape(message.from_user.full_name or "O'quvchi")
-        text = (
-            f"Assalomu alaykum, <b>{user_name}</b>!\n\n"
-            "Teacher Muzaffar Amirovning ingliz tili platformasiga xush kelibsiz!\n\n"
-            "Botdan to'liq foydalanish uchun hisobingizni ulang:\n"
-            "Pastdagi <b>🔑 Login orqali ulash</b> tugmasini bosing yoki:\n"
-            "<code>/login login parol</code> shaklida yuboring "
-            "(Masalan: <code>/login jasur 123</code>)."
-        )
+
+        # Yangi/oldingi foydalanuvchini bazadan topish (single() ishlatilmaydi)
+        student = None
+        try:
+            res = supabase.table("students").select("*")
+            res = res.eq("telegram_chat_id", user_id).execute()
+            if res.data and len(res.data) > 0:
+                student = res.data[0]
+        except Exception as e:
+            logging.error(f"Student lookup: {e}")
+
+        if student:
+            st_name = html.escape(student.get("name", user_name))
+            text = (
+                f"Assalomu alaykum, <b>{st_name}</b>!\n\n"
+                f"Hisobingiz ulangan. Quyidagi menyudan foydalanishingiz mumkin:"
+            )
+        else:
+            text = (
+                f"Assalomu alaykum, <b>{user_name}</b>!\n\n"
+                "Teacher Muzaffar Amirovning ingliz tili platformasiga xush kelibsiz!\n\n"
+                "Botdan to'liq foydalanish uchun hisobingizni ulang:\n"
+                "Pastdagi <b>🔑 Login orqali ulash</b> tugmasini bosing yoki:\n"
+                "<code>/login login parol</code> shaklida yuboring "
+                "(Masalan: <code>/login jasur 123</code>)."
+            )
         try:
             await message.answer(text, reply_markup=get_main_keyboard(), parse_mode="HTML")
         except Exception as kb_err:
