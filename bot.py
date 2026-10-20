@@ -258,7 +258,7 @@ async def btn_admin_new_speakings(message: types.Message):
 
 
 # /start command
-@dp.message(CommandStart()
+@dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     user_id = message.from_user.id
