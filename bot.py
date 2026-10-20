@@ -1326,8 +1326,27 @@ async def main():
     _bg_tasks.add(asyncio.create_task(grades_watcher()))     # yangi baho
     _bg_tasks.add(asyncio.create_task(messages_watcher()))   # yangi chat xabari
 
+    # Diagnostika: qaysi bot jonli — logda username ko'rinadi
+    try:
+        me = await bot.get_me()
+        logging.info(f"DIAGNOSTIKA: bot ishga tushdi -> @{me.username} (id={me.id})")
+    except Exception as e:
+        logging.error(f"DIAGNOSTIKA: getMe muvaffaqiyatsiz — TOKEN noto'g'ri yoki tarmoqda muammo: {e}")
+
+    # Diagnostika: polling jonli ekanini 60s da bir marta loglaydi
+    async def _polling_watchdog():
+        while True:
+            await asyncio.sleep(60)
+            logging.info("DIAGNOSTIKA: POLLING FAOL (60s heartbeat)")
+
+    _bg_tasks.add(asyncio.create_task(_polling_watchdog()))
+
     logging.info("Bot starting with polling...")
-    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    try:
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    except Exception:
+        logging.exception("DIAGNOSTIKA: POLLING TO'XTADI — xatoni ko'ring!")
+        raise
 
 
 if __name__ == "__main__":

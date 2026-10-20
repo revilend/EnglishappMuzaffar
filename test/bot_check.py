@@ -864,6 +864,8 @@ async def main():
     for wname in ("homework_watcher", "voice_watcher", "grades_watcher", "messages_watcher"):
         check(f"asyncio.create_task({wname}())" in src,
               f"main: {wname} asyncio.create_task orqali fon vazifasi")
+    check("bot.get_me()" in src, "main: startdan oldin getMe bilan bot identifikatsiya qilinadi")
+    check("DIAGNOSTIKA: POLLING FAOL" in src, "main: polling watchdog (60s heartbeat) mavjud")
 
     # =========================================================
     print(f"\n{'=' * 50}")
