@@ -6,6 +6,14 @@
   <meta name="theme-color" content="#f7f8fc" />
   <title>English Tutor</title>
   <link rel="icon" type="image/png" href="favicon.png" />
+  <!-- Rejim: sahifa ochilishdan oldin (flash oldini oladi) -->
+  <script>
+    try {
+      var _th = localStorage.getItem('theme');
+      _th = _th ? JSON.parse(_th) : 'light';
+      document.documentElement.setAttribute('data-theme', _th === 'dark' ? 'dark' : 'light');
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'light'); }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -22,7 +30,7 @@
       <div class="header-inner">
         <span class="brand"><img class="brand-logo" src="logo.png" alt="" width="36" height="36" />English Tutor</span>
         <div class="top-nav-tabs" id="top-nav-tabs"></div>
-        <div class="top-nav-right">
+        <div class="top-nav-right" id="top-nav-right">
           <div class="role-badge is-teacher" id="top-user-badge">Muzaffar Amirov</div>
           <button type="button" class="icon-btn" data-act="logout" aria-label="Chiqish">✕</button>
         </div>

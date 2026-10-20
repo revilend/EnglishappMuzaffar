@@ -1480,6 +1480,63 @@ function ico(name, size) {
 }
 
 /* ==================== Header / Bottom nav ==================== */
+/* ==================== I18N (UZ/EN) VA REJIM (Light/Dark) ==================== */
+const I18N_EN = {
+  'Bosh sahifa': 'Home', 'Bosh': 'Home', 'Guruhlar': 'Groups',
+  "O'quvchilar": 'Students', "O'quvchi": 'Students',
+  'Baholar jurnali': 'Gradebook', 'Baholar': 'Grades',
+  'Davomat': 'Attendance', 'Tezkor davomat': 'Attendance',
+  'Speaking slotlari': 'Speaking Slots', 'Speaking (1-on-1)': 'Speaking',
+  'Profil': 'Profile', 'Kabinet': 'Dashboard',
+  'Kirish': 'Sign In', 'Chiqish': 'Log Out', 'Hisobdan chiqish': 'Log Out',
+  'Uyga vazifalar': 'Homework', 'Qarz': 'Debt',
+  'Guruh': 'Group', 'Sinf': 'Class', 'Sana': 'Date',
+  'Oldingi hafta': 'Previous week', 'Bugun': 'Today', 'Keyingi hafta': 'Next week',
+  "O'rtacha": 'Average', "O'rtacha bahosi": 'Average score',
+  'Parol': 'Password'
+};
+function getLang() { return store.get('app_lang', 'uz'); }
+function t(s) {
+  if (getLang() !== 'en') return s;
+  const v = I18N_EN[s];
+  return v == null ? s : v;
+}
+function toggleLang() {
+  store.set('app_lang', getLang() === 'uz' ? 'en' : 'uz');
+  render();
+}
+function getTheme() { return store.get('theme', 'light'); }
+function applyTheme() {
+  try { document.documentElement.setAttribute('data-theme', getTheme() === 'dark' ? 'dark' : 'light'); }
+  catch (e) {}
+}
+function toggleTheme() {
+  store.set('theme', getTheme() === 'dark' ? 'light' : 'dark');
+  applyTheme();
+  render();
+}
+/* Header nazorat tugmalari: ☀️/🌙 rejim + 🇺🇿 UZ | 🇬🇧 EN til */
+function headerControlsHTML() {
+  const dark = getTheme() === 'dark';
+  const en = getLang() === 'en';
+  return `<div class="header-controls">
+    <button type="button" class="icon-btn mode-btn" data-act="toggle-theme" aria-label="${dark ? 'Kunduzgi rejim' : 'Tungi rejim'}" title="${dark ? 'Kunduzgi rejim' : 'Tungi rejim'}">${dark ? '☀️' : '🌙'}</button>
+    <button type="button" class="lang-switch" data-act="toggle-lang" aria-label="Tilni almashtirish">
+      <span class="lang-opt${!en ? ' active' : ''}">🇺🇿 UZ</span><span class="lang-sep">|</span><span class="lang-opt${en ? ' active' : ''}">🇬🇧 EN</span>
+    </button>
+  </div>`;
+}
+function renderTopNavControls() {
+  const el = document.getElementById('top-nav-right');
+  if (!el) return;
+  let box = document.getElementById('top-nav-controls');
+  if (!box) {
+    el.insertAdjacentHTML('afterbegin', '<span id="top-nav-controls"></span>');
+    box = document.getElementById('top-nav-controls');
+  }
+  box.innerHTML = headerControlsHTML();
+}
+
 function scrLabel(s) {
   return {
     home: 'Bosh sahifa',
@@ -1494,32 +1551,33 @@ function scrLabel(s) {
 function renderHeader() {
   const scr = state.screen;
   if (AUTH_SCREENS.indexOf(scr) >= 0) {
-    return '<div class="header-inner"><span class="brand"><img class="brand-logo" src="logo.png" alt="" width="36" height="36" />English Tutor</span></div>';
+    return '<div class="header-inner"><span class="brand"><img class="brand-logo" src="logo.png" alt="" width="36" height="36" />English Tutor</span>' + headerControlsHTML() + '</div>';
   }
   const u = currentUser() || {};
   return `<div class="header-inner">
     <div class="brand-wrap">
       <span class="brand"><img class="brand-logo" src="logo.png" alt="" width="36" height="36" />English Tutor</span>
-      <span class="brand-sub">${esc(scrLabel(scr))}</span>
+      <span class="brand-sub">${esc(t(scrLabel(scr)))}</span>
     </div>
     <span class="role-badge ${u.role === 'teacher' ? 'is-teacher' : 'is-student'}">${u.role === 'teacher' ? 'Muzaffar Amirov' : "O'quvchi"}</span>
+    ${headerControlsHTML()}
   </div>`;
 }
 function navItems() {
   if (isTeacher()) {
     return [
-      ['home', 'Bosh', ICON.home],
-      ['students', "O'quvchi", ICON.students],
-      ['grades', 'Baholar', ICON.grades],
-      ['attendance', 'Davomat', ICON.cal],
-      ['speaking', 'Speaking', ICON.mic],
-      ['profile', 'Profil', ICON.profile]
+      ['home', t('Bosh'), ICON.home],
+      ['students', t("O'quvchi"), ICON.students],
+      ['grades', t('Baholar'), ICON.grades],
+      ['attendance', t('Davomat'), ICON.cal],
+      ['speaking', t('Speaking'), ICON.mic],
+      ['profile', t('Profil'), ICON.profile]
     ];
   }
   /* O'quvchi: faqat o'z portali va profili */
   return [
-    ['home', 'Kabinet', ICON.home],
-    ['profile', 'Profil', ICON.profile]
+    ['home', t('Kabinet'), ICON.home],
+    ['profile', t('Profil'), ICON.profile]
   ];
 }
 function renderNav() {
@@ -1544,23 +1602,31 @@ function renderTopNavTabs() {
   };
   el.innerHTML = navItems().map(it => {
     const active = state.screen === it[0] ? ' active' : '';
-    return `<button type="button" class="top-nav-item${active}" data-act="nav" data-screen="${it[0]}">${esc(labels[it[0]] || it[1])}</button>`;
+    return `<button type="button" class="top-nav-item${active}" data-act="nav" data-screen="${it[0]}">${esc(t(labels[it[0]] || it[1]))}</button>`;
   }).join('');
 }
 
 /* ==================== KIRISH EKRANI (login / parol) ==================== */
 function loginScreen() {
   return `<div class="auth">
-    <img class="auth-logo" src="logo.png" alt="Gerb" width="74" height="74" />
-    <h1 class="auth-title">English Tutor</h1>
-    <p class="auth-sub">Ingliz tili darslari — Muzaffar Amirov paneli va o'quvchi kabineti</p>
+    <section class="hero">
+      <img class="hero-emblem" src="logo.png" alt="Muzaffar Amirov gerbi" width="96" height="96" />
+      <h1 class="hero-title">Teacher Muzaffar Amirov — Offline English Tutoring</h1>
+      <p class="hero-sub">5–11-sinf o'quvchilari uchun maxsus offline ingliz tili darslari, yakkama-yakka Speaking monitoringi va shaffof baholash tizimi.</p>
+      <div class="hero-grid">
+        <div class="hero-card"><span class="hero-ico">🗣️</span><b>Yakkama-yakka Speaking</b><span>Individual audio/video tahlil va qarz monitoringi.</span></div>
+        <div class="hero-card"><span class="hero-ico">📊</span><b>Kundalik 10 ballik tizim</b><span>Shaffof baholar va davomat jurnali.</span></div>
+        <div class="hero-card"><span class="hero-ico">🤖</span><b>Telegram Bot ekotizimi</b><span>Vazifalar, eslatmalar va tezkor bildirishnomalar.</span></div>
+      </div>
+    </section>
+    <div class="auth-brand"><span class="auth-title">English Tutor</span></div>
 
     <div class="card auth-card">
       <label class="field-label" for="login-input">Login</label>
       <input class="input" id="login-input" type="text" autocapitalize="none" autocorrect="off"
              autocomplete="username" placeholder="Login" />
 
-      <label class="field-label" for="password-input">Parol</label>
+      <label class="field-label" for="password-input">${t('Parol')}</label>
       <div class="pw-wrap">
         <input class="input" id="password-input" type="password"
                autocomplete="current-password" placeholder="••••" />
@@ -1569,7 +1635,7 @@ function loginScreen() {
       <input type="text" name="bot_check_field" id="login-bot-hp" style="display:none !important; position:absolute; left:-9999px;" tabindex="-1" autocomplete="off" aria-hidden="true" />
 
       <div class="field-error${state.forcedOut ? ' show' : ''}" id="login-error">${state.forcedOut ? 'Siz ushbu qurilmadan chiqarildingiz!' : ''}</div>
-      <button type="button" class="btn btn-primary btn-block" data-act="do-login">Kirish</button>
+      <button type="button" class="btn btn-primary btn-block" data-act="do-login">${t('Kirish')}</button>
     </div>
   </div>`;
 }
@@ -1791,7 +1857,7 @@ function teacherHome() {
 
   <div class="screen-head" style="margin-top:6px">
     <div>
-      <h2 class="screen-title">${ico('bookOpen', 20)} Uyga vazifalar</h2>
+      <h2 class="screen-title">${ico('bookOpen', 20)} ${t('Uyga vazifalar')}</h2>
       <div class="muted small">${getHomework().length} ta vazifa • bot guruhga xabar qiladi</div>
     </div>
     <button type="button" class="btn btn-primary btn-sm" data-act="open-hw">+ Uyga vazifa</button>
@@ -2014,7 +2080,7 @@ function groupsScreen() {
   return `
   <div class="screen-head">
     <div>
-      <h2 class="screen-title">Guruhlar</h2>
+      <h2 class="screen-title">${t('Guruhlar')}</h2>
       <div class="muted small">${groups.length} ta guruh</div>
     </div>
     <button type="button" class="btn btn-primary btn-sm" data-act="open-add-group">+ Guruh</button>
@@ -2091,7 +2157,7 @@ function studentsScreen() {
   return `
   <div class="screen-head">
     <div>
-      <h2 class="screen-title">O'quvchilar</h2>
+      <h2 class="screen-title">${t("O'quvchilar")}</h2>
       <div class="muted small" id="students-count"></div>
     </div>
     <button type="button" class="btn btn-primary btn-sm" data-act="open-add-student">+ Qo'shish</button>
@@ -2156,7 +2222,7 @@ function profileScreen() {
 
   ${sessionsSectionHTML()}
 
-  <button type="button" class="btn btn-danger btn-block" data-act="logout">Hisobdan chiqish</button>
+  <button type="button" class="btn btn-danger btn-block" data-act="logout">${t('Hisobdan chiqish')}</button>
   `;
 }
 
@@ -2998,7 +3064,7 @@ function gradesScreen() {
   ensureGradeState();
   const groups = getGroups();
   if (!groups.length) {
-    return `<div class="screen-head"><h2 class="screen-title">Baholar</h2></div>` + emptyState("Avval guruh yarating", 'grades');
+    return `<div class="screen-head"><h2 class="screen-title">${t('Baholar')}</h2></div>` + emptyState("Avval guruh yarating", 'grades');
   }
 
   const dates = state.weekOffset !== 0
@@ -3009,9 +3075,9 @@ function gradesScreen() {
   const classChips = ['Barchasi'].concat(APP_DATA.classes);
 
   const head = `<tr>
-    <th class="bj-name col-student">O'quvchi</th>
+    <th class="bj-name col-student">${t("O'quvchi")}</th>
     ${dates.map(d => `<th class="bj-date ${state.gradeDate === d ? 'is-focus' : ''}"><button type="button" class="bj-date-btn" data-act="grade-date" data-date="${d}">${fmtDM(d)}</button></th>`).join('')}
-    <th class="bj-sum">O'rtacha</th>
+    <th class="bj-sum">${t("O'rtacha")}</th>
   </tr>`;
 
   const body = rows.map(s => {
@@ -3032,34 +3098,44 @@ function gradesScreen() {
     </tr>`;
   }).join('');
 
+  /* Jadval oxirida umumiy o'rtacha (Average score) */
+  const allNums = [];
+  rows.forEach(s => scoresFor(s.id, dates).forEach(v => allNums.push(v)));
+  const classAvg = avgOf(allNums);
+  const foot = rows.length ? `<tfoot><tr class="bj-foot">
+    <td class="bj-name col-student bj-foot-label">${t("O'rtacha bahosi")}</td>
+    ${dates.map(() => '<td class="bj-cell"></td>').join('')}
+    <td class="bj-sum bj-foot-label"><span class="sum-avg ${classAvg == null ? 'g-empty' : 'g-num'}">${fmtAvg(classAvg)}</span></td>
+  </tr></tfoot>` : '';
+
   return `
   <div class="screen-head">
     <div>
-      <h2 class="screen-title">Baholar</h2>
+      <h2 class="screen-title">${t('Baholar')}</h2>
       <div class="muted small">10 ballik tizim • ${rows.length} ta o'quvchi</div>
     </div>
   </div>
 
   <div class="selector-row">
-    <span class="selector-label">Guruh</span>
+    <span class="selector-label">${t('Guruh')}</span>
     <div class="chips">
       ${groups.map(g => `<button type="button" class="chip-btn ${state.gradeGroup === g.id ? 'active' : ''}" data-act="grade-group" data-group="${g.id}">${esc(g.name)}</button>`).join('')}
     </div>
   </div>
 
   <div class="selector-row">
-    <span class="selector-label">Sinf</span>
+    <span class="selector-label">${t('Sinf')}</span>
     <div class="chips">
       ${classChips.map(c => `<button type="button" class="chip-btn ${state.gradeClass === c ? 'active' : ''}" data-act="grade-class" data-class="${esc(c)}">${esc(c)}</button>`).join('')}
     </div>
   </div>
 
   <div class="week-nav-bar">
-    <button type="button" id="btn-prev-week" class="week-btn prev" data-act="grade-week" data-dir="-1">&#8249; Oldingi hafta</button>
+    <button type="button" id="btn-prev-week" class="week-btn prev" data-act="grade-week" data-dir="-1">&#8249; ${t('Oldingi hafta')}</button>
     <div class="week-label" id="current-week-label">${weekLabel(state.weekOffset || 0)}</div>
     <div style="display:flex;align-items:center;gap:6px;">
-      <button type="button" id="btn-today-week" class="week-btn today" data-act="grade-week" data-dir="0">Bugun</button>
-      <button type="button" id="btn-next-week" class="week-btn next" data-act="grade-week" data-dir="1">Keyingi hafta &#8250;</button>
+      <button type="button" id="btn-today-week" class="week-btn today" data-act="grade-week" data-dir="0">${t('Bugun')}</button>
+      <button type="button" id="btn-next-week" class="week-btn next" data-act="grade-week" data-dir="1">${t('Keyingi hafta')} &#8250;</button>
     </div>
   </div>
 
@@ -3067,6 +3143,7 @@ function gradesScreen() {
     <table class="bj">
       <thead>${head}</thead>
       <tbody>${body || `<tr><td class="bj-name col-student">${esc("Bu sinfda o'quvchi yo'q")}</td></tr>`}</tbody>
+      ${foot}
     </table>
   </div>
 
@@ -3167,7 +3244,7 @@ function attendanceScreen() {
   ensureAttState();
   const groups = getGroups();
   if (!groups.length) {
-    return `<div class="screen-head"><h2 class="screen-title">Davomat</h2></div>` + emptyState("Avval guruh yarating", 'cal');
+    return `<div class="screen-head"><h2 class="screen-title">${t('Davomat')}</h2></div>` + emptyState("Avval guruh yarating", 'cal');
   }
 
   const students = getStudents().filter(s => s.groupId === state.attGroup);
@@ -3199,21 +3276,21 @@ function attendanceScreen() {
   return `
   <div class="screen-head">
     <div>
-      <h2 class="screen-title">Tezkor davomat</h2>
+      <h2 class="screen-title">${t('Tezkor davomat')}</h2>
       <div class="muted small">${marked}/${students.length} belgilandi</div>
     </div>
     <button type="button" class="btn btn-ghost btn-sm" data-act="nav" data-screen="speaking">${ico('mic', 15)} Speaking</button>
   </div>
 
   <div class="selector-row">
-    <span class="selector-label">Guruh</span>
+    <span class="selector-label">${t('Guruh')}</span>
     <div class="chips">
       ${groups.map(g => `<button type="button" class="chip-btn ${state.attGroup === g.id ? 'active' : ''}" data-act="att-group" data-group="${g.id}">${esc(g.name)}</button>`).join('')}
     </div>
   </div>
 
   <div class="selector-row">
-    <span class="selector-label">Sana</span>
+    <span class="selector-label">${t('Sana')}</span>
     <input class="input" id="att-date" type="date" value="${esc(state.attDate)}" max="${todayKey()}" />
   </div>
 
@@ -3264,14 +3341,14 @@ function speakingScreen() {
   return `
   <div class="screen-head">
     <div>
-      <h2 class="screen-title">Speaking</h2>
+      <h2 class="screen-title">${t('Speaking')}</h2>
       <div class="muted small">1-on-1 slotlar • ${list.length} ta slot</div>
     </div>
     <button type="button" class="btn btn-primary btn-sm" data-act="open-slot">+ Slot</button>
   </div>
 
   <div class="selector-row">
-    <span class="selector-label">Sana</span>
+    <span class="selector-label">${t('Sana')}</span>
     <input class="input" id="sp-date" type="date" value="${esc(state.speakDate)}" />
   </div>
 
@@ -3657,6 +3734,7 @@ function render() {
   $('#app-header').innerHTML = renderHeader();
   $('#bottom-nav').innerHTML = renderNav();
   renderTopNavTabs();
+  renderTopNavControls();
   $('#screen').innerHTML = (SCREENS[scr] || loginScreen)();
   if (scr === 'students') refreshStudentList();
   if (scr === 'grades') ensureGradeState();
@@ -4086,6 +4164,8 @@ document.addEventListener('click', function (e) {
       render();
       toast("Slot o'chirildi");
     },
+    'toggle-theme': toggleTheme,
+    'toggle-lang': toggleLang,
     'session-logout': function () { Sessions.remove(btn.getAttribute('data-sess')); },
     'session-logout-all': function () { Sessions.removeAllOthers(); },
     'save-slot': saveSlot,
@@ -4149,6 +4229,7 @@ $('#modal-overlay').addEventListener('click', function (e) {
   const s = getSession();
   if (!s || !accounts[s.login]) store.del(K.session);
   state.screen = currentUser() ? 'home' : 'login';
+  applyTheme();
   render();
   /* Faol qurilmalar nazorati: sahifa ochilganda + har 30 soniyada tekshiriladi */
   Sessions.check();

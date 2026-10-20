@@ -1587,6 +1587,69 @@ const until = async (fn, ms) => {
   check(text().includes('English Tutor') && !q('.bottom-nav .nav-item'),
     'majburiy chiqish: login ekraniga qaytdi');
 
+  /* ============ 27. PREMIUM UI: HERO, REJIM, I18N, JURNAL ============ */
+  /* Hero — kirish sahifasidagi taqdimot */
+  check(text().includes('Teacher Muzaffar Amirov — Offline English Tutoring'),
+    'hero: sarlavha "Teacher Muzaffar Amirov — Offline English Tutoring"');
+  check(text().includes("5–11-sinf o'quvchilari uchun maxsus offline ingliz tili darslari"),
+    'hero: qisqa tavsif matni');
+  check(!!q('.hero-emblem') && !!q('.hero-title') && !!q('.hero-sub'),
+    'hero: gerb + sarlavha + tavsif bloklari');
+  check(qa('.hero-card').length === 3, 'hero: 3 ta infografika kartasi');
+  check(text().includes('Yakkama-yakka Speaking') && text().includes('Kundalik 10 ballik tizim') &&
+        text().includes('Telegram Bot ekotizimi'), 'hero: 3 ta karta matni');
+  check(text().includes('English Tutor') && !!q('#login-input') && !!q('[data-act="do-login"]'),
+    'hero: brend + login formasi saqlangan');
+  check(!!q('[data-act="toggle-theme"]') && !!q('[data-act="toggle-lang"]'),
+    'header: rejim ☀️/🌙 + til 🇺🇿/🇬🇧 tugmalari (login ekrani)');
+
+  /* Tungi/kunduzgi rejim */
+  check(win.document.documentElement.getAttribute('data-theme') === 'light',
+    "rejim: boshlang'ich light");
+  click('[data-act="toggle-theme"]');
+  check(win.document.documentElement.getAttribute('data-theme') === 'dark',
+    'rejim: toggle → html[data-theme=dark]');
+  check((win.localStorage.getItem('theme') || '').indexOf('dark') >= 0,
+    "rejim: localStorage 'theme' = dark saqlandi");
+  check(q('[data-act="toggle-theme"]').textContent.indexOf('☀️') >= 0,
+    "rejim: tunda ☀️ tugmasi ko'rinadi");
+  click('[data-act="toggle-theme"]');
+  check(win.document.documentElement.getAttribute('data-theme') === 'light',
+    'rejim: qayta toggle → yana light');
+
+  /* UZ/EN til almashtirish */
+  check((win.localStorage.getItem('app_lang') || '"uz"').indexOf('uz') >= 0,
+    "til: boshlang'ich uz");
+  click('[data-act="toggle-lang"]');
+  check((win.localStorage.getItem('app_lang') || '').indexOf('en') >= 0,
+    "til: localStorage 'app_lang' = en saqlandi");
+  loginAs('m_amirov', '123');
+  check(navLabels().join(',') === 'Home,Students,Grades,Attendance,Speaking,Profile',
+    'i18n: ustoz nav EN tilida');
+  check(q('#app-header').textContent.includes('Home'),
+    'i18n: header bo‘lim nomi EN (Home)');
+
+  /* Jurnal: umumiy o‘rtacha (tfoot) + kapsula hafta tanlagich */
+  seedFixture(win);
+  click('[data-act="nav"][data-screen="grades"]');
+  check(q('#app-header').textContent.includes('Gradebook'),
+    'i18n: header "Baholar jurnali" → EN "Gradebook"');
+  check(!!q('table.bj tfoot .bj-foot'), 'jurnal: oxirida "O‘rtacha bahosi" qatori (tfoot)');
+  check(q('table.bj tfoot').textContent.includes('Average score'),
+    'jurnal: tfoot EN matni (Average score)');
+  check(qa('.week-nav-bar .week-btn').length === 3,
+    'jurnal: hafta kapsulasi 3 tugma (Oldingi/Bugun/Keyingi)');
+  check(q('.week-nav-bar').textContent.includes('Previous week'),
+    'i18n: hafta tugmalari EN (Previous week)');
+  check(!!q('.week-nav-bar .week-label'), 'jurnal: hafta sarlavhasi kapsula ichida');
+
+  /* UZ ga qaytarish */
+  click('[data-act="toggle-lang"]');
+  check(navLabels().join(',') === "Bosh,O'quvchi,Baholar,Davomat,Speaking,Profil",
+    "i18n: UZ ga qaytish — nav o'zbekcha qoldi");
+  check(q('.week-nav-bar').textContent.includes('Oldingi hafta'),
+    'i18n: hafta tugmalari UZ ga qaytdi');
+
   console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
   process.exit(failed ? 1 : 0);
 })();
