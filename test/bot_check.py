@@ -4,6 +4,8 @@ yo'naltirish + 1-tap baho, /login, uyga vazifa, health server.
 Test harness (testga joylashtirilgan — /tmp emas, qayta tiklanadigan joyda).
 Run:  .venv/bin/python test/bot_check.py
 """
+
+
 import asyncio
 import json
 import os
@@ -19,6 +21,13 @@ os.environ.setdefault("PORT", "10999")
 
 import bot as B  # noqa: E402
 import config  # noqa: E402
+from bot import get_main_keyboard
+
+def _dummy_state():
+    class _DS:
+        async def clear(self):
+            return None
+    return _DS()
 
 failed = 0
 passed = 0
@@ -335,6 +344,11 @@ async def main():
     global failed
     reset_rows()
 
+    class _DS:
+        async def clear(self):
+            return None
+    # dummy_state created AFTER imports (fresh namespace per run)
+    dummy_state = _DS()
     B.bot = FakeBot()
     B.supabase = FakeSupa()          # bot.py dagi module-global supabase shu yerga ulanadi
     fb = B.bot
@@ -345,37 +359,49 @@ async def main():
     # =========================================================
     # 1) /start — ustoz va o'quvchi menyulari
     # =========================================================
+    # 1a) Boshlang'ich /start — bo'sh foydalanuvchi
     st = Msg(111, "/start")
-    await B.cmd_start(st)
-    check("Assalomu alaykum" in st.answers[0]["text"], "start: o'quvchi salomi")
-    stu_rb = rb_texts(st.answers[1]["reply_markup"])
-    check("📱 Shaxsiy Kabinetim" in stu_rb,
-          "start: o'quvchi menyusi '📱 Shaxsiy Kabinetim'")
+    st.state = "*"
+    await B.cmd_start(st, dummy_state)
+    check("Assalomu alaykum" in st.answers[0]["text"], "start: bo'sh foydalanuvchi salomi")
+    check("🔑 Login orqali ulash" in st.answers[0]["text"], "start: bo'sh foydalanuvchi login tugmasi")
+    stu_rb = rb_texts(st.answers[0]["reply_markup"])
+    check(stu_rb is not None and "📱 Shaxsiy Kabinetim" in stu_rb,
+          "start: bo'sh foydalanuvchi menyusi '📱 Shaxsiy Kabinetim'")
     check("🎙 Speaking topshirish" in stu_rb and "📊 Baholarim va Qarzim" in stu_rb,
-          "start: o'quvchi menyusi [🎙 Speaking topshirish] [📊 Baholarim va Qarzim]")
-    check("🔑 Login orqali ulash" in stu_rb, "start: o'quvchi menyusi [🔑 Login orqali ulash]")
-    check(st.answers[1]["reply_markup"].is_persistent is True,
-          "start: o'quvchi menyusi doimiy (is_persistent=True)")
+          "start: bo'sh foydalanuvchi menyusi [🎙 Speaking topshirish] [📊 Baholarim va Qarzim]")
+    check("🔑 Login orqali ulash" in stu_rb, "start: bo'sh foydalanuvchi menyusi [🔑 Login orqali ulash]")
+    check(st.answers[0]["reply_markup"].is_persistent is True,
+          "start: bo'sh foydalanuvchi menyusi doimiy (is_persistent=True)")
+    check(st.answers[0]["parse_mode"] == "HTML", "start: javob HTML parse_mode bilan")
 
+    # 1b) /start — allaqachon bazaga bog'langan foydalanuvchi (Jasur, chat 555)
+    st = Msg(555, "/start")
+    st.state = "*"
+    await B.cmd_start(st, dummy_state)
+    check(st.answers[0]["text"].split(chr(10))[0] == "Assalomu alaykum, <b>Jasur Karimov</b>!",
+          "start: mavjud foydalanuvchi salomi")
+    check("Hisobingiz ulangan" in st.answers[0]["text"], "start: mavjud foydalanuvchi 'Hisobingiz ulangan'")
+    stu_rb = rb_texts(st.answers[0]["reply_markup"])
+    check(stu_rb is not None and "📱 Shaxsiy Kabinetim" in stu_rb,
+          "start: mavjud foydalanuvchi menyusi '📱 Shaxsiy Kabinetim'")
+    check("🎙 Speaking topshirish" in stu_rb and "📊 Baholarim va Qarzim" in stu_rb,
+          "start: mavjud foydalanuvchi menyusi [🎙 Speaking topshirish] [📊 Baholarim va Qarzim]")
+    check("🔑 Login orqali ulash" in stu_rb, "start: mavjud foydalanuvchi menyusi [🔑 Login orqali ulash]")
+    check(st.answers[0]["reply_markup"].is_persistent is True,
+          "start: mavjud foydalanuvchi menyusi doimiy (is_persistent=True)")
+
+    # 1c) Ustoz ham shu umumiy menyuni oladi (ustoz paneli /admin orqali)
     st = Msg(ADMIN, "/start")
-    await B.cmd_start(st)
-    check(st.answers[0]["text"].split("\n")[0] == "Xush kelibsiz, Muzaffar Amirov!",
-          "start: ustoz salomi aynan 'Xush kelibsiz, Muzaffar Amirov!'")
-    mb = fb.menu_buttons[-1]["menu_button"]
-    check(mb.text == "📱 Muzaffar Amirov Paneli", "start: menu button '📱 Muzaffar Amirov Paneli'")
-    texts = [t for t, _ in btn_texts(st.answers[0]["reply_markup"])]
-    check("🚀 Muzaffar Amirov Panelini ochish" in texts,
-          "start: '🚀 Muzaffar Amirov Panelini ochish'")
-    check("📥 Barcha ma'lumotlarni yuklab olish (Backup)" in texts,
-          "start: '📥 Barcha ma'lumotlarni yuklab olish (Backup)' tugmasi")
-    ad_rb = rb_texts(st.answers[1]["reply_markup"])
-    check("📱 Muzaffar Amirov Paneli" in ad_rb,
-          "start: ustoz menyusi '📱 Muzaffar Amirov Paneli'")
-    check("🎙 Yangi Speakinglar" in ad_rb and "👥 O'quvchilar va Qarzlar" in ad_rb,
-          "start: ustoz menyusi [🎙 Yangi Speakinglar] [👥 O'quvchilar va Qarzlar]")
-    check("📥 Bazani yuklab olish (Backup)" in ad_rb and "🗑 Bazani tozalash" in ad_rb,
-          "start: ustoz menyusi [📥 Bazani yuklab olish (Backup)] [🗑 Bazani tozalash]")
-    check(st.answers[1]["reply_markup"].is_persistent is True,
+    st.state = "*"
+    await B.cmd_start(st, dummy_state)
+    check("Assalomu alaykum" in st.answers[0]["text"], "start: ustozga ham salom boradi")
+    ad_rb = rb_texts(st.answers[0]["reply_markup"])
+    check(ad_rb is not None and "📱 Shaxsiy Kabinetim" in ad_rb,
+          "start: ustoz uchun ham asosiy menyu '📱 Shaxsiy Kabinetim'")
+    check("🔑 Login orqali ulash" in ad_rb,
+          "start: ustoz uchun ham asosiy menyu [🔑 Login orqali ulash]")
+    check(st.answers[0]["reply_markup"].is_persistent is True,
           "start: ustoz menyusi doimiy (is_persistent=True)")
 
     # =========================================================
@@ -524,6 +550,8 @@ async def main():
     await B.on_free_text(m3)
     check(any("O'quvchi menyusi" in (a["text"] or "") for a in m3.answers),
           "menyu: oddiy matn -> menyuni qayta ko'rsatadi")
+    # asosiy menyu yangi foydalanuvchiga xam ishlaid
+    m4 = Msg(999, "ikki matn")
 
     # /login buyrug'i
     lg = Msg(555, "/login")

@@ -8,7 +8,9 @@ import re
 from datetime import datetime, timezone
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
+from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command, CommandStart
+from aiogram.filters.state import StateFilter
 from aiogram.types import (
     InlineKeyboardMarkup, 
     InlineKeyboardButton, 
@@ -81,8 +83,8 @@ def admin_reply_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def student_reply_keyboard() -> ReplyKeyboardMarkup:
-    """O'quvchi uchun doimiy menyu tugmalari."""
+def get_main_keyboard() -> ReplyKeyboardMarkup:
+    """Asosiy menyu — barcha foydalanuvchilar uchun."""
     return ReplyKeyboardMarkup(
         resize_keyboard=True,
         is_persistent=True,
@@ -257,50 +259,39 @@ async def btn_admin_new_speakings(message: types.Message):
 
 
 # /start command
-@dp.message(CommandStart())
-async def cmd_start(message: types.Message):
+@dp.message(CommandStart(), StateFilter("*"))
+async def cmd_start(message: types.Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
-    user_name = message.from_user.first_name
+    user_name = html.escape(message.from_user.full_name or "O'quvchi")
 
-    # Teacher check
-    if user_id == config.ADMIN_ID:
-        try:
-            await bot.set_chat_menu_button(
-                chat_id=user_id,
-                menu_button=MenuButtonWebApp(text="📱 Muzaffar Amirov Paneli", web_app=WebAppInfo(url=config.WEBAPP_URL))
-            )
-        except Exception as e:
-            logging.warning(f"set_chat_menu_button (teacher): {e}")
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🚀 Muzaffar Amirov Panelini ochish", web_app=WebAppInfo(url=config.WEBAPP_URL))],
-            [InlineKeyboardButton(text="📥 Barcha ma'lumotlarni yuklab olish (Backup)", callback_data="backup_req")],
-        ])
-        await message.answer(f"Xush kelibsiz, Muzaffar Amirov!\nBarcha guruhlar, jurnallar va topshiriqlar boshqaruvi sizda.", reply_markup=keyboard)
-        # Doimiy ustoz menyusi (ReplyKeyboardMarkup)
-        await message.answer("📋 <b>Ustoz menyusi</b> — kerakli bo'limni tanlang:",
-                             reply_markup=admin_reply_keyboard(), parse_mode="HTML")
-        return
-
-    # Student
+    # Yangi/oldingi foydalanuvchini bazadan topish (single() ishlatilmaydi)
+    student = None
     try:
-        await bot.set_chat_menu_button(
-            chat_id=user_id,
-            menu_button=MenuButtonWebApp(text="📱 O'quvchi Kabineti", web_app=WebAppInfo(url=config.WEBAPP_URL))
-        )
+        res = supabase.table("students").select("*")
+        res = res.eq("telegram_chat_id", user_id).execute()
+        if res.data and len(res.data) > 0:
+            student = res.data[0]
     except Exception as e:
-        logging.warning(f"set_chat_menu_button (student): {e}")
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 Shaxsiy Kabinetga kirish", web_app=WebAppInfo(url=config.WEBAPP_URL))]
-    ])
-    text = (
-        f"Assalomu alaykum, <b>{user_name}</b>!\n\n"
-        f"Ingliz tili darslari botiga xush kelibsiz.\n"
-        f"🎙 <b>Speaking topshirish uchun:</b> shunchaki shu yerga ovozli xabar (voice) yoki dumaloq video xabar yuboring!"
-    )
-    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-    # Doimiy o'quvchi menyusi (ReplyKeyboardMarkup)
-    await message.answer("📋 <b>O'quvchi menyusi</b> — kerakli bo'limni tanlang:",
-                         reply_markup=student_reply_keyboard(), parse_mode="HTML")
+        logging.error(f"Student lookup: {e}")
+
+    if student:
+        st_name = html.escape(student.get("name", user_name))
+        text = (
+            f"Assalomu alaykum, <b>{st_name}</b>!\n\n"
+            f"Hisobingiz ulangan. Quyidagi menyudan foydalanishingiz mumkin:"
+        )
+    else:
+        text = (
+            f"Assalomu alaykum, <b>{user_name}</b>!\n\n"
+            f"Teacher Muzaffar Amirovning ingliz tili platformasiga xush kelibsiz!\n\n"
+            f"Botdan to'liq foydalanish uchun hisobingizni ulang:\n"
+            f"Pastdagi <b>🔑 Login orqali ulash</b> tugmasini bosing yoki:\n"
+            f"<code>/login login parol</code> shaklida yuboring "
+            f"(Masalan: <code>/login jasur 123</code>)."
+        )
+
+    await message.answer(text, reply_markup=get_main_keyboard(), parse_mode="HTML")
 
 
 # /admin command — To'liq ustoz boshqaruv paneli
@@ -387,7 +378,7 @@ async def attempt_login(message: types.Message, login: str, password: str):
         reply_markup=kb,
         parse_mode="HTML",
     )
-    await message.answer("📋 O'quvchi menyusi:", reply_markup=student_reply_keyboard(), parse_mode="HTML")
+    await message.answer("📋 O'quvchi menyusi:", reply_markup=get_main_keyboard(), parse_mode="HTML")
 
 
 # ============================================================
@@ -1309,7 +1300,7 @@ async def on_free_text(message: types.Message):
     if message.from_user.id == config.ADMIN_ID:
         await message.answer("📋 Ustoz menyusi:", reply_markup=admin_reply_keyboard())
     else:
-        await message.answer("📋 O'quvchi menyusi:", reply_markup=student_reply_keyboard())
+        await message.answer("📋 O'quvchi menyusi:", reply_markup=get_main_keyboard())
 
 
 # Asosiy ishga tushirish
