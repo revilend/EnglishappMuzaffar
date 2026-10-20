@@ -1611,8 +1611,12 @@ const until = async (fn, ms) => {
     'rejim: toggle → html[data-theme=dark]');
   check((win.localStorage.getItem('theme') || '').indexOf('dark') >= 0,
     "rejim: localStorage 'theme' = dark saqlandi");
-  check(q('[data-act="toggle-theme"]').textContent.indexOf('☀️') >= 0,
-    "rejim: tunda ☀️ tugmasi ko'rinadi");
+  check(!!q('[data-act="toggle-theme"]').querySelector('svg') &&
+        !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(q('[data-act="toggle-theme"]').textContent),
+    "rejim: tunda tugma toza SVG quyosh ikonkasi (emoji emas)");
+  check(qa('#app-header .lang-opt svg').length === 2 &&
+        !/[\u{1F1E6}-\u{1F1FF}]/u.test(q('[data-act="toggle-lang"]').textContent),
+    "til: bayroq emoji o'rniga 2 ta SVG bayroq ikonkasi");
   click('[data-act="toggle-theme"]');
   check(win.document.documentElement.getAttribute('data-theme') === 'light',
     'rejim: qayta toggle → yana light');
@@ -1649,6 +1653,60 @@ const until = async (fn, ms) => {
     "i18n: UZ ga qaytish — nav o'zbekcha qoldi");
   check(q('.week-nav-bar').textContent.includes('Oldingi hafta'),
     'i18n: hafta tugmalari UZ ga qaytdi');
+
+  /* ============ 28. PREMIUM KARTALAR + OVERFLOW + SVG + EN DINAMIK MATNLAR ============ */
+  /* O'quvchi kartalari: 2x2 tugma grid + ichki blokcha + gradient avatar */
+  click('[data-act="nav"][data-screen="students"]');
+  check(qa('.student-card .st-actions').length === 6,
+    'kartа: har o‘quvchi kartasida .st-actions (2x2 grid) bloki');
+  check(qa('.student-card .st-actions .btn').length === 24,
+    'karta: 4 tugma × 6 karta = 24 (setkada, bir qatorda EMAS)');
+  check(qa('.student-card .st-inset').length === 6,
+    'karta: Speaking qarzi + ruxsat ichki .st-inset blokchada');
+  check(qa('.student-card .st-avatar').length === 6,
+    'karta: har kartada gradient doira-avatar (.st-avatar)');
+  check(qa('.student-card .st-avatar').every(a => /^[A-Z]{1,2}$/.test(a.textContent.trim())),
+    'karta: avatar ichida ism bosh harflari (ZY/XA kabi)');
+  check(cssSrc.indexOf('.st-actions') >= 0 && cssSrc.indexOf('grid-template-columns: 1fr 1fr') >= 0,
+    'css: st-actions 2x2 grid tanlangan');
+  check(/html, body \{ overflow-x: hidden/.test(cssSrc) || cssSrc.indexOf('overflow-x: hidden') >= 0,
+    'css: body overflow-x: hidden (ekrandan chiqish yopilgan)');
+
+  /* EN rejimda dinamik kartalar to‘liq inglizcha */
+  click('[data-act="toggle-lang"]');
+  check(text().includes('Grade 9') && !text().includes('9-sinf'),
+    'i18n EN: "9-sinf" → "Grade 9" (karta ichida)');
+  check(text().includes('Speaking debt') && !text().includes('Speaking qarzi'),
+    'i18n EN: "Speaking qarzi" → "Speaking debt"');
+  check(q('.student-card .debt-num').textContent.trim() === '0',
+    'i18n EN: "0 ta" → "0" (raqam + birliksiz)');
+  check(text().includes('Allow voice submission') && !text().includes('Ovozli topshirishga ruxsat'),
+    'i18n EN: "Ovozli topshirishga ruxsat" → "Allow voice submission"');
+  check(text().includes('Message') && !text().includes('Xabar yozish'),
+    'i18n EN: "Xabar yozish" → "Message"');
+  check(text().includes('Reset Password') && !text().includes('Parolni yangilash'),
+    'i18n EN: "Parolni yangilash" → "Reset Password"');
+  check(text().includes('Edit') && text().includes('Delete') && !text().includes('Tahrirlash'),
+    'i18n EN: "Tahrirlash"→"Edit", "O\'chirish"→"Delete"');
+  check(q('.screen-title').textContent.trim() === 'Students' && !text().includes("O'QUVCHILAR"),
+    'i18n EN: "O\'QUVCHILAR" → "STUDENTS"');
+  click('[data-act="nav"][data-screen="home"]');
+  clickAct('open-hw');
+  setVal('#hw-title', 'Present Perfect check');
+  q('#hw-group').value = 'g2';
+  setVal('#hw-due', '2026-10-25');
+  clickAct('save-hw');
+  check(text().includes('Due date') && !text().includes('Topshirish muddati'),
+    'i18n EN: "Topshirish muddati" → "Due date"');
+  check(q('[data-act="toggle-lang"]').textContent.indexOf('UZ') >= 0 &&
+        qa('#app-header .lang-opt svg').length === 2,
+    'i18n EN: til tugmasida SVG bayroqlar saqlangan');
+
+  /* UZ ga qaytish */
+  click('[data-act="toggle-lang"]');
+  click('[data-act="nav"][data-screen="students"]');
+  check(text().includes('9-sinf') && text().includes('Xabar yozish'),
+    'i18n UZ: dinamik kartalar qayta o‘zbekcha');
 
   console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
   process.exit(failed ? 1 : 0);

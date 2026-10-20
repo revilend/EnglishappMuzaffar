@@ -1464,6 +1464,10 @@ const ICON = {
   upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 7 5-4 5 4"/><path d="M4 20h16"/></svg>',
   brush: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 11 8-8a2.8 2.8 0 0 1 4 4l-8 8"/><path d="M7.2 13.9c-1.6 0-3 1.4-3 3 0 1.3-2.4 1.6-1.9 2.1 1.1 1.1 2.5 2 4 2 2.2 0 4-1.8 4-4a3 3 0 0 0-3.1-3.1Z"/></svg>',
   lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10.5" width="16" height="11" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>',
+  sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+  flagUZ: '<svg viewBox="0 0 20 14"><rect width="20" height="14" fill="#fff"/><path d="M0 0h20v4.7H0z" fill="#0099B5"/><path d="M0 9.3h20V14H0z" fill="#1EB53A"/><path d="M0 4.7h20v.6H0zM0 8.7h20v.6H0z" fill="#CE1126"/><path d="M8.4 3.2a2.2 2.2 0 1 0 0 3.4 2.6 2.6 0 1 1 0-3.4z" fill="#fff"/></svg>',
+  flagGB: '<svg viewBox="0 0 20 14"><rect width="20" height="14" fill="#012169"/><path d="M0 0l20 14M20 0L0 14" stroke="#fff" stroke-width="2.6"/><path d="M0 0l20 14M20 0L0 14" stroke="#C8102E" stroke-width="1.2"/><path d="M10 0v14M0 7h20" stroke="#fff" stroke-width="4.6"/><path d="M10 0v14M0 7h20" stroke="#C8102E" stroke-width="2.6"/></svg>',
   alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.2 18-8-14a1.9 1.9 0 0 0-3.3 0l-8 14A1.9 1.9 0 0 0 3.6 21h16.8a1.9 1.9 0 0 0 1.7-3Z"/><path d="M12 9.5v4"/><path d="M12 17.2h.01"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 9.5 17.5 19.5 6.5"/></svg>',
   checkCircle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.4 12.3 2.5 2.5 4.7-5.2"/></svg>',
@@ -1493,13 +1497,37 @@ const I18N_EN = {
   'Guruh': 'Group', 'Sinf': 'Class', 'Sana': 'Date',
   'Oldingi hafta': 'Previous week', 'Bugun': 'Today', 'Keyingi hafta': 'Next week',
   "O'rtacha": 'Average', "O'rtacha bahosi": 'Average score',
-  'Parol': 'Password'
+  'Parol': 'Password',
+  /* --- Dinamik kartalar matnlari (o'quvchi kartasi, uyga vazifa) --- */
+  'Speaking qarzi': 'Speaking debt',
+  'Ovozli topshirishga ruxsat': 'Allow voice submission',
+  'Xabar yozish': 'Message',
+  'Parolni yangilash': 'Reset Password',
+  'Tahrirlash': 'Edit',
+  "O'chirish": 'Delete',
+  'Topshirish muddati': 'Due date',
+  'Guruh taylanmagan': 'No group assigned',
+  'Barchasi': 'All'
 };
 function getLang() { return store.get('app_lang', 'uz'); }
 function t(s) {
   if (getLang() !== 'en') return s;
   const v = I18N_EN[s];
   return v == null ? s : v;
+}
+/* Dinamik matn yordamchilari: "9-sinf" → "Grade 9", "N ta" → "N" */
+function tClass(c) {
+  const s = String(c == null ? '' : c);
+  if (getLang() !== 'en') return s;
+  const m = /^(\d+)\s*-?\s*sinf$/i.exec(s.trim());
+  return m ? 'Grade ' + m[1] : t(s);
+}
+function tTa(n) { return getLang() === 'en' ? String(n) : n + ' ta'; }
+function tStudCnt(n) {
+  return getLang() === 'en' ? n + ' student' + (n === 1 ? '' : 's') : n + " ta o'quvchi";
+}
+function tGrpCnt(n) {
+  return getLang() === 'en' ? n + ' student' + (n === 1 ? '' : 's') : n + " o'quvchi";
 }
 function toggleLang() {
   store.set('app_lang', getLang() === 'uz' ? 'en' : 'uz');
@@ -1520,9 +1548,9 @@ function headerControlsHTML() {
   const dark = getTheme() === 'dark';
   const en = getLang() === 'en';
   return `<div class="header-controls">
-    <button type="button" class="icon-btn mode-btn" data-act="toggle-theme" aria-label="${dark ? 'Kunduzgi rejim' : 'Tungi rejim'}" title="${dark ? 'Kunduzgi rejim' : 'Tungi rejim'}">${dark ? '☀️' : '🌙'}</button>
+    <button type="button" class="icon-btn mode-btn" data-act="toggle-theme" aria-label="${dark ? 'Kunduzgi rejim' : 'Tungi rejim'}" title="${dark ? 'Kunduzgi rejim' : 'Tungi rejim'}">${dark ? ico('sun', 18) : ico('moon', 18)}</button>
     <button type="button" class="lang-switch" data-act="toggle-lang" aria-label="Tilni almashtirish">
-      <span class="lang-opt${!en ? ' active' : ''}">🇺🇿 UZ</span><span class="lang-sep">|</span><span class="lang-opt${en ? ' active' : ''}">🇬🇧 EN</span>
+      <span class="lang-opt${!en ? ' active' : ''}">${ico('flagUZ', 14)} UZ</span><span class="lang-sep">|</span><span class="lang-opt${en ? ' active' : ''}">${ico('flagGB', 14)} EN</span>
     </button>
   </div>`;
 }
@@ -1662,7 +1690,7 @@ function hwRowHTML(h) {
   const g = groupById(h.groupId);
   const chip = `<span class="chip-class">${g ? esc(g.name) : '—'}</span>`;
   const meta = h.description ? `<div class="muted small" style="margin-top:3px">${esc(h.description)}</div>` : '';
-  const due = `<div class="muted small" style="margin-top:3px">${ico('calendar', 13)} Topshirish muddati: ${h.dueDate ? fmtDMY(h.dueDate) : '—'}</div>`;
+  const due = `<div class="muted small" style="margin-top:3px">${ico('calendar', 13)} ${t('Topshirish muddati')}: ${h.dueDate ? fmtDMY(h.dueDate) : '—'}</div>`;
 
   /* --- Ustoz: karta yuqori o'ng burchagida o'chirish tugmasi --- */
   if (isTeacher()) {
@@ -2095,35 +2123,37 @@ function studentCard(s) {
   const acc = Object.keys(accounts).map(k => accounts[k]).filter(a => a.studentId === s.id)[0];
   return `<div class="card student-card">
     <div class="row top">
-      <div class="avatar">${esc(initials(s.fullName))}</div>
+      <div class="avatar st-avatar">${esc(initials(s.fullName))}</div>
       <div class="s-main">
         <div class="row between">
           <span class="s-name">${esc(s.fullName)}</span>
-          <span class="chip-class">${esc(s.schoolClass)}</span>
+          <span class="chip-class">${esc(tClass(s.schoolClass))}</span>
         </div>
-        <div class="s-group">${g ? esc(g.name) : "Guruh taylanmagan"}</div>
+        <div class="s-group">${g ? esc(g.name) : t("Guruh taylanmagan")}</div>
         ${presenceHTML(s)}
         <div class="s-contacts">
           <span class="s-contact"><span class="lbl">Login</span><span class="login-val">${acc ? esc(acc.login) : '—'}</span></span>
         </div>
-        <div class="s-debt row between" style="margin-top:10px">
-          <span class="lbl-strong">Speaking qarzi</span>
-          <div class="debt-controls">
-            <button type="button" class="btn btn-xs ghost" data-act="debt-minus" data-sid="${s.id}" aria-label="Kamaytirish">−</button>
-            <span class="debt-num">${Number(s.speakingDebt) || 0} ta</span>
-            <button type="button" class="btn btn-xs ghost" data-act="debt-plus" data-sid="${s.id}" aria-label="Ko'paytirish">+</button>
+        <div class="st-inset">
+          <div class="s-debt row between">
+            <span class="lbl-strong">${t('Speaking qarzi')}</span>
+            <div class="debt-controls">
+              <button type="button" class="btn btn-xs ghost" data-act="debt-minus" data-sid="${s.id}" aria-label="Kamaytirish">−</button>
+              <span class="debt-num">${tTa(Number(s.speakingDebt) || 0)}</span>
+              <button type="button" class="btn btn-xs ghost" data-act="debt-plus" data-sid="${s.id}" aria-label="Ko'paytirish">+</button>
+            </div>
+          </div>
+          <div class="row between st-voice">
+            <span class="lbl-strong">${ico('mic', 15)} ${t('Ovozli topshirishga ruxsat')}</span>
+            <button type="button" class="switch${s.voiceAllowed !== false ? ' on' : ''}" data-act="voice-toggle" data-sid="${s.id}"
+                    role="switch" aria-checked="${s.voiceAllowed !== false}" aria-label="${t('Ovozli topshirishga ruxsat')}"></button>
           </div>
         </div>
-        <div class="row between" style="margin-top:9px">
-          <span class="lbl-strong">${ico('mic', 15)} Ovozli topshirishga ruxsat</span>
-          <button type="button" class="switch${s.voiceAllowed !== false ? ' on' : ''}" data-act="voice-toggle" data-sid="${s.id}"
-                  role="switch" aria-checked="${s.voiceAllowed !== false}" aria-label="Ovozli topshirishga ruxsat"></button>
-        </div>
-        <div class="row g8" style="margin-top:10px">
-          <button type="button" class="btn btn-xs ghost" data-act="open-chat" data-sid="${s.id}">${ico('message', 14)} Xabar yozish</button>
-          <button type="button" class="btn btn-xs ghost" data-act="reset-pwd" data-sid="${s.id}">${ico('key', 14)} Parolni yangilash</button>
-          <button type="button" class="btn btn-xs ghost" data-act="edit-student" data-sid="${s.id}">${ico('brush', 14)} Tahrirlash</button>
-          <button type="button" class="btn btn-xs danger" data-act="del-student" data-sid="${s.id}">${ico('trash', 14)} O'chirish</button>
+        <div class="st-actions">
+          <button type="button" class="btn btn-xs ghost" data-act="open-chat" data-sid="${s.id}">${ico('message', 14)} ${t('Xabar yozish')}</button>
+          <button type="button" class="btn btn-xs ghost" data-act="reset-pwd" data-sid="${s.id}">${ico('key', 14)} ${t('Parolni yangilash')}</button>
+          <button type="button" class="btn btn-xs ghost" data-act="edit-student" data-sid="${s.id}">${ico('brush', 14)} ${t('Tahrirlash')}</button>
+          <button type="button" class="btn btn-xs danger" data-act="del-student" data-sid="${s.id}">${ico('trash', 14)} ${t("O'chirish")}</button>
         </div>
       </div>
     </div>
@@ -2147,7 +2177,7 @@ function refreshStudentList() {
   const list = $('#students-list');
   if (list) list.innerHTML = studentListHTML();
   const cnt = $('#students-count');
-  if (cnt) cnt.textContent = filteredStudents().length + " ta o'quvchi";
+  if (cnt) cnt.textContent = tStudCnt(filteredStudents().length);
 }
 
 function studentsScreen() {
@@ -2173,7 +2203,7 @@ function studentsScreen() {
   </div>
 
   <div class="chips${state.classHint ? ' is-hl' : ''}">
-    ${chips.map(c => `<button type="button" class="chip-btn ${state.filterClass === c ? 'active' : ''}" data-act="filter-class" data-class="${esc(c)}">${esc(c)}</button>`).join('')}
+    ${chips.map(c => `<button type="button" class="chip-btn ${state.filterClass === c ? 'active' : ''}" data-act="filter-class" data-class="${esc(c)}">${esc(tClass(c))}</button>`).join('')}
   </div>
 
   <div id="students-list">${studentListHTML()}</div>
@@ -3087,7 +3117,7 @@ function gradesScreen() {
       <td class="bj-name col-student">
         <div class="bj-name-cell">
           <span class="s-name">${esc(s.fullName)}</span>
-          <span class="chip-class">${esc(s.schoolClass)}</span>
+          <span class="chip-class">${esc(tClass(s.schoolClass))}</span>
         </div>
       </td>
       ${dates.map(d => gradeCellHTML(s.id, d)).join('')}
@@ -3126,7 +3156,7 @@ function gradesScreen() {
   <div class="selector-row">
     <span class="selector-label">${t('Sinf')}</span>
     <div class="chips">
-      ${classChips.map(c => `<button type="button" class="chip-btn ${state.gradeClass === c ? 'active' : ''}" data-act="grade-class" data-class="${esc(c)}">${esc(c)}</button>`).join('')}
+      ${classChips.map(c => `<button type="button" class="chip-btn ${state.gradeClass === c ? 'active' : ''}" data-act="grade-class" data-class="${esc(c)}">${esc(tClass(c))}</button>`).join('')}
     </div>
   </div>
 

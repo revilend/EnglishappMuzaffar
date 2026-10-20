@@ -1519,3 +1519,67 @@ html[data-theme="dark"] .score-btn.sel.g-num { background: #e2e8f0; border-color
 html[data-theme="dark"] .role-badge.is-teacher { background: rgba(47, 143, 239, 0.22); color: #7cbcf7; }
 html[data-theme="dark"] .role-badge.is-student { background: rgba(124, 92, 255, 0.22); color: #a894ff; }
 html[data-theme="dark"] .hero-emblem { box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55); }
+
+/* ==================== V2: OVERFLOW GUARD + PREMIUM STUDENT CARD ==================== */
+/* 1. Ekrandan chiqib ketishni (overflow) to'liq tuzatish */
+html, body { overflow-x: hidden; max-width: 100%; }
+body { box-sizing: border-box; }
+.app, .app-content, .screen-head, .card, .s-main, .col { max-width: 100%; box-sizing: border-box; }
+#screen { overflow-x: hidden; }
+
+/* 2. Premium o'quvchi kartasi: oq fon, nafis chegara, yumshoq soya */
+.student-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+html[data-theme="dark"] .student-card {
+  background: var(--card);
+  border-color: var(--line);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Gradient doira-avatar (indigo/violet) */
+.st-avatar {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #ffffff;
+  border: 2px solid rgba(255, 255, 255, 0.65);
+  box-shadow: 0 4px 10px rgba(99, 102, 241, 0.30);
+}
+
+/* Ichki nafis blokcha: Speaking qarzi + Ovozli ruxsat */
+.st-inset {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 10px;
+  margin-top: 10px;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+html[data-theme="dark"] .st-inset {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: var(--line);
+}
+.st-inset .s-debt { margin-top: 0; }
+.st-inset .st-voice { margin-top: 9px; }
+
+/* 4 ta tugma → 2x2 setka (hech qachon tashqariga chiqmaydi) */
+.st-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.st-actions .btn {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 3. Header SVG ikonkalari uchun vertikal tekislash */
+.mode-btn svg { display: block; }
+.lang-opt svg { display: inline-block; vertical-align: -2px; margin-right: 3px; }
