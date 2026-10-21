@@ -235,6 +235,9 @@ body.auth-mode .app-content { padding-bottom: calc(30px + env(safe-area-inset-bo
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 10.5px;
+  letter-spacing: -0.2px;
+  padding: 0 2px;
 }
 .nav-item svg { width: 22px; height: 22px; }
 .nav-item.active { color: var(--accent); font-weight: 700; }
@@ -1585,9 +1588,15 @@ html[data-theme="dark"] .st-inset {
   width: 100%;
   box-sizing: border-box;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 13px;
+  padding: 9px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
 }
 
 /* 3. Header SVG ikonkalari uchun vertikal tekislash */
@@ -1612,7 +1621,7 @@ html[data-theme="dark"] .st-inset {
 .hero-ico.tone-emerald { background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 6px 14px rgba(16, 185, 129, 0.35); }
 .hero-ico svg { width: 20px; height: 20px; }
 .hero-bot-logo {
-  width: 44px; height: 44px; border-radius: 999px; object-fit: cover; display: block; flex: none;
+  width: 40px; height: 40px; border-radius: 999px; object-fit: cover; display: block; flex: none;
   border: 2px solid var(--card); box-shadow: 0 6px 14px rgba(15, 23, 42, 0.22);
 }
 @media (max-width: 349px) {
@@ -1620,3 +1629,10 @@ html[data-theme="dark"] .st-inset {
   .hero-grid-info .hero-card { flex-direction: column; align-items: flex-start; }
 }
 html[data-theme="dark"] .hero-bot-logo { border-color: rgba(148, 163, 184, 0.35); }
+
+/* ==================== O'QUVCHI KARTASI: 3 qatorli to'liq kenglikdagi maket ==================== */
+.st-head { display: flex; align-items: flex-start; gap: 12px; width: 100%; box-sizing: border-box; }
+.st-head .s-main { flex: 1; min-width: 0; }
+.st-head .chip-class { align-self: flex-start; }
+.student-card > .st-inset { width: 100%; box-sizing: border-box; }
+.student-card > .st-actions { width: 100%; box-sizing: border-box; }

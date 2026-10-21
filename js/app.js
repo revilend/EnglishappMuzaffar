@@ -1500,7 +1500,7 @@ const I18N_EN = {
   'Parol': 'Password',
   /* --- Dinamik kartalar matnlari (o'quvchi kartasi, uyga vazifa) --- */
   'Speaking qarzi': 'Speaking debt',
-  'Ovozli topshirishga ruxsat': 'Allow voice submission',
+  'Ovozli ruxsat': 'Voice allowed',
   'Xabar yozish': 'Message',
   'Parolni yangilash': 'Reset Password',
   'Tahrirlash': 'Edit',
@@ -1670,7 +1670,7 @@ function loginScreen() {
           <span>${t("Har bir darsdagi faollik va baholar shaffof elektron jurnalga kiritiladi. O'quvchi dars qoldirsa yoki yangi baho olsa, tizim darhol qayd etadi va haftalik/umumiy o'rtacha reytingni hisoblaydi.")}</span>
         </div>
         <div class="hero-card">
-          <img class="hero-bot-logo" src="logo.png" alt="@uzbekspeakingcheckbot" width="44" height="44" />
+          <img class="hero-bot-logo" src="logo.png" alt="@uzbekspeakingcheckbot" width="40" height="40" />
           <b>${t("Telegram Bot integratsiyasi (@uzbekspeakingcheckbot)")}</b>
           <span>${t("Yangi uyga vazifalar, speaking eslatmalari, olingan baholar va ustoz xabarlari bevosita o'quvchining Telegram profiliga ovozli bildirishnoma sifatida boradi.")}</span>
         </div>
@@ -2156,40 +2156,38 @@ function studentCard(s) {
   const g = groupById(s.groupId);
   const acc = Object.keys(accounts).map(k => accounts[k]).filter(a => a.studentId === s.id)[0];
   return `<div class="card student-card">
-    <div class="row top">
+    <div class="st-head">
       <div class="avatar st-avatar">${esc(initials(s.fullName))}</div>
       <div class="s-main">
-        <div class="row between">
-          <span class="s-name">${esc(s.fullName)}</span>
-          <span class="chip-class">${esc(tClass(s.schoolClass))}</span>
-        </div>
+        <span class="s-name">${esc(s.fullName)}</span>
         <div class="s-group">${g ? esc(g.name) : t("Guruh taylanmagan")}</div>
         ${presenceHTML(s)}
         <div class="s-contacts">
           <span class="s-contact"><span class="lbl">Login</span><span class="login-val">${acc ? esc(acc.login) : '—'}</span></span>
         </div>
-        <div class="st-inset">
-          <div class="s-debt row between">
-            <span class="lbl-strong">${t('Speaking qarzi')}</span>
-            <div class="debt-controls">
-              <button type="button" class="btn btn-xs ghost" data-act="debt-minus" data-sid="${s.id}" aria-label="Kamaytirish">−</button>
-              <span class="debt-num">${tTa(Number(s.speakingDebt) || 0)}</span>
-              <button type="button" class="btn btn-xs ghost" data-act="debt-plus" data-sid="${s.id}" aria-label="Ko'paytirish">+</button>
-            </div>
-          </div>
-          <div class="row between st-voice">
-            <span class="lbl-strong">${ico('mic', 15)} ${t('Ovozli topshirishga ruxsat')}</span>
-            <button type="button" class="switch${s.voiceAllowed !== false ? ' on' : ''}" data-act="voice-toggle" data-sid="${s.id}"
-                    role="switch" aria-checked="${s.voiceAllowed !== false}" aria-label="${t('Ovozli topshirishga ruxsat')}"></button>
-          </div>
-        </div>
-        <div class="st-actions">
-          <button type="button" class="btn btn-xs ghost" data-act="open-chat" data-sid="${s.id}">${ico('message', 14)} ${t('Xabar yozish')}</button>
-          <button type="button" class="btn btn-xs ghost" data-act="reset-pwd" data-sid="${s.id}">${ico('key', 14)} ${t('Parolni yangilash')}</button>
-          <button type="button" class="btn btn-xs ghost" data-act="edit-student" data-sid="${s.id}">${ico('brush', 14)} ${t('Tahrirlash')}</button>
-          <button type="button" class="btn btn-xs danger" data-act="del-student" data-sid="${s.id}">${ico('trash', 14)} ${t("O'chirish")}</button>
+      </div>
+      <span class="chip-class">${esc(tClass(s.schoolClass))}</span>
+    </div>
+    <div class="st-inset">
+      <div class="s-debt row between">
+        <span class="lbl-strong">${t('Speaking qarzi')}</span>
+        <div class="debt-controls">
+          <button type="button" class="btn btn-xs ghost" data-act="debt-minus" data-sid="${s.id}" aria-label="Kamaytirish">−</button>
+          <span class="debt-num">${tTa(Number(s.speakingDebt) || 0)}</span>
+          <button type="button" class="btn btn-xs ghost" data-act="debt-plus" data-sid="${s.id}" aria-label="Ko'paytirish">+</button>
         </div>
       </div>
+      <div class="row between st-voice">
+        <span class="lbl-strong">${ico('mic', 15)} ${t('Ovozli ruxsat')}</span>
+        <button type="button" class="switch${s.voiceAllowed !== false ? ' on' : ''}" data-act="voice-toggle" data-sid="${s.id}"
+                role="switch" aria-checked="${s.voiceAllowed !== false}" aria-label="${t('Ovozli ruxsat')}"></button>
+      </div>
+    </div>
+    <div class="st-actions">
+      <button type="button" class="btn btn-xs ghost" data-act="open-chat" data-sid="${s.id}">${ico('message', 14)} ${t('Xabar yozish')}</button>
+      <button type="button" class="btn btn-xs ghost" data-act="reset-pwd" data-sid="${s.id}">${ico('key', 14)} ${t('Parol')}</button>
+      <button type="button" class="btn btn-xs ghost" data-act="edit-student" data-sid="${s.id}">${ico('brush', 14)} ${t('Tahrirlash')}</button>
+      <button type="button" class="btn btn-xs danger" data-act="del-student" data-sid="${s.id}">${ico('trash', 14)} ${t("O'chirish")}</button>
     </div>
   </div>`;
 }

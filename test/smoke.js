@@ -1607,8 +1607,8 @@ const until = async (fn, ms) => {
   check(qa('.hero-ico svg').length === 3 && qa('.hero-ico[class*="tone-"]').length === 3,
     'hero: 3 ta rangli doira ichida SVG ikonka');
   check(!!q('.hero-bot-logo') && q('.hero-bot-logo').getAttribute('src') === 'logo.png' &&
-        q('.hero-bot-logo').getAttribute('width') === '44',
-    'hero: bot kartasida logo.png rasmi (44x44 dumaloq)');
+        q('.hero-bot-logo').getAttribute('width') === '40',
+    'hero: bot kartasida logo.png rasmi (40x40 dumaloq)');
   check(cssSrc.indexOf('.auth') >= 0 && /\.auth \{[^}]*justify-content: flex-start/.test(cssSrc),
     'css: login wrapper justify-content: flex-start (center olib tashlangan)');
   check(/\.auth \{[^}]*min-height: 100vh/.test(cssSrc) && /\.auth \{[^}]*overflow-y: visible/.test(cssSrc) &&
@@ -1689,6 +1689,21 @@ const until = async (fn, ms) => {
     'karta: har kartada gradient doira-avatar (.st-avatar)');
   check(qa('.student-card .st-avatar').every(a => /^[A-Z]{1,2}$/.test(a.textContent.trim())),
     'karta: avatar ichida ism bosh harflari (ZY/XA kabi)');
+  check(qa('.student-card > .st-head').length === 6 &&
+        qa('.student-card > .st-head .st-avatar').length === 6 &&
+        qa('.student-card > .st-head .chip-class').length === 6,
+    'karta: 1-qator .st-head — avatar + ism/guruh/login + sinf badge, to\'liq qator');
+  check(qa('.student-card > .st-inset').length === 6,
+    'karta: 2-qator .st-inset — to\'liq 100% kenglikda (avatar ustunidan mustaqil)');
+  check(qa('.student-card > .st-actions').length === 6 && qa('.student-card > .st-actions .btn').length === 24,
+    'karta: 3-qator .st-actions — to\'liq kenglikda 2x2 setka');
+  check(!q('.student-card [data-act="reset-pwd"]').textContent.includes('Parolni yangilash') &&
+        q('.student-card [data-act="reset-pwd"]').textContent.includes('Parol'),
+    'karta: "Parol" tugmasi qisqa matn (qirqilmaydi)');
+  check(/\.nav-item span \{[^}]*font-size: 10\.5px/.test(cssSrc) &&
+        /\.nav-item span \{[^}]*letter-spacing: -0\.2px/.test(cssSrc),
+    'bottom-nav: bo\'lim nomlari font-size 10.5px + letter-spacing -0.2px (to\'liq ko\'rinadi)');
+
   check(cssSrc.indexOf('.st-actions') >= 0 && cssSrc.indexOf('grid-template-columns: 1fr 1fr') >= 0,
     'css: st-actions 2x2 grid tanlangan');
   check(cssSrc.indexOf('overflow-x: clip') >= 0 && /@supports not \(overflow-x: clip\)/.test(cssSrc),
@@ -1702,12 +1717,13 @@ const until = async (fn, ms) => {
     'i18n EN: "Speaking qarzi" → "Speaking debt"');
   check(q('.student-card .debt-num').textContent.trim() === '0',
     'i18n EN: "0 ta" → "0" (raqam + birliksiz)');
-  check(text().includes('Allow voice submission') && !text().includes('Ovozli topshirishga ruxsat'),
-    'i18n EN: "Ovozli topshirishga ruxsat" → "Allow voice submission"');
+  check(text().includes('Voice allowed') && !text().includes('Ovozli ruxsat'),
+    'i18n EN: "Ovozli ruxsat" → "Voice allowed"');
   check(text().includes('Message') && !text().includes('Xabar yozish'),
     'i18n EN: "Xabar yozish" → "Message"');
-  check(text().includes('Reset Password') && !text().includes('Parolni yangilash'),
-    'i18n EN: "Parolni yangilash" → "Reset Password"');
+  check(q('.student-card [data-act="reset-pwd"]').textContent.includes('Password') &&
+        !text().includes('Parolni yangilash'),
+    'i18n EN: "Parol" tugmasi → "Password" (qisqa, qirqilmaydi)');
   check(text().includes('Edit') && text().includes('Delete') && !text().includes('Tahrirlash'),
     'i18n EN: "Tahrirlash"→"Edit", "O\'chirish"→"Delete"');
   check(q('.screen-title').textContent.trim() === 'Students' && !text().includes("O'QUVCHILAR"),
