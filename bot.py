@@ -22,7 +22,6 @@ from aiogram.types import (
 )
 from supabase import create_client, Client
 import config
-import config
 config.WEBAPP_URL = "https://teachermuzaffar.uz/"
 
 
