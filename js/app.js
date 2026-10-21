@@ -1507,7 +1507,24 @@ const I18N_EN = {
   "O'chirish": 'Delete',
   'Topshirish muddati': 'Due date',
   'Guruh taylanmagan': 'No group assigned',
-  'Barchasi': 'All'
+  'Barchasi': 'All',
+  /* --- Kirish sahifasi (hero): sarlavha, tavsif, 4 ta ma'lumot kartasi --- */
+  "Teacher Muzaffar Amirov — Ingliz tili ta'lim platformasi":
+    'Teacher Muzaffar Amirov — English Learning Platform',
+  "Ushbu platforma Muzaffar Amirovning 5–11-sinf o'quvchilari uchun mo'ljallangan zamonaviy ta'lim va nazorat tizimidir. Tizim orqali o'quvchilar darslarni o'zlashtirishi, uyga vazifalar va speaking topshiriqlarini bajarishi, ota-onalar esa farzandining davomat va baholarini real vaqt rejimida kuzatib borishi mumkin.":
+    'This platform is a modern learning and monitoring system designed by Muzaffar Amirov for students in grades 5–11. Through the system, students can master their lessons and complete homework and speaking tasks, while parents can track their child\'s attendance and grades in real time.',
+  "Yakkama-yakka Speaking va Audio/Video nazorati": '1-on-1 Speaking and Audio/Video Monitoring',
+  "O'quvchilar mavzular bo'yicha speaking topshiriqlarini darsda yoki Telegram bot orqali ovozli xabar (voice) va dumaloq video (krujok) shaklida yuboradilar. Ustoz har bir javobni tekshirib, 10 ballik tizimda baholaydi hamda speaking qarzlarini avtomatik hisoblab boradi.":
+    'Students send speaking tasks by topic in class or via the Telegram bot as voice messages and round video messages (krujok). The teacher reviews every response, grades it on a 10-point scale, and automatically tracks speaking debt.',
+  "Kundalik 10 ballik elektron jurnal va Davomat": 'Daily 10-Point Electronic Gradebook and Attendance',
+  "Har bir darsdagi faollik va baholar shaffof elektron jurnalga kiritiladi. O'quvchi dars qoldirsa yoki yangi baho olsa, tizim darhol qayd etadi va haftalik/umumiy o'rtacha reytingni hisoblaydi.":
+    'Every activity and grade in class is entered into a transparent electronic gradebook. If a student misses a lesson or receives a new grade, the system records it immediately and calculates weekly and overall average ratings.',
+  "Telegram Bot integratsiyasi (@uzbekspeakingcheckbot)": 'Telegram Bot Integration (@uzbekspeakingcheckbot)',
+  "Yangi uyga vazifalar, speaking eslatmalari, olingan baholar va ustoz xabarlari bevosita o'quvchining Telegram profiliga ovozli bildirishnoma sifatida boradi.":
+    "New homework, speaking reminders, received grades, and teacher messages go straight to the student's Telegram profile as voice notifications.",
+  "Shaxsiy kabinet va Xavfsizlik": 'Personal Cabinet and Security',
+  "Har bir o'quvchi maxsus login va parol orqali o'z kabinetiga kiradi, vazifalarni belgilaydi, ustoz bilan yozishadi va o'z profiliga ulangan faol qurilmalarni nazorat qiladi.":
+    'Each student signs in to their own cabinet with a dedicated login and password, sets tasks, chats with the teacher, and monitors the active devices linked to their profile.'
 };
 function getLang() { return store.get('app_lang', 'uz'); }
 function t(s) {
@@ -1639,12 +1656,29 @@ function loginScreen() {
   return `<div class="auth">
     <section class="hero">
       <img class="hero-emblem" src="logo.png" alt="Muzaffar Amirov gerbi" width="96" height="96" />
-      <h1 class="hero-title">Teacher Muzaffar Amirov — Offline English Tutoring</h1>
-      <p class="hero-sub">5–11-sinf o'quvchilari uchun maxsus offline ingliz tili darslari, yakkama-yakka Speaking monitoringi va shaffof baholash tizimi.</p>
-      <div class="hero-grid">
-        <div class="hero-card"><span class="hero-ico">🗣️</span><b>Yakkama-yakka Speaking</b><span>Individual audio/video tahlil va qarz monitoringi.</span></div>
-        <div class="hero-card"><span class="hero-ico">📊</span><b>Kundalik 10 ballik tizim</b><span>Shaffof baholar va davomat jurnali.</span></div>
-        <div class="hero-card"><span class="hero-ico">🤖</span><b>Telegram Bot ekotizimi</b><span>Vazifalar, eslatmalar va tezkor bildirishnomalar.</span></div>
+      <h1 class="hero-title">${t("Teacher Muzaffar Amirov — Ingliz tili ta'lim platformasi")}</h1>
+      <p class="hero-sub">${t("Ushbu platforma Muzaffar Amirovning 5–11-sinf o'quvchilari uchun mo'ljallangan zamonaviy ta'lim va nazorat tizimidir. Tizim orqali o'quvchilar darslarni o'zlashtirishi, uyga vazifalar va speaking topshiriqlarini bajarishi, ota-onalar esa farzandining davomat va baholarini real vaqt rejimida kuzatib borishi mumkin.")}</p>
+      <div class="hero-grid hero-grid-info">
+        <div class="hero-card">
+          <span class="hero-ico tone-indigo">${ico('mic', 20)}</span>
+          <b>${t("Yakkama-yakka Speaking va Audio/Video nazorati")}</b>
+          <span>${t("O'quvchilar mavzular bo'yicha speaking topshiriqlarini darsda yoki Telegram bot orqali ovozli xabar (voice) va dumaloq video (krujok) shaklida yuboradilar. Ustoz har bir javobni tekshirib, 10 ballik tizimda baholaydi hamda speaking qarzlarini avtomatik hisoblab boradi.")}</span>
+        </div>
+        <div class="hero-card">
+          <span class="hero-ico tone-blue">${ico('clipboardCheck', 20)}</span>
+          <b>${t("Kundalik 10 ballik elektron jurnal va Davomat")}</b>
+          <span>${t("Har bir darsdagi faollik va baholar shaffof elektron jurnalga kiritiladi. O'quvchi dars qoldirsa yoki yangi baho olsa, tizim darhol qayd etadi va haftalik/umumiy o'rtacha reytingni hisoblaydi.")}</span>
+        </div>
+        <div class="hero-card">
+          <img class="hero-bot-logo" src="logo.png" alt="@uzbekspeakingcheckbot" width="44" height="44" />
+          <b>${t("Telegram Bot integratsiyasi (@uzbekspeakingcheckbot)")}</b>
+          <span>${t("Yangi uyga vazifalar, speaking eslatmalari, olingan baholar va ustoz xabarlari bevosita o'quvchining Telegram profiliga ovozli bildirishnoma sifatida boradi.")}</span>
+        </div>
+        <div class="hero-card">
+          <span class="hero-ico tone-emerald">${ico('lock', 20)}</span>
+          <b>${t("Shaxsiy kabinet va Xavfsizlik")}</b>
+          <span>${t("Har bir o'quvchi maxsus login va parol orqali o'z kabinetiga kiradi, vazifalarni belgilaydi, ustoz bilan yozishadi va o'z profiliga ulangan faol qurilmalarni nazorat qiladi.")}</span>
+        </div>
       </div>
     </section>
     <div class="auth-brand"><span class="auth-title">English Tutor</span></div>

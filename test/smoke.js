@@ -1589,15 +1589,31 @@ const until = async (fn, ms) => {
 
   /* ============ 27. PREMIUM UI: HERO, REJIM, I18N, JURNAL ============ */
   /* Hero — kirish sahifasidagi taqdimot */
-  check(text().includes('Teacher Muzaffar Amirov — Offline English Tutoring'),
-    'hero: sarlavha "Teacher Muzaffar Amirov — Offline English Tutoring"');
-  check(text().includes("5–11-sinf o'quvchilari uchun maxsus offline ingliz tili darslari"),
-    'hero: qisqa tavsif matni');
+  check(text().includes("Teacher Muzaffar Amirov — Ingliz tili ta'lim platformasi"),
+    'hero: yangi sarlavha ("Tutoring" so\'zi olib tashlangan)');
+  check(!text().includes('Offline English Tutoring') && !text().includes('Tutoring'),
+    'hero: eski "Offline English Tutoring" sarlavhasi yo\'q');
+  check(text().includes("Ushbu platforma Muzaffar Amirovning 5–11-sinf o'quvchilari uchun mo'ljallangan zamonaviy ta'lim va nazorat tizimidir"),
+    'hero: batafsil platforma tavsifi (qisqa 3 so\'z emas)');
   check(!!q('.hero-emblem') && !!q('.hero-title') && !!q('.hero-sub'),
     'hero: gerb + sarlavha + tavsif bloklari');
-  check(qa('.hero-card').length === 3, 'hero: 3 ta infografika kartasi');
-  check(text().includes('Yakkama-yakka Speaking') && text().includes('Kundalik 10 ballik tizim') &&
-        text().includes('Telegram Bot ekotizimi'), 'hero: 3 ta karta matni');
+  check(qa('.hero-card').length === 4, 'hero: 4 ta batafsil ma\'lumot kartasi');
+  check(text().includes('Yakkama-yakka Speaking va Audio/Video nazorati') &&
+        text().includes('Kundalik 10 ballik elektron jurnal va Davomat') &&
+        text().includes('Telegram Bot integratsiyasi (@uzbekspeakingcheckbot)') &&
+        text().includes('Shaxsiy kabinet va Xavfsizlik'), 'hero: 4 karta sarlavhalari to\'liq');
+  check(!/[\u{1F5E3}\u{1F4CA}\u{1F916}]/u.test(q('.hero').textContent),
+    'hero: emojilar (🗣️📊🤖) olib tashlangan');
+  check(qa('.hero-ico svg').length === 3 && qa('.hero-ico[class*="tone-"]').length === 3,
+    'hero: 3 ta rangli doira ichida SVG ikonka');
+  check(!!q('.hero-bot-logo') && q('.hero-bot-logo').getAttribute('src') === 'logo.png' &&
+        q('.hero-bot-logo').getAttribute('width') === '44',
+    'hero: bot kartasida logo.png rasmi (44x44 dumaloq)');
+  check(cssSrc.indexOf('.auth') >= 0 && /\.auth \{[^}]*justify-content: flex-start/.test(cssSrc),
+    'css: login wrapper justify-content: flex-start (center olib tashlangan)');
+  check(/\.auth \{[^}]*min-height: 100vh/.test(cssSrc) && /\.auth \{[^}]*overflow-y: visible/.test(cssSrc) &&
+        !/\.auth \{[^}]*overflow: hidden/.test(cssSrc),
+    'css: login wrapper min-height:100vh + overflow-y:visible (qirqilish yo\'q)');
   check(text().includes('English Tutor') && !!q('#login-input') && !!q('[data-act="do-login"]'),
     'hero: brend + login formasi saqlangan');
   check(!!q('[data-act="toggle-theme"]') && !!q('[data-act="toggle-lang"]'),
@@ -1627,6 +1643,12 @@ const until = async (fn, ms) => {
   click('[data-act="toggle-lang"]');
   check((win.localStorage.getItem('app_lang') || '').indexOf('en') >= 0,
     "til: localStorage 'app_lang' = en saqlandi");
+  check(text().includes('Teacher Muzaffar Amirov — English Learning Platform'),
+    'i18n EN: hero sarlavha → "English Learning Platform"');
+  check(text().includes('Personal Cabinet and Security') && !text().includes('Shaxsiy kabinet va Xavfsizlik'),
+    'i18n EN: 4-karta sarlavhasi → "Personal Cabinet and Security"');
+  check(text().includes('Daily 10-Point Electronic Gradebook and Attendance'),
+    'i18n EN: 2-karta sarlavhasi → "Daily 10-Point Electronic Gradebook..."');
   loginAs('m_amirov', '123');
   check(navLabels().join(',') === 'Home,Students,Grades,Attendance,Speaking,Profile',
     'i18n: ustoz nav EN tilida');
@@ -1669,8 +1691,8 @@ const until = async (fn, ms) => {
     'karta: avatar ichida ism bosh harflari (ZY/XA kabi)');
   check(cssSrc.indexOf('.st-actions') >= 0 && cssSrc.indexOf('grid-template-columns: 1fr 1fr') >= 0,
     'css: st-actions 2x2 grid tanlangan');
-  check(/html, body \{ overflow-x: hidden/.test(cssSrc) || cssSrc.indexOf('overflow-x: hidden') >= 0,
-    'css: body overflow-x: hidden (ekrandan chiqish yopilgan)');
+  check(cssSrc.indexOf('overflow-x: clip') >= 0 && /@supports not \(overflow-x: clip\)/.test(cssSrc),
+    'css: body/#screen overflow-x: clip + hidden fallback (gorizontal yopilgan, vertikal skroll saqlangan)');
 
   /* EN rejimda dinamik kartalar to‘liq inglizcha */
   click('[data-act="toggle-lang"]');

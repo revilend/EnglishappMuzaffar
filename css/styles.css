@@ -364,7 +364,14 @@ svg { display: inline-block; vertical-align: -3px; }
 .btn svg, .chip-btn svg, .att-pill svg, .list-row svg { flex: none; }
 
 /* ---------- Auth screens ---------- */
-.auth { text-align: center; padding-top: 6px; }
+/* Login wrapper: qirqilmasdan, tepadan toza boshlanadi, bemalol skroll bo'ladi */
+.auth {
+  text-align: center; width: 100%; box-sizing: border-box;
+  display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
+  height: auto; min-height: 100vh; overflow-y: visible;
+  padding: 28px 16px 80px 16px;
+}
+.auth > * { width: 100%; max-width: 520px; }
 .auth-logo {
   width: 74px; height: 74px;
   border-radius: 22px;
@@ -1522,10 +1529,13 @@ html[data-theme="dark"] .hero-emblem { box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5
 
 /* ==================== V2: OVERFLOW GUARD + PREMIUM STUDENT CARD ==================== */
 /* 1. Ekrandan chiqib ketishni (overflow) to'liq tuzatish */
-html, body { overflow-x: hidden; max-width: 100%; }
+html, body { overflow-x: clip; max-width: 100%; }
 body { box-sizing: border-box; }
 .app, .app-content, .screen-head, .card, .s-main, .col { max-width: 100%; box-sizing: border-box; }
-#screen { overflow-x: hidden; }
+#screen { overflow-x: clip; }
+@supports not (overflow-x: clip) {
+  html, body, #screen { overflow-x: hidden; }
+}
 
 /* 2. Premium o'quvchi kartasi: oq fon, nafis chegara, yumshoq soya */
 .student-card {
@@ -1583,3 +1593,30 @@ html[data-theme="dark"] .st-inset {
 /* 3. Header SVG ikonkalari uchun vertikal tekislash */
 .mode-btn svg { display: block; }
 .lang-opt svg { display: inline-block; vertical-align: -2px; margin-right: 3px; }
+
+/* ==================== LOGIN: batafsil hero (4 karta) + SVG doira-ikonkalar ==================== */
+.hero-grid-info { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 14px; }
+.hero-grid-info .hero-card {
+  min-height: 0; align-items: flex-start; text-align: left;
+  padding: 14px; gap: 8px; border-radius: 18px;
+}
+.hero-grid-info .hero-card b { font-size: 12.5px; line-height: 1.35; }
+.hero-grid-info .hero-card b + span { font-size: 11.5px; line-height: 1.5; }
+.hero-ico {
+  width: 44px; height: 44px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; flex: none;
+}
+.hero-ico.tone-indigo { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); box-shadow: 0 6px 14px rgba(99, 102, 241, 0.35); }
+.hero-ico.tone-blue { background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%); box-shadow: 0 6px 14px rgba(14, 165, 233, 0.35); }
+.hero-ico.tone-emerald { background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 6px 14px rgba(16, 185, 129, 0.35); }
+.hero-ico svg { width: 20px; height: 20px; }
+.hero-bot-logo {
+  width: 44px; height: 44px; border-radius: 999px; object-fit: cover; display: block; flex: none;
+  border: 2px solid var(--card); box-shadow: 0 6px 14px rgba(15, 23, 42, 0.22);
+}
+@media (max-width: 349px) {
+  .hero-grid-info { grid-template-columns: 1fr; }
+  .hero-grid-info .hero-card { flex-direction: column; align-items: flex-start; }
+}
+html[data-theme="dark"] .hero-bot-logo { border-color: rgba(148, 163, 184, 0.35); }
