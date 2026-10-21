@@ -264,6 +264,7 @@ async def btn_admin_new_speakings(message: types.Message):
 @dp.message(CommandStart(), StateFilter("*"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
+    pending_logins.pop(message.from_user.id, None)
     try:
         user_id = message.from_user.id
         user_name = html.escape(message.from_user.full_name or "O'quvchi")
@@ -284,17 +285,26 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 f"Assalomu alaykum, <b>{st_name}</b>!\n\n"
                 f"Hisobingiz ulangan. Quyidagi menyudan foydalanishingiz mumkin:"
             )
-        else:
+        login_inline = None
+        if not student:
             text = (
                 f"Assalomu alaykum, <b>{user_name}</b>!\n\n"
                 "Teacher Muzaffar Amirovning ingliz tili platformasiga xush kelibsiz!\n\n"
-                "Botdan to'liq foydalanish uchun hisobingizni ulang:\n"
-                "Pastdagi <b>🔑 Login orqali ulash</b> tugmasini bosing yoki:\n"
-                "<code>/login login parol</code> shaklida yuboring "
-                "(Masalan: <code>/login jasur 123</code>)."
+                "Hisobingizni ulash uchun quyidagi tugmani bosing:\n"
+                "🔑 <b>Login orqali kirish</b>\n\n"
+                "Yoki pastki menyudagi <b>🔑 Login orqali ulash</b> tugmasidan foydalaning "
+                "(<code>/login jasur 123</code> yoki <code>jasur 123</code> tezkor kirish ham ishlaydi)."
             )
+            login_inline = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔑 Login orqali kirish", callback_data="start_login")]
+            ])
         try:
-            await message.answer(text, reply_markup=get_main_keyboard(), parse_mode="HTML")
+            if login_inline is not None:
+                await message.answer(text, reply_markup=login_inline, parse_mode="HTML")
+                await message.answer("📋 Quyidagi menyudan foydalaning:",
+                                     reply_markup=get_main_keyboard(), parse_mode="HTML")
+            else:
+                await message.answer(text, reply_markup=get_main_keyboard(), parse_mode="HTML")
         except Exception as kb_err:
             logging.error(f"Klaviatura xatosi: {kb_err}")
             await message.answer(text, parse_mode="HTML")
@@ -351,7 +361,8 @@ async def cmd_login(message: types.Message):
             "🔑 <b>O'quvchi kabineti ulanishi</b>\n\n"
             "Iltimos, shu ko'rinishda yozing:\n"
             "<code>/login jasur 123</code>\n\n"
-            "yoki menyudan <b>🔑 Login orqali ulash</b> tugmasini bosing.",
+            "yoki menyudagi <b>🔑 Login orqali ulash</b> tugmasini bosib, "
+            "2 qadamda (avval login, so'ng parol) kirining.",
             parse_mode="HTML",
         )
         return
@@ -386,11 +397,11 @@ async def attempt_login(message: types.Message, login: str, password: str):
             supabase.table("students").update({"telegram_chat_id": message.from_user.id}).eq("id", st["id"]).execute()
         except Exception as e:
             logging.error(f"login update: {e}")
-        pending_logins.discard(message.from_user.id)
+        pending_logins.pop(message.from_user.id, None)
         st_name = html.escape(str(st.get("name") or login))
         welcome_msg = (
-            f"✅ <b>Xush kelibsiz, {st_name}!</b>\n\n"
-            "Hisobingiz Telegramga muvaffaqiyatli ulandi. Endi speaking topshirishingiz va baholaringizni ko'rishingiz mumkin."
+            f"🎉 <b>Xush kelibsiz, {st_name}!</b>\n\n"
+            "Hisobingiz muvaffaqiyatli ulandi. Endi speaking topshirishingiz va baholaringizni ko'rishingiz mumkin."
         )
         # Xabarni kafolatlangan holda yuborish
         try:
@@ -410,10 +421,104 @@ async def attempt_login(message: types.Message, login: str, password: str):
         await message.answer(f"⚠️ Xatolik yuz berdi: {e}")
 
 
+async def _login_exists(login: str) -> bool:
+    '''Login bazada bormi (ustoz uchun m_amirov doim mavjud).'''
+    if str(login).lower() == "m_amirov":
+        return True
+    try:
+        res = supabase.table("students").select("id").eq("login", login).limit(1).execute()
+        return bool(res.data)
+    except Exception as e:
+        logging.error(f"_login_exists: {e}")
+        return False
+
+
+async def _finish_login_password(message: types.Message, uid: int, login: str, password: str):
+    '''2-qadam: parolni tekshirib, hisobni ulaydi yoki qayta so'raydi.'''
+    pwd = str(password).strip()
+    if str(login).lower() == "m_amirov":
+        if pwd == "123":
+            pending_logins.pop(uid, None)
+            try:
+                await message.answer(
+                    "👑 <b>Xush kelibsiz, Muzaffar Amirov!</b>\n\nUstoz hisobingiz ulandi.",
+                    reply_markup=admin_reply_keyboard(), parse_mode="HTML",
+                )
+            except Exception as e:
+                logging.error(f"_finish_login_password (admin): {e}")
+            return
+        await message.answer(
+            "❌ <b>Parol noto'g'ri!</b>\nIltimos, parolni qaytadan kiriting:",
+            reply_markup=login_inline_kb(include_restart=True), parse_mode="HTML",
+        )
+        return
+    try:
+        res = supabase.table("students").select("*").eq("login", login).limit(1).execute()
+        rows = res.data or []
+    except Exception as e:
+        logging.error(f"_finish_login_password (query): {e}")
+        await message.answer("⚠️ Bazaga ulanib bo'lmadi. Birozdan so'ng qayta urinib ko'ring.")
+        return
+    if not rows:
+        pending_logins[uid] = {"step": "waiting_login"}
+        await message.answer(
+            "❌ <b>Bunday login topilmadi!</b>\nIltimos, loginingizni tekshirib qaytadan kiriting:",
+            reply_markup=login_inline_kb(), parse_mode="HTML",
+        )
+        return
+    st = rows[0]
+    st_pwd = str(st.get("password") if st.get("password") is not None else "").strip()
+    if st_pwd != pwd:
+        await message.answer(
+            "❌ <b>Parol noto'g'ri!</b>\nIltimos, parolni qaytadan kiriting:",
+            reply_markup=login_inline_kb(include_restart=True), parse_mode="HTML",
+        )
+        return
+    try:
+        supabase.table("students").update({"telegram_chat_id": uid}).eq("id", st["id"]).execute()
+    except Exception as e:
+        logging.error(f"_finish_login_password (update): {e}")
+    pending_logins.pop(uid, None)
+    st_name = html.escape(str(st.get("name") or login))
+    try:
+        await message.answer(
+            f"🎉 <b>Xush kelibsiz, {st_name}!</b>\n\n"
+            "Hisobingiz muvaffaqiyatli ulandi. Endi speaking topshirishingiz va baholaringizni ko'rishingiz mumkin.",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logging.error(f"_finish_login_password (welcome): {e}")
+    try:
+        await message.answer("📋 O'quvchi menyusi:", reply_markup=get_main_keyboard(), parse_mode="HTML")
+    except Exception:
+        pass
+
+
 # ============================================================
 # O'QUVCHI MENYUSI (ReplyKeyboard tugmalari)
 # ============================================================
-pending_logins = set()  # chat_id lar "login parol" kutmoqda
+pending_logins = {}  # chat_id -> {"step": "waiting_login"|"waiting_password", "login": ...}
+
+LOGIN_STEP1_TEXT = "👤 <b>1-qadam:</b> Iltimos, <b>loginingizni</b> kiriting:"
+
+
+def login_inline_kb(include_restart: bool = False) -> InlineKeyboardMarkup:
+    '''Login oqimi inline tugmalari: [🔄 Boshqa login] (ixtiyoriy) + [❌ Bekor qilish].'''
+    rows = []
+    if include_restart:
+        rows.append([InlineKeyboardButton(text="🔄 Boshqa login kiritish", callback_data="start_login")])
+    rows.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel_login")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def start_login_flow_send(chat_id: int):
+    '''1-qadamni bot orqali yuboradi (inline tugma bosilganda).'''
+    pending_logins[chat_id] = {"step": "waiting_login"}
+    try:
+        await bot.send_message(chat_id, LOGIN_STEP1_TEXT,
+                               reply_markup=login_inline_kb(), parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"start_login_flow_send: {e}")
 
 
 async def _linked_or_prompt(message: types.Message):
@@ -439,14 +544,41 @@ async def btn_student_login(message: types.Message):
     if st:
         await message.answer(f"✅ Siz ulangan: <b>{html.escape(str(st.get('name') or ''))}</b>", parse_mode="HTML")
         return
-    pending_logins.add(message.from_user.id)
-    await message.answer(
-        "🔑 <b>Login orqali ulash</b>\n\n"
-        "Loginni va parolni <b>bitta xabarda</b> yozing — masalan:\n"
-        "<code>jasur 123</code>\n\n"
-        "Login va parolingizni ilovadan ko'rishingiz mumkin.",
-        parse_mode="HTML",
-    )
+    pending_logins[message.from_user.id] = {"step": "waiting_login"}
+    try:
+        await message.answer(LOGIN_STEP1_TEXT, reply_markup=login_inline_kb(), parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"btn_student_login: {e}")
+
+
+# ---------------- 2 qadamli login: inline tugmalar ----------------
+@dp.callback_query(F.data == "start_login")
+async def cb_login_start(call: types.CallbackQuery):
+    '''[🔑 Login orqali kirish] / [🔄 Boshqa login kiritish] → 1-qadamni boshlaydi.'''
+    try:
+        await call.answer()
+    except Exception:
+        pass
+    await start_login_flow_send(call.from_user.id)
+
+
+@dp.callback_query(F.data == "cancel_login")
+async def cb_login_cancel(call: types.CallbackQuery):
+    '''[❌ Bekor qilish] → kutish holatini tozalaydi.'''
+    pending_logins.pop(call.from_user.id, None)
+    try:
+        await call.answer("Ulanish bekor qilindi")
+    except Exception:
+        pass
+    try:
+        await bot.send_message(
+            call.from_user.id,
+            "❌ <b>Ulanish bekor qilindi.</b>\n\n"
+            "Yana urinishingiz uchun menyudan <b>🔑 Login orqali ulash</b> tugmasini bosing.",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logging.error(f"cb_login_cancel: {e}")
 
 
 @dp.message(F.text == STUDENT_MENU["grades"])
@@ -1315,21 +1447,45 @@ async def on_free_text(message: types.Message):
     text = (message.text or "").strip()
     if not text or text.startswith("/"):
         return
-    if message.from_user.id in pending_logins:
-        parts = text.split()
-        if len(parts) != 2:
+    uid = message.from_user.id
+    parts = text.split()
+    step = (pending_logins.get(uid) or {}).get("step")
+
+    try:
+        # --- 2-qadam: parol kutilmoqda ---
+        if step == "waiting_password":
+            await _finish_login_password(message, uid, pending_logins[uid]["login"], text)
+            return
+
+        # --- Tezkor kirish: "jasur 123" yoki "/login jasur 123" (ikki so'z) ---
+        if len(parts) == 2 and re.fullmatch(r"[A-Za-z0-9_.\-]+", parts[0]):
+            await attempt_login(message, parts[0], parts[1])
+            return
+
+        # --- 1-qadam: login kutilmoqda ---
+        if step == "waiting_login":
+            login = parts[0]
+            if not await _login_exists(login):
+                await message.answer(
+                    "❌ <b>Bunday login topilmadi!</b>\nIltimos, loginingizni tekshirib qaytadan kiriting:",
+                    reply_markup=login_inline_kb(), parse_mode="HTML",
+                )
+                return
+            pending_logins[uid] = {"step": "waiting_password", "login": login}
             await message.answer(
-                "Ikkita so'z kiriting: <code>login parol</code> — masalan: <code>jasur 123</code>",
-                parse_mode="HTML",
+                f"✅ <b>Login qabul qilindi!</b> (<code>{html.escape(login)}</code>)\n\n"
+                "🔒 <b>2-qadam:</b> Endi <b>parolingizni</b> kiriting:",
+                reply_markup=login_inline_kb(include_restart=True), parse_mode="HTML",
             )
             return
-        await attempt_login(message, parts[0], parts[1])
-        return
-    # Yordam: ro'yxatdan o'tmagan matn → menyuni qayta ko'rsatamiz
-    if message.from_user.id == config.ADMIN_ID:
-        await message.answer("📋 Ustoz menyusi:", reply_markup=admin_reply_keyboard())
-    else:
-        await message.answer("📋 O'quvchi menyusi:", reply_markup=get_main_keyboard())
+
+        # --- Yordam: erkin matn → menyuni qayta ko'rsatamiz ---
+        if uid == config.ADMIN_ID:
+            await message.answer("📋 Ustoz menyusi:", reply_markup=admin_reply_keyboard())
+        else:
+            await message.answer("📋 O'quvchi menyusi:", reply_markup=get_main_keyboard())
+    except Exception as e:
+        logging.error(f"on_free_text: {e}")
 
 
 # Asosiy ishga tushirish

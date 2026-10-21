@@ -365,15 +365,18 @@ async def main():
     await B.cmd_start(st, dummy_state)
     check("Assalomu alaykum" in st.answers[0]["text"], "start: bo'sh foydalanuvchi salomi")
     check("🔑 Login orqali ulash" in st.answers[0]["text"], "start: bo'sh foydalanuvchi login tugmasi")
-    stu_rb = rb_texts(st.answers[0]["reply_markup"])
+    stu_rb = rb_texts(st.answers[1]["reply_markup"])
     check(stu_rb is not None and "📱 Shaxsiy Kabinetim" in stu_rb,
           "start: bo'sh foydalanuvchi menyusi '📱 Shaxsiy Kabinetim'")
     check("🎙 Speaking topshirish" in stu_rb and "📊 Baholarim va Qarzim" in stu_rb,
           "start: bo'sh foydalanuvchi menyusi [🎙 Speaking topshirish] [📊 Baholarim va Qarzim]")
     check("🔑 Login orqali ulash" in stu_rb, "start: bo'sh foydalanuvchi menyusi [🔑 Login orqali ulash]")
-    check(st.answers[0]["reply_markup"].is_persistent is True,
+    check(st.answers[1]["reply_markup"].is_persistent is True,
           "start: bo'sh foydalanuvchi menyusi doimiy (is_persistent=True)")
     check(st.answers[0]["parse_mode"] == "HTML", "start: javob HTML parse_mode bilan")
+    _cds1 = [cd for _t, cd in btn_texts(st.answers[0]["reply_markup"])]
+    check("start_login" in _cds1,
+          "start: xush kelibsiz xabar patida [🔑 Login orqali kirish] (callback=start_login)")
 
     # 1b) /start — allaqachon bazaga bog'langan foydalanuvchi (Jasur, chat 555)
     st = Msg(555, "/start")
@@ -385,6 +388,8 @@ async def main():
     stu_rb = rb_texts(st.answers[0]["reply_markup"])
     check(stu_rb is not None and "📱 Shaxsiy Kabinetim" in stu_rb,
           "start: mavjud foydalanuvchi menyusi '📱 Shaxsiy Kabinetim'")
+    check([cd for _t, cd in btn_texts(st.answers[0]["reply_markup"])] == [],
+          "start: ulangan foydalanuvchida login inline tugmasi YO'Q")
     check("🎙 Speaking topshirish" in stu_rb and "📊 Baholarim va Qarzim" in stu_rb,
           "start: mavjud foydalanuvchi menyusi [🎙 Speaking topshirish] [📊 Baholarim va Qarzim]")
     check("🔑 Login orqali ulash" in stu_rb, "start: mavjud foydalanuvchi menyusi [🔑 Login orqali ulash]")
@@ -396,12 +401,12 @@ async def main():
     st.state = "*"
     await B.cmd_start(st, dummy_state)
     check("Assalomu alaykum" in st.answers[0]["text"], "start: ustozga ham salom boradi")
-    ad_rb = rb_texts(st.answers[0]["reply_markup"])
+    ad_rb = rb_texts(st.answers[1]["reply_markup"])
     check(ad_rb is not None and "📱 Shaxsiy Kabinetim" in ad_rb,
           "start: ustoz uchun ham asosiy menyu '📱 Shaxsiy Kabinetim'")
     check("🔑 Login orqali ulash" in ad_rb,
           "start: ustoz uchun ham asosiy menyu [🔑 Login orqali ulash]")
-    check(st.answers[0]["reply_markup"].is_persistent is True,
+    check(st.answers[1]["reply_markup"].is_persistent is True,
           "start: ustoz menyusi doimiy (is_persistent=True)")
 
     # =========================================================
@@ -533,9 +538,13 @@ async def main():
 
     m = Msg(999, B.STUDENT_MENU["login"])
     await B.btn_student_login(m)
-    check("Login orqali ulash" in m.answers[0]["text"],
-          "menyu: login tugmasi -> yo'riqnoma")
+    check("1-qadam" in m.answers[0]["text"] and "loginingizni" in m.answers[0]["text"],
+          "menyu: login tugmasi -> 1-qadam (login so'raydi)")
+    check(any(cd == "cancel_login" for _t, cd in btn_texts(m.answers[0]["reply_markup"])),
+          "menyu: 1-qadam xabarida [❌ Bekor qilish] inline tugmasi")
     check(999 in B.pending_logins, "menyu: chat 999 kutish holatiga o'tdi")
+    check(B.pending_logins.get(999, {}).get("step") == "waiting_login",
+          "menyu: kutish holati step=waiting_login")
 
     m2 = Msg(999, "malika 123")
     await B.on_free_text(m2)
@@ -577,6 +586,82 @@ async def main():
     await B.attempt_login(t, "jasur", "wrong")
     check(any("parol noto'g'ri" in (a["text"] or "") for a in t.answers),
           "login: parol noto'g'ri -> alohida xabar qaytadi")
+
+    # =========================================================
+    # 6b) 2 QADAMLI LOGIN OQIMI (inline tugmalar: start/cancel)
+    # =========================================================
+    reset_rows()
+    B.pending_logins.clear()
+    clear_fb(fb)
+
+    c = Call(888, "start_login")
+    await B.cb_login_start(c)
+    check(B.pending_logins.get(888, {}).get("step") == "waiting_login",
+          "2qadam: start_login callback -> waiting_login")
+    check(any("1-qadam" in (s["text"] or "") for s in fb.sent),
+          "2qadam: '1-qadam: loginingizni kiriting' yuborildi")
+    check(any(cd == "cancel_login" for _t, cd in btn_texts(fb.sent[-1]["reply_markup"])),
+          "2qadam: 1-qadam xabarida [❌ Bekor qilish] tugmasi")
+
+    m = Msg(888, "yoqlogin")
+    await B.on_free_text(m)
+    check(any("Bunday login topilmadi" in (a["text"] or "") for a in m.answers),
+          "2qadam: login topilmadi -> ogohlantirish")
+    check(B.pending_logins.get(888, {}).get("step") == "waiting_login",
+          "2qadam: noto'g'ri logindan keyin waiting_login saqlanadi")
+
+    m = Msg(888, "malika")
+    await B.on_free_text(m)
+    st8 = B.pending_logins.get(888, {})
+    check(st8.get("step") == "waiting_password" and st8.get("login") == "malika",
+          "2qadam: login qabul -> waiting_password + login saqlandi")
+    check(any("Login qabul qilindi" in (a["text"] or "") and "malika" in (a["text"] or "")
+              for a in m.answers),
+          "2qadam: 'Login qabul qilindi! (malika)' xabari")
+    _cds2 = [cd for _t, cd in btn_texts(m.answers[-1]["reply_markup"])]
+    check("start_login" in _cds2 and "cancel_login" in _cds2,
+          "2qadam: [🔄 Boshqa login kiritish] + [❌ Bekor qilish] tugmalari")
+
+    m = Msg(888, "wrong")
+    await B.on_free_text(m)
+    check(any("Parol noto'g'ri" in (a["text"] or "") for a in m.answers),
+          "2qadam: parol noto'g'ri -> xabar")
+    check(B.pending_logins.get(888, {}).get("step") == "waiting_password",
+          "2qadam: noto'g'ri paroldan keyin waiting_password saqlanadi")
+    check(any(cd == "start_login" for _t, cd in btn_texts(m.answers[-1]["reply_markup"])),
+          "2qadam: parol xatosida [🔄 Boshqa login kiritish] tugmasi")
+
+    m = Msg(888, "123")
+    await B.on_free_text(m)
+    mal8 = [s for s in FAKE_ROWS["students"] if s["login"] == "malika"][0]
+    check(mal8["telegram_chat_id"] == 888, "2qadam: telegram_chat_id yangilandi")
+    check(888 not in B.pending_logins, "2qadam: kutish holati o'chirildi")
+    check(any("Xush kelibsiz, Malika" in (a["text"] or "") for a in m.answers),
+          "2qadam: 🎉 Xush kelibsiz, Malika!")
+    check(any("muvaffaqiyatli ulandi" in (a["text"] or "") for a in m.answers),
+          "2qadam: 'Hisobingiz muvaffaqiyatli ulandi'")
+    check(any("🎙 Speaking topshirish" in rb_texts(a["reply_markup"]) for a in m.answers),
+          "2qadam: asosiy menyu klaviaturasi chiqdi")
+
+    B.pending_logins.clear()
+    await B.cb_login_start(Call(777, "start_login"))
+    await B.cb_login_cancel(Call(777, "cancel_login"))
+    check(777 not in B.pending_logins, "2qadam: cancel_login -> kutish holati tozalandi")
+    check(any("bekor qilindi" in (s["text"] or "") for s in fb.sent),
+          "2qadam: 'Ulanish bekor qilindi' xabari")
+
+    B.pending_logins.clear()
+    m = Msg(888, "nilufar 123")
+    await B.on_free_text(m)
+    nil8 = [s for s in FAKE_ROWS["students"] if s["login"] == "nilufar"][0]
+    check(nil8["telegram_chat_id"] == 888, "tezkor: 'nilufar 123' (pending'siz) -> darhol ulandi")
+    check(any("Xush kelibsiz" in (a["text"] or "") for a in m.answers),
+          "tezkor: tezkor kirishda xush kelibsiz xabari")
+
+    # Keyingi bo'limlar uchun holatni tiklash (6-bo'limdagidek: malika→999, nilufar→666)
+    [r for r in FAKE_ROWS["students"] if r["login"] == "malika"][0]["telegram_chat_id"] = 999
+    [r for r in FAKE_ROWS["students"] if r["login"] == "nilufar"][0]["telegram_chat_id"] = 666
+    B.pending_logins.clear()
     # 4) Inline kb/WebApp xatosida ham 'Xush kelibsiz' xabari YUBORILADI
     class KbFailMsg(Msg):
         async def answer(self, text=None, reply_markup=None, parse_mode=None, **kw):
