@@ -968,22 +968,24 @@ function timeAgoText(iso) {
   if (!t || isNaN(t)) return '\u2014';
   const diff = Math.max(0, Date.now() - t);
   const m = Math.floor(diff / 60000);
-  if (m < 1) return 'hozirgina';
-  if (m < 60) return m + ' daqiqa oldin';
+  const en = getLang() === 'en';
+  if (m < 1) return en ? 'Just now' : 'hozirgina';
+  if (m < 60) return en ? (m + ' min ago') : (m + ' daqiqa oldin');
   const h = Math.floor(m / 60);
-  if (h < 24) return h + ' soat oldin';
-  return Math.floor(h / 24) + ' kun oldin';
+  if (h < 24) return en ? (h + ' hours ago') : (h + ' soat oldin');
+  const d = Math.floor(h / 24);
+  return en ? (d + ' days ago') : (d + ' kun oldin');
 }
 
 /* O'quvchi kartasi satri: 5 daqiqa ichida -> 'Onlayn (iPhone)',
    aks holda -> 'Android \u2022 20 daqiqa oldin' */
 function presenceText(s) {
   if (!s || !s.lastSeen) return '';
-  const t = new Date(s.lastSeen).getTime();
-  if (!t || isNaN(t)) return '';
-  const os = s.lastDevice ? String(s.lastDevice).split(' (')[0] : 'qurilma';
-  const mins = (Date.now() - t) / 60000;
-  if (mins < 5) return '\ud83d\udfe2 Onlayn (' + os + ')';
+  const ts = new Date(s.lastSeen).getTime();
+  if (!ts || isNaN(ts)) return '';
+  const os = s.lastDevice ? String(s.lastDevice).split(' (')[0] : t('qurilma');
+  const mins = (Date.now() - ts) / 60000;
+  if (mins < 5) return '\ud83d\udfe2 ' + t('Onlayn') + ' (' + os + ')';
   return '\ud83d\udcf1 ' + os + ' \u2022 ' + timeAgoText(s.lastSeen);
 }
 function presenceHTML(s) {
@@ -1100,6 +1102,7 @@ const Sessions = {
 /* Boshqa qurilmadan chiqarildik: localStorage tozalanib, login ekraniga qaytamiz */
 function forcedLogout() {
   Sessions.list = [];
+  analyticsCall('reset');
   try { localStorage.clear(); } catch (e) {}
   state.attDraft = null;
   state.editor = null;
@@ -1116,27 +1119,27 @@ function sessionsSectionHTML() {
   const cur = getSessionId();
   const others = (Sessions.list || []).filter(function (s) { return s.id !== cur; });
   return `
-  <div class="section-title">📱 Faol qurilmalar</div>
+  <div class="section-title">${ico('smartphone', 15)} ${t('Faol qurilmalar')}</div>
   <div class="card list-card" id="sessions-card">
     <div class="list-row session-row is-current">
       <span class="session-info">
-        <span class="session-name">🟢 Bu qurilma (${esc(dev.short)})</span>
-        <span class="muted small">joriy sessiya</span>
+        <span class="session-name"><span class="sess-dot"></span>${t('Bu qurilma')} (${esc(dev.short)})</span>
+        <span class="muted small">${t('joriy sessiya')}</span>
       </span>
     </div>
     ${others.length ? others.map(function (s) {
       return `
     <div class="list-row session-row">
       <span class="session-info">
-        <span class="session-name">${esc(s.device_name || "Noma'lum qurilma")}</span>
+        <span class="session-name">${esc(s.device_name || t("Noma'lum qurilma"))}</span>
         <span class="muted small">${esc(timeAgoText(s.last_active))}</span>
       </span>
-      <button type="button" class="btn btn-xs danger" data-act="session-logout" data-sess="${esc(s.id)}">Chiqarib yuborish</button>
+      <button type="button" class="btn btn-xs danger" data-act="session-logout" data-sess="${esc(s.id)}">${t('Chiqarib yuborish')}</button>
     </div>`;
     }).join('') : `
-    <div class="list-row"><span class="muted small">Boshqa qurilmalar ulanmagan</span></div>`}
+    <div class="list-row"><span class="muted small">${t('Boshqa qurilmalar ulanmagan')}</span></div>`}
   </div>
-  ${others.length ? `<button type="button" class="btn btn-danger btn-block" data-act="session-logout-all">⛔ Barcha boshqa qurilmalardan chiqish</button>` : ''}
+  ${others.length ? `<button type="button" class="btn btn-danger btn-block" data-act="session-logout-all">${ico('alert', 16)} ${t('Barcha boshqa qurilmalardan chiqish')}</button>` : ''}
   `;
 }
 
@@ -1149,6 +1152,21 @@ window.__sessions = {
   forcedLogout: forcedLogout
 };
 
+
+/* ---- Analitika (js/analytics.js) — xato bo'lsa ham ilova ishlayveradi ---- */
+function analyticsCall(name, arg1, arg2) {
+  try {
+    const a = window.Analytics;
+    if (!a || typeof a[name] !== 'function') return;
+    a[name](arg1, arg2);
+  } catch (e) { /* analitika hech qachon oqimni to'xtatmaydi */ }
+}
+function analyticsConsent() {
+  try {
+    const a = window.Analytics;
+    return !!(a && a.consent && a.consent.granted());
+  } catch (e) { return false; }
+}
 
 /* ---- Hisob va sessiya (login/parol) ---- */
 function getSession() { return store.get(K.session, null); }
@@ -1177,6 +1195,14 @@ function startSession(login) {
   /* Xavfsizlik: sessiya + oxirgi qurilma/vaqt yoziladi (user_sessions / students) */
   state.forcedOut = false;
   Sessions.onLogin();
+  /* Analitika: kirish (faqat rozilik berilgan bo'lsa) — hisob logini yuborilmaydi */
+  const anon = linkedStudent();
+  analyticsCall('onLogin', {
+    account: login,
+    role: accounts[login].role,
+    hasGroup: !!(anon && anon.groupId),
+    surface: tg ? 'telegram' : 'browser'
+  });
 }
 function go(screen) {
   state.screen = screen;
@@ -1493,6 +1519,11 @@ const I18N_EN = {
   'Speaking slotlari': 'Speaking Slots', 'Speaking (1-on-1)': 'Speaking',
   'Profil': 'Profile', 'Kabinet': 'Dashboard',
   'Kirish': 'Sign In', 'Chiqish': 'Log Out', 'Hisobdan chiqish': 'Log Out',
+  'Maxfiylik': 'Privacy', 'Anonim statistika': 'Anonymous analytics',
+  'Anonim statistika yoqildi': 'Anonymous analytics turned on',
+  "Anonim statistika o'chirildi": 'Anonymous analytics turned off',
+  "Rozilik bersangiz, kirish va uyga vazifa harakatlari PostHog'ga loginsiz (anonim ID) yuboriladi. Rozilik bo'lmasa hech narsa yuborilmaydi.":
+    'If you allow it, sign-in and homework actions are sent to PostHog without your login (anonymous ID). Nothing is sent without your consent.',
   'Uyga vazifalar': 'Homework', 'Qarz': 'Debt',
   'Guruh': 'Group', 'Sinf': 'Class', 'Sana': 'Date',
   'Oldingi hafta': 'Previous week', 'Bugun': 'Today', 'Keyingi hafta': 'Next week',
@@ -1508,23 +1539,45 @@ const I18N_EN = {
   'Topshirish muddati': 'Due date',
   'Guruh taylanmagan': 'No group assigned',
   'Barchasi': 'All',
-  /* --- Kirish sahifasi (hero): sarlavha, tavsif, 4 ta ma'lumot kartasi --- */
+  /* --- Kirish sahifasi (hero): sarlavha, tavsif, 3 ta ma'lumot kartasi --- */
   "Teacher Muzaffar Amirov — Ingliz tili ta'lim platformasi":
     'Teacher Muzaffar Amirov — English Learning Platform',
-  "Ushbu platforma Muzaffar Amirovning 5–11-sinf o'quvchilari uchun mo'ljallangan zamonaviy ta'lim va nazorat tizimidir. Tizim orqali o'quvchilar darslarni o'zlashtirishi, uyga vazifalar va speaking topshiriqlarini bajarishi, ota-onalar esa farzandining davomat va baholarini real vaqt rejimida kuzatib borishi mumkin.":
-    'This platform is a modern learning and monitoring system designed by Muzaffar Amirov for students in grades 5–11. Through the system, students can master their lessons and complete homework and speaking tasks, while parents can track their child\'s attendance and grades in real time.',
-  "Yakkama-yakka Speaking va Audio/Video nazorati": '1-on-1 Speaking and Audio/Video Monitoring',
-  "O'quvchilar mavzular bo'yicha speaking topshiriqlarini darsda yoki Telegram bot orqali ovozli xabar (voice) va dumaloq video (krujok) shaklida yuboradilar. Ustoz har bir javobni tekshirib, 10 ballik tizimda baholaydi hamda speaking qarzlarini avtomatik hisoblab boradi.":
-    'Students send speaking tasks by topic in class or via the Telegram bot as voice messages and round video messages (krujok). The teacher reviews every response, grades it on a 10-point scale, and automatically tracks speaking debt.',
-  "Kundalik 10 ballik elektron jurnal va Davomat": 'Daily 10-Point Electronic Gradebook and Attendance',
-  "Har bir darsdagi faollik va baholar shaffof elektron jurnalga kiritiladi. O'quvchi dars qoldirsa yoki yangi baho olsa, tizim darhol qayd etadi va haftalik/umumiy o'rtacha reytingni hisoblaydi.":
-    'Every activity and grade in class is entered into a transparent electronic gradebook. If a student misses a lesson or receives a new grade, the system records it immediately and calculates weekly and overall average ratings.',
-  "Telegram Bot integratsiyasi (@uzbekspeakingcheckbot)": 'Telegram Bot Integration (@uzbekspeakingcheckbot)',
-  "Yangi uyga vazifalar, speaking eslatmalari, olingan baholar va ustoz xabarlari bevosita o'quvchining Telegram profiliga ovozli bildirishnoma sifatida boradi.":
-    "New homework, speaking reminders, received grades, and teacher messages go straight to the student's Telegram profile as voice notifications.",
-  "Shaxsiy kabinet va Xavfsizlik": 'Personal Cabinet and Security',
-  "Har bir o'quvchi maxsus login va parol orqali o'z kabinetiga kiradi, vazifalarni belgilaydi, ustoz bilan yozishadi va o'z profiliga ulangan faol qurilmalarni nazorat qiladi.":
-    'Each student signs in to their own cabinet with a dedicated login and password, sets tasks, chats with the teacher, and monitors the active devices linked to their profile.'
+  "Ushbu platforma Muzaffar Amirovning 5–11-sinf o'quvchilari uchun mo'ljallangan zamonaviy ta'lim va nazorat tizimidir. O'quvchilar darslarni o'zlashtirishi, vazifalar va speaking topshiriqlarini bajarishi, ota-onalar esa davomat va baholarni real vaqtda kuzatishi mumkin.":
+    "A modern learning and monitoring platform designed for Teacher Muzaffar Amirov's Grade 5–11 students. Track daily lessons, complete speaking assignments, and monitor attendance and grades in real time.",
+  "Yakkama-yakka Speaking va Audio/Video tahlil": '1-on-1 Speaking & Audio/Video Review',
+  "O'quvchilar mavzular bo'yicha speaking topshiriqlarini darsda yoki Telegram bot orqali ovozli xabar va krujok video shaklida yuboradilar. Har bir javob 10 ballik tizimda baholanadi va speaking qarzlari avtomatik hisoblanadi.":
+    'Students submit speaking tasks in class or via Telegram bot as voice and video notes. Every submission is graded on a 10-point scale with automatic speaking debt tracking.',
+  "Kundalik 10 ballik elektron jurnal va Davomat": 'Daily 10-Point Gradebook & Attendance',
+  "Har bir darsdagi faollik, davomat va baholar shaffof elektron jurnalga kiritiladi hamda haftalik va umumiy o'rtacha reyting avtomatik hisoblanadi.":
+    'Class participation, attendance, and grades are recorded in a transparent electronic journal with automatic weekly and overall average calculations.',
+  "Telegram Bot ekotizimi (@uzbekspeakingcheckbot)": 'Telegram Bot Ecosystem (@uzbekspeakingcheckbot)',
+  "Yangi uyga vazifalar, speaking eslatmalari, olingan baholar va ustoz xabarlari bevosita o'quvchining Telegram profiliga tezkor yetkaziladi.":
+    "Instant notifications for new homework, speaking schedules, grades, and teacher messages delivered directly to the student's Telegram.",
+  /* --- Profil: faol qurilmalar --- */
+  'Faol qurilmalar': 'Active Devices',
+  'Bu qurilma': 'This device',
+  'joriy sessiya': 'current session',
+  'Chiqarib yuborish': 'Terminate',
+  'Barcha boshqa qurilmalardan chiqish': 'Terminate All Other Sessions',
+  'Boshqa qurilmalar ulanmagan': 'No other devices connected',
+  "Noma'lum qurilma": 'Unknown device',
+  'Onlayn': 'Online',
+  'qurilma': 'device',
+  /* --- Profil: xavfsizlik, zaxira, tozalash --- */
+  'Xavfsizlik': 'Security',
+  "Ko'rinish": 'Role',
+  "Parolni o'zgartirish": 'Change Password',
+  "Ma'lumotlar Bazasi Zaxirasi": 'Database Backup',
+  "Guruhlar, o'quvchilar, davomat, baholar, xabarlar va speaking topshiriqlari JSON faylda saqlanadi.":
+    'Groups, students, attendance, grades, messages, and speaking tasks are saved in a JSON file.',
+  'Bazani yuklab olish (Backup)': 'Download Backup',
+  'Bazani qayta tiklash (Restore)': 'Restore Backup',
+  'Tozalash': 'Cleanup',
+  "Tozalashdan oldin barcha jadvallar fayl ko'rinishida avtomatik yuklab olinadi.":
+    'All tables are automatically downloaded as a file before cleanup.',
+  'Xabarlar': 'Messages',
+  'Topshiriqlar': 'Tasks',
+  'Tanlangan jadvalni tozalash': 'Clear Selected Table'
 };
 function getLang() { return store.get('app_lang', 'uz'); }
 function t(s) {
@@ -1657,31 +1710,31 @@ function loginScreen() {
     <section class="hero">
       <img class="hero-emblem" src="logo.png" alt="Muzaffar Amirov gerbi" width="96" height="96" />
       <h1 class="hero-title">${t("Teacher Muzaffar Amirov — Ingliz tili ta'lim platformasi")}</h1>
-      <p class="hero-sub">${t("Ushbu platforma Muzaffar Amirovning 5–11-sinf o'quvchilari uchun mo'ljallangan zamonaviy ta'lim va nazorat tizimidir. Tizim orqali o'quvchilar darslarni o'zlashtirishi, uyga vazifalar va speaking topshiriqlarini bajarishi, ota-onalar esa farzandining davomat va baholarini real vaqt rejimida kuzatib borishi mumkin.")}</p>
+      <p class="hero-sub">${t("Ushbu platforma Muzaffar Amirovning 5–11-sinf o'quvchilari uchun mo'ljallangan zamonaviy ta'lim va nazorat tizimidir. O'quvchilar darslarni o'zlashtirishi, vazifalar va speaking topshiriqlarini bajarishi, ota-onalar esa davomat va baholarni real vaqtda kuzatishi mumkin.")}</p>
       <div class="hero-grid hero-grid-info">
         <div class="hero-card">
           <span class="hero-ico tone-indigo">${ico('mic', 20)}</span>
-          <b>${t("Yakkama-yakka Speaking va Audio/Video nazorati")}</b>
-          <span>${t("O'quvchilar mavzular bo'yicha speaking topshiriqlarini darsda yoki Telegram bot orqali ovozli xabar (voice) va dumaloq video (krujok) shaklida yuboradilar. Ustoz har bir javobni tekshirib, 10 ballik tizimda baholaydi hamda speaking qarzlarini avtomatik hisoblab boradi.")}</span>
+          <div class="hero-card-body">
+            <b>${t("Yakkama-yakka Speaking va Audio/Video tahlil")}</b>
+            <span>${t("O'quvchilar mavzular bo'yicha speaking topshiriqlarini darsda yoki Telegram bot orqali ovozli xabar va krujok video shaklida yuboradilar. Har bir javob 10 ballik tizimda baholanadi va speaking qarzlari avtomatik hisoblanadi.")}</span>
+          </div>
         </div>
         <div class="hero-card">
           <span class="hero-ico tone-blue">${ico('clipboardCheck', 20)}</span>
-          <b>${t("Kundalik 10 ballik elektron jurnal va Davomat")}</b>
-          <span>${t("Har bir darsdagi faollik va baholar shaffof elektron jurnalga kiritiladi. O'quvchi dars qoldirsa yoki yangi baho olsa, tizim darhol qayd etadi va haftalik/umumiy o'rtacha reytingni hisoblaydi.")}</span>
+          <div class="hero-card-body">
+            <b>${t("Kundalik 10 ballik elektron jurnal va Davomat")}</b>
+            <span>${t("Har bir darsdagi faollik, davomat va baholar shaffof elektron jurnalga kiritiladi hamda haftalik va umumiy o'rtacha reyting avtomatik hisoblanadi.")}</span>
+          </div>
         </div>
         <div class="hero-card">
-          <img class="hero-bot-logo" src="logo.png" alt="@uzbekspeakingcheckbot" width="40" height="40" />
-          <b>${t("Telegram Bot integratsiyasi (@uzbekspeakingcheckbot)")}</b>
-          <span>${t("Yangi uyga vazifalar, speaking eslatmalari, olingan baholar va ustoz xabarlari bevosita o'quvchining Telegram profiliga ovozli bildirishnoma sifatida boradi.")}</span>
-        </div>
-        <div class="hero-card">
-          <span class="hero-ico tone-emerald">${ico('lock', 20)}</span>
-          <b>${t("Shaxsiy kabinet va Xavfsizlik")}</b>
-          <span>${t("Har bir o'quvchi maxsus login va parol orqali o'z kabinetiga kiradi, vazifalarni belgilaydi, ustoz bilan yozishadi va o'z profiliga ulangan faol qurilmalarni nazorat qiladi.")}</span>
+          <img class="hero-bot-logo" src="logo.png" alt="@uzbekspeakingcheckbot" width="44" height="44" />
+          <div class="hero-card-body">
+            <b>${t("Telegram Bot ekotizimi (@uzbekspeakingcheckbot)")}</b>
+            <span>${t("Yangi uyga vazifalar, speaking eslatmalari, olingan baholar va ustoz xabarlari bevosita o'quvchining Telegram profiliga tezkor yetkaziladi.")}</span>
+          </div>
         </div>
       </div>
     </section>
-    <div class="auth-brand"><span class="auth-title">English Tutor</span></div>
 
     <div class="card auth-card">
       <label class="field-label" for="login-input">Login</label>
@@ -1769,6 +1822,9 @@ function toggleHwDone(hid) {
   if (i >= 0) arr.splice(i, 1); else arr.push(key);
   if (arr.length) map[st.id] = arr; else delete map[st.id];
   store.set(K.homeworkDone, map);
+  const task = getHomework().filter(x => String(x.id) === key)[0] || null;
+  analyticsCall('capture', 'homework_task_toggled',
+    { completed: arr.indexOf(key) >= 0, has_due: !!(task && task.dueDate) });
   render();
 }
 
@@ -2084,9 +2140,9 @@ function studentPortal() {
   <div class="section-title">Sozlamalar</div>
   <div class="card">
     <div class="list-row"><span>Login</span><span class="login-val">${esc(u.login || '')}</span></div>
-    <div class="list-row"><span>Parol</span><span class="muted">••••</span></div>
+    <div class="list-row"><span>${t('Parol')}</span><span class="muted">••••</span></div>
   </div>
-  <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">${ico('key', 16)} Parolni o'zgartirish</button>
+  <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">${ico('key', 16)} ${t("Parolni o'zgartirish")}</button>
   `;
 }
 
@@ -2254,35 +2310,45 @@ function profileScreen() {
     <div class="muted">${esc(u.login || '')}</div>
     <div style="margin-top:9px">
       <span class="role-badge ${isTeacher() ? 'is-teacher' : 'is-student'}">${isTeacher() ? 'Muzaffar Amirov' : "O'quvchi"}</span>
-      ${st ? `<span class="pill" style="margin-left:6px">${esc(st.schoolClass)}</span>` : ''}
+      ${st ? `<span class="pill" style="margin-left:6px">${esc(tClass(st.schoolClass))}</span>` : ''}
     </div>
   </div>
 
-  <div class="section-title">Xavfsizlik</div>
+  <div class="section-title">${t('Xavfsizlik')}</div>
   <div class="card list-card">
     <div class="list-row"><span>Login</span><span class="login-val">${esc(u.login || '')}</span></div>
-    <div class="list-row"><span>Parol</span><span class="muted">••••</span></div>
-    <div class="list-row"><span>Ko'rinish</span><span class="muted">${isTeacher() ? 'Muzaffar Amirov' : "O'quvchi"}</span></div>
+    <div class="list-row"><span>${t('Parol')}</span><span class="muted">••••</span></div>
+    <div class="list-row"><span>${t("Ko'rinish")}</span><span class="muted">${isTeacher() ? 'Muzaffar Amirov' : t("O'quvchi")}</span></div>
   </div>
-  <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">${ico('key', 16)} Parolni o'zgartirish</button>
+  <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">${ico('key', 16)} ${t("Parolni o'zgartirish")}</button>
 
   ${isTeacher() ? `
-  <div class="section-title">Ma'lumotlar Bazasi Zaxirasi</div>
+  <div class="section-title">${t("Ma'lumotlar Bazasi Zaxirasi")}</div>
   <div class="card backup-card">
-    <div class="muted small">Guruhlar, o'quvchilar, davomat, baholar, xabarlar va speaking topshiriqlari JSON faylda saqlanadi.</div>
-    <button type="button" class="btn btn-primary btn-block" data-act="backup-dl">${ico('download', 16)} Bazani yuklab olish (Backup)</button>
-    <button type="button" class="btn btn-ghost btn-block" data-act="backup-pick">${ico('upload', 16)} Bazani qayta tiklash (Restore)</button>
+    <div class="muted small">${t("Guruhlar, o'quvchilar, davomat, baholar, xabarlar va speaking topshiriqlari JSON faylda saqlanadi.")}</div>
+    <button type="button" class="btn btn-primary btn-block" data-act="backup-dl">${ico('download', 16)} ${t('Bazani yuklab olish (Backup)')}</button>
+    <button type="button" class="btn btn-ghost btn-block" data-act="backup-pick">${ico('upload', 16)} ${t('Bazani qayta tiklash (Restore)')}</button>
     <input type="file" id="backup-file" accept="application/json,.json" hidden />
 
-    <div class="section-title" style="margin-top:14px">Tozalash</div>
-    <div class="muted small">Tozalashdan oldin barcha jadvallar fayl ko'rinishida avtomatik yuklab olinadi.</div>
+    <div class="section-title" style="margin-top:14px">${t('Tozalash')}</div>
+    <div class="muted small">${t("Tozalashdan oldin barcha jadvallar fayl ko'rinishida avtomatik yuklab olinadi.")}</div>
     <div class="chips">
-      ${CLEANUP_TABLES.map(t => `<button type="button" class="chip-btn${(state.cleanupTable || 'grades') === t[0] ? ' active' : ''}" data-act="cleanup-pick" data-table="${t[0]}">${t[1]}</button>`).join('')}
+      ${CLEANUP_TABLES.map(ct => `<button type="button" class="chip-btn${(state.cleanupTable || 'grades') === ct[0] ? ' active' : ''}" data-act="cleanup-pick" data-table="${ct[0]}">${t(ct[1])}</button>`).join('')}
     </div>
-    <button type="button" class="btn btn-danger btn-block" data-act="cleanup-go">${ico('brush', 16)} Tanlangan jadvalni tozalash</button>
+    <button type="button" class="btn btn-danger btn-block" data-act="cleanup-go">${ico('brush', 16)} ${t('Tanlangan jadvalni tozalash')}</button>
   </div>` : ''}
 
   ${sessionsSectionHTML()}
+
+  <div class="section-title">${t('Maxfiylik')}</div>
+  <div class="card list-card">
+    <div class="list-row">
+      <span>${t('Anonim statistika')}</span>
+      <button type="button" class="switch${analyticsConsent() ? ' on' : ''}" data-act="toggle-analytics"
+              role="switch" aria-checked="${analyticsConsent()}" aria-label="${t('Anonim statistika')}"></button>
+    </div>
+    <div class="list-row"><span class="muted small">${t("Rozilik bersangiz, kirish va uyga vazifa harakatlari PostHog'ga loginsiz (anonim ID) yuboriladi. Rozilik bo'lmasa hech narsa yuborilmaydi.")}</span></div>
+  </div>
 
   <button type="button" class="btn btn-danger btn-block" data-act="logout">${t('Hisobdan chiqish')}</button>
   `;
@@ -3753,6 +3819,7 @@ function doLogin() {
 function logout() {
   /* Faol qurilmalar: o'z seansimiz user_sessions dan o'chiriladi */
   Sessions.onLogout();
+  analyticsCall('reset');
   store.del(K.session);
   state.attDraft = null;
   state.attDraftFor = '';
@@ -4057,6 +4124,9 @@ document.addEventListener('click', function (e) {
 
     /* --- Portal: Speaking topshirish (CTA — Telegram ga yo'naltiradi) --- */
     'speak-cta': function () {
+      const stu = linkedStudent();
+      analyticsCall('capture', 'speaking_intent_opened',
+        { has_debt: !!(stu && Number(stu.speakingDebt) > 0) });
       openModal(`
         <div class="modal-head">
           <h3>${ico('mic', 20)} Speaking topshirish</h3>
@@ -4225,6 +4295,16 @@ document.addEventListener('click', function (e) {
       store.set(K.speaking, getSpeaking().filter(x => x.id !== id));
       render();
       toast("Slot o'chirildi");
+    },
+    /* --- Maxfiylik: anonim statistika roziligi --- */
+    'toggle-analytics': function () {
+      const next = !analyticsConsent();
+      let applied = next;
+      try {
+        if (window.Analytics && window.Analytics.consent) applied = !!window.Analytics.consent.set(next);
+      } catch (e) { applied = next; }
+      render();
+      toast(applied ? t('Anonim statistika yoqildi') : t("Anonim statistika o'chirildi"));
     },
     'toggle-theme': toggleTheme,
     'toggle-lang': toggleLang,

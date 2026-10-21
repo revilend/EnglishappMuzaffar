@@ -184,7 +184,7 @@ const pad2 = n => String(n).padStart(2, '0');
 const TODAY = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
 
 /* ================= 1. KIRISH EKRANI ================= */
-check(text().includes('English Tutor'), 'login: sarlavha "English Tutor"');
+check(text().includes('Teacher Muzaffar Amirov'), 'login: hero sarlavhasi "Teacher Muzaffar Amirov" (auth-brand olib tashlangan)');
 check(!!q('#login-input'), 'login: Login inputi mavjud');
 check(!!q('#password-input'), 'login: Parol inputi mavjud');
 check(text().includes('Kirish'), 'login: "Kirish" tugmasi');
@@ -1420,7 +1420,7 @@ const until = async (fn, ms) => {
   setVal('#password-input', '123');
   setVal('#login-bot-hp', 'i-am-bot');
   clickAct('do-login');
-  check(text().includes('English Tutor') && !q('#login-error').classList.contains('show'),
+  check(text().includes('Teacher Muzaffar Amirov') && !q('#login-error').classList.contains('show'),
     "xavfsizlik: honeypot to'ldirildi → jimjimrad rad etildi (xabarsiz)");
   check(!JSON.parse(win.localStorage.getItem('et_session') || 'null'),
     'xavfsizlik: honeypot bilan session yaratilmadi');
@@ -1444,7 +1444,7 @@ const until = async (fn, ms) => {
   setVal('#login-input', 'm_amirov');
   setVal('#password-input', '123');
   clickAct('do-login');
-  check(q('#login-error').textContent.includes('tekshiruvi') && text().includes('English Tutor'),
+  check(q('#login-error').textContent.includes('tekshiruvi') && text().includes('Teacher Muzaffar Amirov'),
     'xavfsizlik: initData id mos emas → kirish rad etildi (spoofing)');
   /* Mos keldi → kirish o\'tadi */
   win.Telegram.WebApp.initDataUnsafe.user.id = 111;
@@ -1469,7 +1469,7 @@ const until = async (fn, ms) => {
   setVal('#login-input', 'm_amirov');
   setVal('#password-input', '123');
   q('[data-act="do-login"]').dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
-  check(text().includes('English Tutor') && !JSON.parse(win.localStorage.getItem('et_session') || 'null'),
+  check(text().includes('Teacher Muzaffar Amirov') && !JSON.parse(win.localStorage.getItem('et_session') || 'null'),
     "xavfsizlik: qulflangan holda to'g'ri parol bilan ham kira olmaydi");
   /* Qulfni tozalash → tugma qayta yoqiladi */
   win.localStorage.removeItem('et_login_fails');
@@ -1584,7 +1584,7 @@ const until = async (fn, ms) => {
     "majburiy chiqish: localStorage tozalandi (et_session yo'q)");
   check(win.localStorage.getItem('et_session_id') === null,
     "majburiy chiqish: session_id ham o'chirildi");
-  check(text().includes('English Tutor') && !q('.bottom-nav .nav-item'),
+  check(text().includes('Teacher Muzaffar Amirov') && !q('.bottom-nav .nav-item'),
     'majburiy chiqish: login ekraniga qaytdi');
 
   /* ============ 27. PREMIUM UI: HERO, REJIM, I18N, JURNAL ============ */
@@ -1597,24 +1597,24 @@ const until = async (fn, ms) => {
     'hero: batafsil platforma tavsifi (qisqa 3 so\'z emas)');
   check(!!q('.hero-emblem') && !!q('.hero-title') && !!q('.hero-sub'),
     'hero: gerb + sarlavha + tavsif bloklari');
-  check(qa('.hero-card').length === 4, 'hero: 4 ta batafsil ma\'lumot kartasi');
-  check(text().includes('Yakkama-yakka Speaking va Audio/Video nazorati') &&
+  check(qa('.hero-card').length === 3, 'hero: 3 ta batafsil ma\'lumot kartasi');
+  check(text().includes('Yakkama-yakka Speaking va Audio/Video tahlil') &&
         text().includes('Kundalik 10 ballik elektron jurnal va Davomat') &&
-        text().includes('Telegram Bot integratsiyasi (@uzbekspeakingcheckbot)') &&
-        text().includes('Shaxsiy kabinet va Xavfsizlik'), 'hero: 4 karta sarlavhalari to\'liq');
+        text().includes('Telegram Bot ekotizimi (@uzbekspeakingcheckbot)'), 'hero: 3 karta sarlavhalari to\'liq');
+  check(!q('.auth-brand'), 'hero: login formasi tepasidagi ikkinchi "English Tutor" yozuvi olib tashlangan');
   check(!/[\u{1F5E3}\u{1F4CA}\u{1F916}]/u.test(q('.hero').textContent),
     'hero: emojilar (🗣️📊🤖) olib tashlangan');
-  check(qa('.hero-ico svg').length === 3 && qa('.hero-ico[class*="tone-"]').length === 3,
-    'hero: 3 ta rangli doira ichida SVG ikonka');
+  check(qa('.hero-ico svg').length === 2 && qa('.hero-ico[class*="tone-"]').length === 2,
+    'hero: 2 ta rangli doira ichida SVG ikonka');
   check(!!q('.hero-bot-logo') && q('.hero-bot-logo').getAttribute('src') === 'logo.png' &&
-        q('.hero-bot-logo').getAttribute('width') === '40',
-    'hero: bot kartasida logo.png rasmi (40x40 dumaloq)');
+        q('.hero-bot-logo').getAttribute('width') === '44',
+    'hero: bot kartasida logo.png rasmi (44x44 dumaloq)');
   check(cssSrc.indexOf('.auth') >= 0 && /\.auth \{[^}]*justify-content: flex-start/.test(cssSrc),
     'css: login wrapper justify-content: flex-start (center olib tashlangan)');
   check(/\.auth \{[^}]*min-height: 100vh/.test(cssSrc) && /\.auth \{[^}]*overflow-y: visible/.test(cssSrc) &&
         !/\.auth \{[^}]*overflow: hidden/.test(cssSrc),
     'css: login wrapper min-height:100vh + overflow-y:visible (qirqilish yo\'q)');
-  check(text().includes('English Tutor') && !!q('#login-input') && !!q('[data-act="do-login"]'),
+  check(!!q('.hero-title') && !!q('#login-input') && !!q('[data-act="do-login"]'),
     'hero: brend + login formasi saqlangan');
   check(!!q('[data-act="toggle-theme"]') && !!q('[data-act="toggle-lang"]'),
     'header: rejim ☀️/🌙 + til 🇺🇿/🇬🇧 tugmalari (login ekrani)');
@@ -1645,10 +1645,12 @@ const until = async (fn, ms) => {
     "til: localStorage 'app_lang' = en saqlandi");
   check(text().includes('Teacher Muzaffar Amirov — English Learning Platform'),
     'i18n EN: hero sarlavha → "English Learning Platform"');
-  check(text().includes('Personal Cabinet and Security') && !text().includes('Shaxsiy kabinet va Xavfsizlik'),
-    'i18n EN: 4-karta sarlavhasi → "Personal Cabinet and Security"');
-  check(text().includes('Daily 10-Point Electronic Gradebook and Attendance'),
-    'i18n EN: 2-karta sarlavhasi → "Daily 10-Point Electronic Gradebook..."');
+  check(text().includes("A modern learning and monitoring platform designed for Teacher Muzaffar Amirov's Grade 5–11 students"),
+    'i18n EN: batafsil tavsif tarjimasi');
+  check(text().includes('1-on-1 Speaking & Audio/Video Review') &&
+        text().includes('Daily 10-Point Gradebook & Attendance') &&
+        text().includes('Telegram Bot Ecosystem (@uzbekspeakingcheckbot)'),
+    'i18n EN: 3 karta sarlavhalari to\'liq inglizcha');
   loginAs('m_amirov', '123');
   check(navLabels().join(',') === 'Home,Students,Grades,Attendance,Speaking,Profile',
     'i18n: ustoz nav EN tilida');
@@ -1745,6 +1747,33 @@ const until = async (fn, ms) => {
   click('[data-act="nav"][data-screen="students"]');
   check(text().includes('9-sinf') && text().includes('Xabar yozish'),
     'i18n UZ: dinamik kartalar qayta o‘zbekcha');
+
+  /* EN: profil — faol qurilmalar to'liq inglizcha + SVG/CSS indikator */
+  click('[data-act="toggle-lang"]');
+  win.__sessions.sessions.list = [
+    { id: 'en-dev-1', user_type: 'teacher', user_id: 'm_amirov',
+      device_name: 'Android • Chrome', last_active: new Date(Date.now() - 7200000).toISOString() },
+    { id: 'en-dev-2', user_type: 'teacher', user_id: 'm_amirov',
+      device_name: 'Windows PC • Edge', last_active: new Date().toISOString() }
+  ];
+  forceNav('profile');
+  check(text().includes('Active Devices') && !text().includes('Faol qurilmalar'),
+    'i18n EN: "Faol qurilmalar" → "Active Devices"');
+  check(text().includes('This device') && text().includes('current session'),
+    'i18n EN: "Bu qurilma" → "This device", "joriy sessiya" → "current session"');
+  check(text().includes('2 hours ago') && text().includes('Just now'),
+    'i18n EN: "... soat oldin" → "2 hours ago", "hozirgina" → "Just now"');
+  check(text().includes('Terminate') && text().includes('Terminate All Other Sessions'),
+    'i18n EN: "Chiqarib yuborish" → "Terminate", "Barcha boshqa qurilmalardan chiqish" → "Terminate All Other Sessions"');
+  check(!/[\u{1F4F1}\u{1F7E2}\u26D4]/u.test(text()) && !!q('.sess-dot'),
+    'profil: emojilar (📱🟢⛔) o\'rniga SVG + CSS yashil indikator (.sess-dot)');
+  check(text().includes('Clear Selected Table') && !text().includes('Tanlangan jadvalni tozalash'),
+    'i18n EN: "Tanlangan jadvalni tozalash" → "Clear Selected Table"');
+  check(text().includes('Change Password') && text().includes('Security'),
+    'i18n EN: "Parolni o\'zgartirish" → "Change Password", "Xavfsizlik" → "Security"');
+  click('[data-act="toggle-lang"]');
+  check(text().includes('Faol qurilmalar'),
+    'i18n UZ: profil qayta o\'zbekcha');
 
   console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
   process.exit(failed ? 1 : 0);

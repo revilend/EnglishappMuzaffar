@@ -1604,13 +1604,14 @@ html[data-theme="dark"] .st-inset {
 .lang-opt svg { display: inline-block; vertical-align: -2px; margin-right: 3px; }
 
 /* ==================== LOGIN: batafsil hero (4 karta) + SVG doira-ikonkalar ==================== */
-.hero-grid-info { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 14px; }
+.hero-grid-info { grid-template-columns: 1fr; gap: 10px; margin-top: 14px; }
 .hero-grid-info .hero-card {
-  min-height: 0; align-items: flex-start; text-align: left;
-  padding: 14px; gap: 8px; border-radius: 18px;
+  min-height: 0; flex-direction: row; align-items: flex-start; text-align: left;
+  padding: 14px; gap: 12px; border-radius: 18px;
 }
-.hero-grid-info .hero-card b { font-size: 12.5px; line-height: 1.35; }
-.hero-grid-info .hero-card b + span { font-size: 11.5px; line-height: 1.5; }
+.hero-grid-info .hero-card-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.hero-grid-info .hero-card b { font-size: 13px; line-height: 1.35; }
+.hero-grid-info .hero-card-body span { font-size: 11.5px; line-height: 1.5; }
 .hero-ico {
   width: 44px; height: 44px; border-radius: 999px;
   display: flex; align-items: center; justify-content: center;
@@ -1621,13 +1622,10 @@ html[data-theme="dark"] .st-inset {
 .hero-ico.tone-emerald { background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 6px 14px rgba(16, 185, 129, 0.35); }
 .hero-ico svg { width: 20px; height: 20px; }
 .hero-bot-logo {
-  width: 40px; height: 40px; border-radius: 999px; object-fit: cover; display: block; flex: none;
+  width: 44px; height: 44px; border-radius: 999px; object-fit: cover; display: block; flex: none;
   border: 2px solid var(--card); box-shadow: 0 6px 14px rgba(15, 23, 42, 0.22);
 }
-@media (max-width: 349px) {
-  .hero-grid-info { grid-template-columns: 1fr; }
-  .hero-grid-info .hero-card { flex-direction: column; align-items: flex-start; }
-}
+/* 3 karta: har bir qator to'liq kenglikda (kichik ekranda ham qirqilmaydi) */
 html[data-theme="dark"] .hero-bot-logo { border-color: rgba(148, 163, 184, 0.35); }
 
 /* ==================== O'QUVCHI KARTASI: 3 qatorli to'liq kenglikdagi maket ==================== */
@@ -1636,3 +1634,11 @@ html[data-theme="dark"] .hero-bot-logo { border-color: rgba(148, 163, 184, 0.35)
 .st-head .chip-class { align-self: flex-start; }
 .student-card > .st-inset { width: 100%; box-sizing: border-box; }
 .student-card > .st-actions { width: 100%; box-sizing: border-box; }
+
+/* ==================== PROFIL: sessiya nuqtasi + bo'lim sarlavhasi SVG ==================== */
+.sess-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 999px;
+  background: #22c55e; margin-right: 6px; vertical-align: 1px;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18);
+}
+.section-title svg { width: 13px; height: 13px; vertical-align: -2px; margin-right: 3px; }
