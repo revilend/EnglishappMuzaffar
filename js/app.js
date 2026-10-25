@@ -1446,7 +1446,7 @@ function onCloudNotifChange(table, row, old) {
       store.set(K.tgsubs, subs);
     }
 
-    const done = rec.status === 'baholandi' || rec.status === 'graded';
+    const done = rec.status === 'baholandi' || rec.status === 'graded' || rec.status === 'rad_etildi';
     const node = done ? document.querySelector('[data-tgcard="' + rec.id + '"]') : null;
     if (node && node.classList) {
       node.classList.add('is-leaving');
@@ -2064,7 +2064,9 @@ function studentPortal() {
         ${t.mediaType === 'voice' ? ico('mic', 14) + ' Ovozli xabar' : ico('video', 14) + ' Video'} ·
         ${t.status === 'baholandi' || t.status === 'graded'
           ? `${ico('checkCircle', 14)} Baho: ${t.score}/10`
-          : `${ico('clock', 14)} Muzaffar Amirov ko'rib chiqmoqda`}
+          : t.status === 'rad_etildi'
+            ? `${ico('alert', 14)} Topshiriq bekor qilindi`
+            : `${ico('clock', 14)} Muzaffar Amirov ko'rib chiqmoqda`}
       </div>
     </div>`).join('') || `<div class="empty"><span class="empty-ico">${ICON.mic}</span>Hozircha topshirilmagan</div>`;
 
@@ -3532,9 +3534,9 @@ function speakingLogHTML() {
 
 /* ---- Telegram topshiriklari (ustoz uchun inbox) ---- */
 function renderTgInbox() {
-  /* Baholangan topshirik kartalari INBOXdan chiqadi (silliq ravishda) */
+  /* Baholangan yoki bekor qilingan topshirik kartalari INBOXdan chiqadi (silliq ravishda) */
   const subs = getTgSubs().filter(function (t) {
-    return t.status !== 'baholandi' && t.status !== 'graded';
+    return t.status !== 'baholandi' && t.status !== 'graded' && t.status !== 'rad_etildi';
   }).slice().reverse(); /* yangisi yuqorida */
   if (!subs.length) return emptyState("Hozircha Telegram orqali topshirik yo'q");
   const byId = {};
@@ -3553,6 +3555,7 @@ function renderTgInbox() {
         ${[1,2,3,4,5,6,7,8,9,10].map(n => `
           <button type="button" class="btn btn-xs ${t.score === n ? 'btn-primary' : 'ghost'}" data-act="tg-grade" data-tid="${t.id}" data-score="${n}">${n}</button>`).join('')}
         <input class="input" style="flex:1;min-width:140px" placeholder="Izoh (ixtiyoriy)" value="${esc(t.feedback || '')}" data-act="tg-feedback" data-tid="${t.id}" />
+        <button type="button" class="btn btn-xs danger" data-act="tg-reject" data-tid="${t.id}">❌ Bekor qilish</button>
       </div>
     </div>`;
   }).join('');
@@ -4034,6 +4037,29 @@ function gradeTgSub(tid, score) {
   toast("Baho saqlandi ✓ (qarz kamaydi)");
 }
 
+/* ==================== TELEGRAM TOPSHIRIQLARINI BEKOR QILISH (Ustoz) ==================== */
+/* Faqat status 'rad_etildi' bo'ladi: qarz KAMAYMAYDI va baholar jurnaliga yozilmaydi */
+function rejectTgSub(tid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const subs = getTgSubs();
+  const sub = subs.filter(x => x.id === tid)[0];
+  if (!sub || sub.status === 'rad_etildi') return;
+  sub.status = 'rad_etildi';
+  sub.score = null;
+  store.set(K.tgsubs, subs);
+  CloudSync.pushSpeakingGrade(tid);  /* Supabase'ga status='rad_etildi' — qarz/jurnal tegilmaydi */
+
+  /* Karta INBOXdan silliq chiqib ketadi */
+  const card = document.querySelector('[data-tgcard="' + tid + '"]');
+  if (card && card.classList) {
+    card.classList.add('is-leaving');
+    setTimeout(function () { render(); }, 200);
+  } else {
+    render();
+  }
+  toast("Topshirik bekor qilindi ✓ (qarz o'zgarmadi)");
+}
+
 document.addEventListener('click', function (e) {
   const btn = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
   if (!btn) return;
@@ -4223,6 +4249,9 @@ document.addEventListener('click', function (e) {
     /* --- Telegram topshiriklarini baholash --- */
     'tg-grade': function () {
       gradeTgSub(btn.getAttribute('data-tid'), Number(btn.getAttribute('data-score')));
+    },
+    'tg-reject': function () {
+      rejectTgSub(btn.getAttribute('data-tid'));
     },
 
     /* --- Ovozli topshirishga ruxsat (voice_allowed) --- */

@@ -1398,6 +1398,32 @@ const until = async (fn, ms) => {
     'speaking: jurnalda ketma-ket 2 ta sessiya (9 → 8, har biri alohida qator)');
   check(text().includes('Speaking sessiyalar jurnali'), 'speaking: sessiyalar jurnali ekranda ko\'rinadi');
 
+  /* ================= 30b. BEKOR QILISH (qabul qilmaslik) ================= */
+  win.onCloudNotifChange('speaking_submissions',
+    { id: 8303, student_id: 77, media_type: 'video', status: 'kutilmoqda', score: null,
+      created_at: TODAY + 'T13:00:00.000Z' }, null);
+  check(!!q('[data-tgcard="t8303"]'), 'reject: yangi topshirik INBOXda paydo boldi');
+  check(!!q('[data-act="tg-reject"][data-tid="t8303"]'),
+    "reject: kutilayotgan topshiriq yonida ❌ Bekor qilish tugmasi bor");
+  const debtPreRej = (JSON.parse(win.localStorage.getItem('et_students') || '[]')
+    .filter(x => x.id === 's77')[0] || {}).speakingDebt;
+  const gradesPreRej = win.localStorage.getItem('et_grades');
+  const preRej = JSON.parse(win.localStorage.getItem('et_tg_subs') || '[]')
+    .filter(x => x.id === 't8303')[0];
+  check(!!preRej && preRej.status === 'kutilmoqda', "reject: oldin status kutilmoqda");
+  click(q('[data-act="tg-reject"][data-tid="t8303"]'));
+  await new Promise(r => setTimeout(r, 260));
+  check(!q('[data-tgcard="t8303"]'), "reject: bekor qilingan karta INBOXdan chiqdi");
+  const rejSub = JSON.parse(win.localStorage.getItem('et_tg_subs') || '[]')
+    .filter(x => x.id === 't8303')[0];
+  check(!!rejSub && rejSub.status === 'rad_etildi', "reject: status 'rad_etildi' boldi");
+  check((JSON.parse(win.localStorage.getItem('et_students') || '[]')
+    .filter(x => x.id === 's77')[0] || {}).speakingDebt === debtPreRej,
+    "reject: speaking qarzi O'ZGARMADI");
+  check(win.localStorage.getItem('et_grades') === gradesPreRej,
+    "reject: baholar jurnali O'ZGARMADI (baho yozilmadi)");
+  check(!q('[data-act="tg-reject"][data-tid="t8303"]'), "reject: tugma ham INBOXda qolmadi");
+
   /* ================= 31. XAVFSIZLIK: XSS / HONEYPOT / initData / BRUTE-FORCE ================= */
   /* XSS: foydalanuvchi kirgan HTML DOM ga xavfsiz matn sifatida chiqadi */
   forceNav('students');

@@ -742,8 +742,11 @@ async def main():
           "voice: 1-tap baho tugmalari [10][9][8][7][6][5]")
     check("📝 Saytda ochish" in gtexts, "voice: [ 📝 Saytda ochish ] tugmasi")
     gdata = [c for _, c in btn_texts(fwd[0]["reply_markup"]) if c]
-    check(all(re.fullmatch(r"g:\d+:\d+", c) for c in gdata),
-          "voice: baho callback g:<sub_id>:<score>")
+    grade_cbs = [c for c in gdata if c.startswith("g:")]
+    check(len(grade_cbs) == 10 and all(re.fullmatch(r"g:\d+:\d+", c) for c in grade_cbs),
+          "voice: baho callback g:<sub_id>:<score> (10 ta)")
+    check(len(gdata) == 11 and sum(1 for c in gdata if c.startswith("reject:")) == 1,
+          "voice: 10 ta baho + 1 ta bekor qilish tugmasi (jami 11 callback)")
     check("Qabul qilindi" in v.replies[0]["text"], "voice: o'quvchiga tasdiq")
 
     # krujok (video_note) -> alohida video_note + matn xabari tugmalar bilan
@@ -813,6 +816,60 @@ async def main():
     await B.on_grade_tap(call3)
     check(any("Ruxsat yo'q" in (a["text"] or "") for a in call3.answers),
           "baho: noto'g'ri foydalanuvchi rad etiladi")
+
+    # =========================================================
+    # 9b) BEKOR QILISH (reject) — qabul qilmaslik
+    # =========================================================
+    kb_rej = B.grade_keyboard(sub_voice["id"])
+    rej_rows = kb_rej.inline_keyboard
+    check(rej_rows[2][0].text == "❌ Bekor qilish (Qabul qilmaslik)" and
+          rej_rows[2][0].callback_data == f"reject:{sub_voice['id']}",
+          "reject: baho tugmalari pastiga [ ❌ Bekor qilish (Qabul qilmaslik) ] qo'shildi")
+    check([c for _, c in btn_texts(kb_rej) if (c or "").startswith("reject:")]
+          == [f"reject:{sub_voice['id']}"],
+          "reject: callback aynan 'reject:<sub_id>'")
+
+    debt_prej = FAKE_ROWS["students"][0]["speaking_debt"]
+    grades_prej = len(FAKE_ROWS["grades"])
+    fb.sent.clear()
+
+    # ruxsatsiz foydalanuvchi bosadi
+    rj = Call(555, f"reject:{sub_voice['id']}", msg=CallMsg())
+    await B.on_reject_tap(rj)
+    check(any("Ruxsat yo'q" in (a["text"] or "") for a in rj.answers),
+          "reject: noto'g'ri foydalanuvchi rad etiladi")
+    check(sub_voice["status"] != "rad_etildi", "reject: ruxsatsiz bosishda status o'zgarmadi")
+
+    # ADMIN bosadi
+    rj2 = Call(ADMIN, f"reject:{sub_voice['id']}", msg=CallMsg(caption="old caption"))
+    await B.on_reject_tap(rj2)
+    check(sub_voice["status"] == "rad_etildi", "reject: status='rad_etildi' bo'ldi")
+    check(FAKE_ROWS["students"][0]["speaking_debt"] == debt_prej,
+          f"reject: speaking_debt O'ZGARMADI ({debt_prej})")
+    check(len(FAKE_ROWS["grades"]) == grades_prej,
+          "reject: grades jadvaliga baho YOZILMADI")
+    stu_msgs = [s for s in fb.sent if s["kind"] == "message" and s["chat_id"] == 555]
+    check(len(stu_msgs) == 1 and stu_msgs[0]["text"] ==
+          "<b>SPEAKING BEKOR QILINDI ❌</b>\n\nSpeaking javobingizda shubhali holat aniqlandi!",
+          "reject: o'quvchiga AYNAN spec xabar yuborildi")
+    rej_edits = [re.sub(r"<[^>]+>", "", e) for e in rj2.message.edits]
+    exp_rej = ("❌ SPEAKING BEKOR QILINDI\n👤 Jasur Karimov\n💰 Qarz o'zgarmadi: "
+               + str(debt_prej) + " ta")
+    check(rej_edits == [exp_rej],
+          "reject: ustoz xabari aynan spec matnga yangilandi")
+    check(any("bekor qilindi" in (a["text"] or "") for a in rj2.answers),
+          "reject: ustozga tasdiq (answer)")
+
+    # takror bosilganda takrorlanmaydi
+    fb.sent.clear()
+    rj3 = Call(ADMIN, f"reject:{sub_voice['id']}", msg=CallMsg(caption="c"))
+    await B.on_reject_tap(rj3)
+    check(not any(s["kind"] == "message" and s["chat_id"] == 555 for s in fb.sent),
+          "reject: takrorbosishda o'quvchiga xabar ketmadi")
+    check(any("allaqachon bekor qilingan" in (a["text"] or "") for a in rj3.answers),
+          "reject: takror bosish rad etiladi")
+    check(FAKE_ROWS["students"][0]["speaking_debt"] == debt_prej,
+          "reject: takror bosishda ham qarz o'zgarmadi")
 
     # =========================================================
     # 10) 🎙 Yangi speakinglar

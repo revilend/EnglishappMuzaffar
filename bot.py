@@ -657,6 +657,7 @@ def grade_keyboard(sub_id) -> InlineKeyboardMarkup:
          for n in (5, 4, 3, 2, 1)],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows + [
+        [InlineKeyboardButton(text="❌ Bekor qilish (Qabul qilmaslik)", callback_data=f"reject:{sub_id}")],
         [InlineKeyboardButton(text="📝 Saytda ochish", web_app=WebAppInfo(url=config.WEBAPP_URL))],
     ])
 
@@ -853,6 +854,91 @@ async def on_grade_tap(call: types.CallbackQuery):
     except Exception:
         pass
     await call.answer(f"✅ {score} ball qo'yildi")
+
+
+# ---------------- Ustoz: speakingni bekor qilish (qabul qilmaslik) ----------------
+@dp.callback_query(F.data.startswith("reject:"))
+async def on_reject_tap(call: types.CallbackQuery):
+    '''Ustoz [❌ Bekor qilish] bosadi → status='rad_etildi'.
+
+    MUHIM: speaking qarzi (speaking_debt) KAMAYMAYDI va
+    grades jadvaliga HECH QANDAY baho yozilmaydi!
+    '''
+    if call.from_user.id != config.ADMIN_ID:
+        await call.answer("Ruxsat yo'q", show_alert=True)
+        return
+    try:
+        sub_id = int(call.data.split(":", 1)[1])
+    except Exception:
+        await call.answer("Noto'g'ri so'rov", show_alert=True)
+        return
+
+    try:
+        subs = supabase.table("speaking_submissions").select(
+            "id, student_id, status, media_type, created_at"
+        ).eq("id", sub_id).limit(1).execute().data
+    except Exception as e:
+        logging.error(f"reject load sub: {e}")
+        await call.answer("Bazaga ulanib bo'lmadi", show_alert=True)
+        return
+    if not subs:
+        await call.answer("Topshirik topilmadi", show_alert=True)
+        return
+    sub = subs[0]
+    if sub.get("status") == "rad_etildi":
+        await call.answer("Bu topshirik allaqachon bekor qilingan", show_alert=True)
+        return
+    if sub.get("status") == "baholandi":
+        await call.answer("Bu topshirik allaqachon baholangan", show_alert=True)
+        return
+
+    try:
+        studs = supabase.table("students").select("id, name, school_class, speaking_debt, telegram_chat_id").\
+            eq("id", sub["student_id"]).limit(1).execute().data
+    except Exception as e:
+        logging.error(f"reject load student: {e}")
+        await call.answer("O'quvchi topilmadi", show_alert=True)
+        return
+    if not studs:
+        await call.answer("O'quvchi topilmadi", show_alert=True)
+        return
+    st = studs[0]
+    debt = int(st.get("speaking_debt") or 0)
+
+    # 1) Faqat status yangilanadi: qarz o'zgarmaydi, baho yozilmaydi
+    try:
+        supabase.table("speaking_submissions").update(
+            {"status": "rad_etildi"}
+        ).eq("id", sub_id).execute()
+    except Exception as e:
+        logging.error(f"reject sub update: {e}")
+
+    # 2) O'quvchiga aynan specdagi xabar
+    chat_id = st.get("telegram_chat_id")
+    if chat_id:
+        try:
+            await bot.send_message(
+                chat_id=int(chat_id),
+                text="<b>SPEAKING BEKOR QILINDI ❌</b>\n\n"
+                     "Speaking javobingizda shubhali holat aniqlandi!",
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logging.error(f"reject notify student {chat_id}: {e}")
+
+    # 3) Ustozdagi xabar matni/kaptori yangilanadi
+    student_name = html.escape(str(st.get("name") or "?"))
+    done_text = (f"❌ <b>SPEAKING BEKOR QILINDI</b>\n"
+                 f"👤 {student_name}\n"
+                 f"💰 Qarz o'zgarmadi: {debt} ta")
+    try:
+        if call.message is not None and call.message.caption is not None:
+            await call.message.edit_caption(caption=done_text, parse_mode="HTML")
+        else:
+            await call.message.edit_text(done_text, parse_mode="HTML")
+    except Exception:
+        pass
+    await call.answer("❌ Topshirik bekor qilindi")
 
 
 # ============================================================
