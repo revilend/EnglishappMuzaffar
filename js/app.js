@@ -1727,7 +1727,11 @@ function loginScreen() {
           </div>
         </div>
         <div class="hero-card">
-          <img class="hero-bot-logo" src="logo.png" alt="@uzbekspeakingcheckbot" width="44" height="44" />
+          <span class="hero-ico tone-telegram" role="img" aria-label="@uzbekspeakingcheckbot">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M20.665 3.717l-17.73 6.837c-1.21.486-1.203 1.161-.222 1.462l4.552 1.42 10.532-6.645c.498-.303.953-.14.579.192l-8.533 7.701h-.002l.002.001-.314 4.692c.46 0 .663-.211.921-.46l2.211-2.15 4.599 3.397c.848.467 1.457.227 1.668-.785l3.019-14.228c.309-1.239-.473-1.8-1.282-1.434z" fill="white"/>
+            </svg>
+          </span>
           <div class="hero-card-body">
             <b>${t("Telegram Bot ekotizimi (@uzbekspeakingcheckbot)")}</b>
             <span>${t("Yangi uyga vazifalar, speaking eslatmalari, olingan baholar va ustoz xabarlari bevosita o'quvchining Telegram profiliga tezkor yetkaziladi.")}</span>

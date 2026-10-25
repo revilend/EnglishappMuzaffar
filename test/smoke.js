@@ -1630,11 +1630,22 @@ const until = async (fn, ms) => {
   check(!q('.auth-brand'), 'hero: login formasi tepasidagi ikkinchi "English Tutor" yozuvi olib tashlangan');
   check(!/[\u{1F5E3}\u{1F4CA}\u{1F916}]/u.test(q('.hero').textContent),
     'hero: emojilar (🗣️📊🤖) olib tashlangan');
-  check(qa('.hero-ico svg').length === 2 && qa('.hero-ico[class*="tone-"]').length === 2,
-    'hero: 2 ta rangli doira ichida SVG ikonka');
-  check(!!q('.hero-bot-logo') && q('.hero-bot-logo').getAttribute('src') === 'logo.png' &&
-        q('.hero-bot-logo').getAttribute('width') === '44',
-    'hero: bot kartasida logo.png rasmi (44x44 dumaloq)');
+  check(qa('.hero-ico svg').length === 3 && qa('.hero-ico[class*="tone-"]').length === 3,
+    'hero: 3 ta rangli doira ichida SVG ikonka');
+  const tgLogo = q('.hero-ico.tone-telegram');
+  check(!!tgLogo && tgLogo.querySelectorAll('svg').length === 1 &&
+        !!tgLogo.querySelector('svg path[fill="white"]'),
+    'hero: bot kartasida rasmiy Telegram logotipi (oq samolyot SVG)');
+  check(!q('.hero-card img') && !q('.hero-bot-logo'),
+    'hero: 3-kartadan logo.png rasmi olib tashlangan');
+  const tgCss = (cssSrc.match(/\.hero-ico\.tone-telegram\s*\{[^}]*\}/) || [''])[0];
+  check(/linear-gradient\(135deg, #2AABEE 0%, #229ED9 100%\)/.test(tgCss),
+    'hero: Telegram rasmiy gradient foni (#2AABEE -> #229ED9)');
+  const icoCss = (cssSrc.match(/\.hero-ico\s*\{[^}]*\}/g) || []).join(' ');
+  check(/width: 48px/.test(icoCss) && /height: 48px/.test(icoCss),
+    'hero: uchala ikonka ham 48x48 dumaloq');
+  check(/\.hero-ico\.tone-telegram svg\s*\{[^}]*width: 24px/.test(cssSrc),
+    'hero: Telegram samolyot SVG 24x24');
   check(cssSrc.indexOf('.auth') >= 0 && /\.auth \{[^}]*justify-content: flex-start/.test(cssSrc),
     'css: login wrapper justify-content: flex-start (center olib tashlangan)');
   check(/\.auth \{[^}]*min-height: 100vh/.test(cssSrc) && /\.auth \{[^}]*overflow-y: visible/.test(cssSrc) &&
