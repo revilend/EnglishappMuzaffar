@@ -1023,6 +1023,80 @@ async def main():
     # =========================================================
     # 14) main() siyosati — event loop hech qachon bloklanmaydi
     # =========================================================
+    # =========================================================
+    # KUNLIK HISOBOT + AVTOMATIK BACKUP (00:00 Toshkent)
+    # =========================================================
+    from datetime import datetime as _dt, timedelta as _td
+    B.supabase = FakeSupa()
+    reset_rows()
+    today = (_dt.utcnow() + _td(hours=5)).strftime("%Y-%m-%d")
+    FAKE_ROWS["attendance"] = [
+        {"id": 1, "student_id": 1, "date": today, "status": "present"},
+        {"id": 2, "student_id": 2, "date": today, "status": "absent"},
+        {"id": 3, "student_id": 3, "date": today, "status": "excused"},
+        {"id": 4, "student_id": 1, "date": "2026-01-01", "status": "present"},
+    ]
+    FAKE_ROWS["grades"] = [
+        {"id": 1, "student_id": 1, "date": today, "grade": 9, "category": "", "note": ""},
+        {"id": 2, "student_id": 2, "date": "2026-01-01", "grade": 8, "category": "", "note": ""},
+    ]
+    FAKE_ROWS["speaking_submissions"] = [
+        {"id": 1, "student_id": 1, "status": "baholandi", "created_at": today + "T10:00:00Z"},
+        {"id": 2, "student_id": 2, "status": "kutilmoqda", "created_at": today + "T11:00:00Z"},
+        {"id": 3, "student_id": 3, "status": "kutilmoqda", "created_at": "2026-01-01T10:00:00Z"},
+    ]
+    FAKE_ROWS["students"][0]["payment_debt"] = 50000
+    FAKE_ROWS["students"][1]["payment_debt"] = 0
+    FAKE_ROWS["students"][2]["payment_debt"] = 120000
+
+    stats = B.daily_stats()
+    check(stats["students"] == 3 and stats["groups"] == 1,
+          "hisobot: o'quvchi va guruh soni")
+    check(stats["present"] == 1 and stats["absent"] == 2,
+          "hisobot: bugungi davomat (1 keldi, 2 qoldirdi)")
+    check(stats["grades"] == 1, "hisobot: bugungi baholar soni")
+    check(stats["speaking_today"] == 2 and stats["speaking_pending"] == 2,
+          "hisobot: speaking bugun topshirilgan/kutilayotgan")
+    check(stats["debtors"] == 2, "hisobot: qarzdorlar soni")
+
+    rtext = B.daily_report_text(stats)
+    check("Kunlik hisobot" in rtext and "Qatnashgan" in rtext and "qarzdorligi bor" in rtext,
+          "hisobot: xabar matni to'liq")
+
+    sent, backups = [], []
+
+    async def _fake_send_message(chat_id, text, **kw):
+        sent.append((chat_id, text, kw))
+
+    async def _fake_backup(chat_id):
+        backups.append(chat_id)
+
+    orig_send, orig_backup = B.bot.send_message, B.send_backup_document
+    B.bot.send_message = _fake_send_message
+    B.send_backup_document = _fake_backup
+    B._last_report_day = None
+    try:
+        ok = await B.send_daily_report()
+        check(ok and len(sent) == 1 and sent[0][0] == config.ADMIN_ID,
+              "hisobot: ADMIN_ID ga yuborildi")
+        check(backups == [config.ADMIN_ID], "hisobot: backup fayli ham yuborildi")
+        check(await B.send_daily_report() is False and len(sent) == 1,
+              "hisobot: kuniga bir marta (takror yuborilmaydi)")
+        check(float(B.seconds_until_midnight()) > 0,
+              "hisobot: keyingi 00:00 gacha vaqt hisoblanadi")
+        B._last_report_day = None
+        check(await B.send_daily_report(force=True) and len(sent) == 2,
+              "hisobot: force bilan qayta yuboriladi")
+    finally:
+        B.bot.send_message = orig_send
+        B.send_backup_document = orig_backup
+
+    import inspect as _inspect
+    _src = _inspect.getsource(B)
+    check("asyncio.create_task(daily_report_watcher())" in _src,
+          "hisobot: daily_report_watcher fon vazifasi sifatida ro'yxatga olingan")
+
+
     import inspect
     src = inspect.getsource(B)
     code_lines = [ln for ln in src.splitlines() if not ln.strip().startswith("#")]

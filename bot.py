@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.fsm.context import FSMContext
@@ -1329,7 +1329,7 @@ async def messages_watcher():
 # ============================================================
 # Zaxira (backup / restore) — Supabase
 # ============================================================
-BACKUP_TABLES = ["groups", "students", "attendance", "grades", "messages", "speaking_submissions", "audio_submissions", "homework"]
+BACKUP_TABLES = ["groups", "students", "attendance", "grades", "messages", "speaking_submissions", "audio_submissions", "homework", "payments"]
 RESTORE_PLAN = [
     ("groups", ["id", "name", "days", "time", "monthly_fee"]),
     ("students", ["id", "name", "school_class", "group_id", "login", "password", "speaking_debt",
@@ -1420,7 +1420,7 @@ def prepare_restore(data: dict) -> dict:
 def restore_backup(data: dict) -> dict:
     """Zaxirani Supabase'ga qayta tiklaydi: avval O'CHIRISH (bog'liq jadvallardan),
     keyin ID saqlanib qayta YOZISH. Har jadval uchun son qaytaradi."""
-    for t in ["messages", "grades", "attendance", "speaking_submissions", "audio_submissions", "homework", "students", "groups"]:
+    for t in ["messages", "grades", "attendance", "speaking_submissions", "audio_submissions", "homework", "payments", "students", "groups"]:
         try:
             supabase.table(t).delete().gte("id", 0).execute()
         except Exception as e:
@@ -1472,6 +1472,135 @@ async def send_backup_document(chat_id: int):
         caption=caption,
         parse_mode="HTML",
     )
+
+
+# ============================================================
+# KUNLIK HISOBOT + AVTOMATIK BACKUP (har kuni 00:00, Toshkent)
+# ============================================================
+TASHKENT_TZ = timezone(timedelta(hours=5))
+_last_report_day = None
+
+
+def tashkent_now() -> datetime:
+    return datetime.now(TASHKENT_TZ)
+
+
+def seconds_until_midnight(now: datetime | None = None) -> float:
+    """Keyingi 00:00 (Toshkent) gacha qolgan soniyalar."""
+    cur = now or tashkent_now()
+    nxt = (cur + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(1.0, (nxt - cur).total_seconds())
+
+
+def daily_stats() -> dict:
+    """Kunlik hisobot uchun ko'rsatkichlar (bugungi sana — Toshkent)."""
+    today = tashkent_now().strftime("%Y-%m-%d")
+    stats = {
+        "date": today, "students": 0, "groups": 0, "present": 0, "absent": 0,
+        "grades": 0, "speaking_today": 0, "speaking_pending": 0, "debtors": 0,
+    }
+
+    try:
+        studs = supabase.table("students").select("id, payment_debt").execute().data or []
+        stats["students"] = len(studs)
+        stats["debtors"] = sum(1 for s in studs if int(s.get("payment_debt") or 0) > 0)
+    except Exception as e:
+        logging.warning(f"daily stats students: {e}")
+
+    try:
+        stats["groups"] = len(supabase.table("groups").select("id").execute().data or [])
+    except Exception as e:
+        logging.warning(f"daily stats groups: {e}")
+
+    try:
+        rows = supabase.table("attendance").select("status").eq("date", today).execute().data or []
+        stats["present"] = sum(1 for r in rows if r.get("status") == "present")
+        stats["absent"] = sum(1 for r in rows if r.get("status") != "present")
+    except Exception as e:
+        logging.warning(f"daily stats attendance: {e}")
+
+    try:
+        stats["grades"] = len(
+            supabase.table("grades").select("id").eq("date", today).execute().data or []
+        )
+    except Exception as e:
+        logging.warning(f"daily stats grades: {e}")
+
+    try:
+        subs = supabase.table("speaking_submissions").select(
+            "status, created_at"
+        ).execute().data or []
+        stats["speaking_today"] = sum(
+            1 for x in subs if str(x.get("created_at") or "").startswith(today)
+        )
+        stats["speaking_pending"] = sum(
+            1 for x in subs if x.get("status") != "baholandi"
+        )
+    except Exception as e:
+        logging.warning(f"daily stats speaking: {e}")
+
+    return stats
+
+
+def daily_report_text(stats: dict) -> str:
+    return (
+        f"📊 <b>Kunlik hisobot — {stats.get('date', '')}</b>\n\n"
+        f"👥 Jami o'quvchilar: <b>{stats.get('students', 0)}</b> ta\n"
+        f"📚 Guruhlar: <b>{stats.get('groups', 0)}</b> ta\n\n"
+        f"📅 Bugungi davomat:\n"
+        f"  ✅ Qatnashgan: <b>{stats.get('present', 0)}</b> ta\n"
+        f"  ❌ Dars qoldirgan: <b>{stats.get('absent', 0)}</b> ta\n\n"
+        f"⭐ Bugun qo'yilgan baholar: <b>{stats.get('grades', 0)}</b> ta\n"
+        f"🎙 Speaking: <b>{stats.get('speaking_today', 0)}</b> ta topshirildi · "
+        f"<b>{stats.get('speaking_pending', 0)}</b> ta kutilmoqda\n\n"
+        f"💰 To'lov qarzdorligi bor o'quvchilar: <b>{stats.get('debtors', 0)}</b> ta\n\n"
+        f"💾 To'liq zaxira fayli xabar bilan birga yuborildi."
+    )
+
+
+async def send_daily_report(force: bool = False) -> bool:
+    """Adminga kunlik hisobot + to'liq JSON backup yuboradi (kuniga bir marta)."""
+    global _last_report_day
+    day = tashkent_now().strftime("%Y-%m-%d")
+    if not force and _last_report_day == day:
+        return False
+
+    sent = False
+    try:
+        await bot.send_message(config.ADMIN_ID, daily_report_text(daily_stats()),
+                               parse_mode="HTML", disable_notification=False)
+        sent = True
+    except Exception as e:
+        logging.warning(f"daily report xabar: {e}")
+
+    try:
+        await send_backup_document(config.ADMIN_ID)
+        sent = True
+    except Exception as e:
+        logging.warning(f"daily report backup: {e}")
+
+    if sent:
+        _last_report_day = day
+        logging.info(f"daily report yuborildi: {day}")
+    return sent
+
+
+async def daily_report_watcher():
+    """Har kuni 00:00 (Toshkent) da hisobot va zaxirani yuboradi."""
+    await asyncio.sleep(5)
+    while True:
+        delay = seconds_until_midnight()
+        logging.info(f"daily report: keyingi hisobot {int(delay)} soniyadan keyin (00:00 Toshkent)")
+        await asyncio.sleep(delay)
+        for _ in range(3):
+            try:
+                ok = await send_daily_report()
+                if ok or _last_report_day == tashkent_now().strftime("%Y-%m-%d"):
+                    break
+            except Exception as e:
+                logging.warning(f"daily report watcher: {e}")
+            await asyncio.sleep(300)
+        await asyncio.sleep(60)
 
 
 @dp.message(Command("backup"))
@@ -1723,6 +1852,7 @@ async def main():
     _bg_tasks.add(asyncio.create_task(messages_watcher()))   # yangi chat xabari
     _bg_tasks.add(asyncio.create_task(outbox_watcher()))     # chek / qarz eslatmalari
     _bg_tasks.add(asyncio.create_task(monthly_fee_watcher()))  # oylik to'lov qarzi
+    _bg_tasks.add(asyncio.create_task(daily_report_watcher()))  # 00:00 hisobot + backup
 
     # Diagnostika: qaysi bot jonli — logda username ko'rinadi
     try:
