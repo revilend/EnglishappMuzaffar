@@ -230,13 +230,15 @@ class Doc:
 
 
 class Msg:
-    def __init__(self, uid, text="", document=None, voice=None, video_note=None, video=None):
+    def __init__(self, uid, text="", document=None, voice=None, video_note=None, video=None,
+                 photo=None):
         self.from_user = U(uid)
         self.text = text
         self.document = document
         self.voice = voice
         self.video_note = video_note
         self.video = video
+        self.photo = photo
         self.answers = []
         self.replies = []
 
@@ -258,8 +260,35 @@ class CallMsg:
     async def edit_caption(self, caption=None, parse_mode=None, **kw):
         self.edits.append(caption)
 
+    async def answer(self, text=None, reply_markup=None, parse_mode=None, **kw):
+        self.edits.append(text)
+
     async def reply(self, text=None, reply_markup=None, parse_mode=None, **kw):
         self.edits.append(text)
+
+
+class FakeState:
+    """FSMContext o'rniga test uchun sodda holat saqlagich."""
+
+    def __init__(self, data=None):
+        self.state = None
+        self.data = dict(data or {})
+
+    async def set_state(self, st):
+        self.state = st
+
+    async def get_state(self):
+        return self.state
+
+    async def get_data(self):
+        return dict(self.data)
+
+    async def update_data(self, **kw):
+        self.data.update(kw)
+
+    async def clear(self):
+        self.state = None
+        self.data = {}
 
 
 class Call:
@@ -294,6 +323,11 @@ class FakeBot:
 
     async def send_video_note(self, chat_id, video_note, **kw):
         self.sent.append({"kind": "video_note", "chat_id": chat_id, "file_id": video_note})
+
+    async def send_photo(self, chat_id, photo, caption=None, reply_markup=None,
+                         parse_mode=None, **kw):
+        self.sent.append({"kind": "photo", "chat_id": chat_id, "file_id": photo,
+                          "caption": caption, "reply_markup": reply_markup})
 
     async def send_video(self, chat_id, video, caption=None, reply_markup=None,
                          parse_mode=None, **kw):
@@ -558,7 +592,7 @@ async def main():
     check(any("Xush kelibsiz" in (a["text"] or "") for a in m2.answers),
           "menyu: ulanish muvaffaqiyati")
 
-    m3 = Msg(999, "notlogin")
+    m3 = Msg(777, "notlogin")
     await B.on_free_text(m3)
     check(any("O'quvchi menyusi" in (a["text"] or "") for a in m3.answers),
           "menyu: oddiy matn -> menyuni qayta ko'rsatadi")
@@ -1023,6 +1057,131 @@ async def main():
     # =========================================================
     # 14) main() siyosati — event loop hech qachon bloklanmaydi
     # =========================================================
+    # =========================================================
+    # 10) O'QUVCHI MATNLI XABARI → USTOZGA + JAVOB QAYTARISH
+    # =========================================================
+    reset_rows()
+    B.pending_logins.clear()
+    B._last_msg_seen = None
+    fb.sent.clear()
+    st1 = [x for x in FAKE_ROWS["students"] if x.get("telegram_chat_id") == 555][0]
+
+    msg = Msg(555, "Assalomu alaykum, ertaga darsga kela olmayman. Uzrli sababim bor.")
+    await B.on_free_text(msg)
+
+    saved = [r for r in FAKE_ROWS["messages"] if r.get("sender") == "student"]
+    check(len(saved) == 1 and saved[0]["student_id"] == st1["id"]
+          and saved[0]["text"] == msg.text,
+          "chat: o'quvchi matni messages ga sender='student' bo'lib yozildi")
+    alerts = [x for x in fb.sent if x["kind"] == "message" and x["chat_id"] == ADMIN]
+    check(len(alerts) == 1, "chat: ustozga darhol bitta xabar keldi")
+    at = alerts[0]["text"] if alerts else ""
+    check("O'quvchidan yangi xabar!" in at and st1["name"] in at
+          and f"({st1['school_class']})" in at and msg.text in at,
+          "chat: ustoz xabarida ism, sinf va matn bor")
+    _cb = [c for _t, c in btn_texts(alerts[0]["reply_markup"]) if c]
+    check(_cb == [f"reply_student:{st1['id']}"],
+          "chat: [ ↩️ Javob yozish ] -> reply_student:<id>")
+    check(any("Muzaffar Amirovga yuborildi" in (a["text"] or "") for a in msg.answers),
+          "chat: o'quvchiga 'yuborildi' tasdiq")
+
+    fb.sent.clear()
+    check(await B.message_tick() == 0,
+          "chat: messages_watcher yuborilgan xabarni takrorlamaydi")
+
+    # ---- ustoz [↩️ Javob yozish] ----
+    state = FakeState()
+    call = Call(ADMIN, f"reply_student:{st1['id']}", msg=CallMsg())
+    await B.cb_reply_student(call, state)
+    check(state.state == B.ReplyStates.waiting_reply,
+          "chat: ustoz uchun javob yozish holati yoqildi")
+    check(state.data.get("student_id") == st1["id"],
+          "chat: javob qilinadigan o'quvchi holatga saqlandi")
+    check(any(st1["name"] in (e or "") for e in call.message.edits),
+          "chat: ustozga 'javobingizni yozing' xabari (ism bilan)")
+
+    fb.sent.clear()
+    reply = Msg(ADMIN, "Ertaga darsdan keyin qo'ng'iroq qiling, kelishamiz.")
+    await B.on_teacher_reply(reply, state)
+    outs = [x for x in fb.sent if x["kind"] == "message" and x["chat_id"] == 555]
+    check(len(outs) == 1 and outs[0]["text"]
+          == "💬 <b>Muzaffar Amirovdan javob:</b>\n\n" + B.html.escape(reply.text),
+          "chat: ustoz javobi o'quvchiga aynan spec formatda yuborildi")
+    t_saved = [r for r in FAKE_ROWS["messages"] if r.get("sender") == "teacher"
+               and r.get("text") == reply.text]
+    check(len(t_saved) == 1 and t_saved[0]["student_id"] == st1["id"]
+          and t_saved[0]["text"] == reply.text,
+          "chat: javob messages ga sender='teacher' bo'lib saqlandi")
+    check(state.state is None, "chat: javobdan keyin holat tozalandi")
+    check(any("Javob o'quvchiga yuborildi" in (a["text"] or "") for a in reply.answers),
+          "chat: ustozga yuborildi tasdiq")
+    fb.sent.clear()
+    check(await B.message_tick() == 0,
+          "chat: ustoz javobi watcher orqali takrorlanmaydi")
+
+    # ---- /cancel va ruxsat ----
+    state2 = FakeState({"student_id": st1["id"]})
+    cm = Msg(ADMIN, "/cancel")
+    await B.cmd_cancel_reply(cm, state2)
+    check(state2.state is None and any("bekor qilindi" in (a["text"] or "") for a in cm.answers),
+          "chat: /cancel javob yozishni bekor qiladi")
+
+    call_x = Call(555, f"reply_student:{st1['id']}", msg=CallMsg())
+    await B.cb_reply_student(call_x, FakeState())
+    check(any("Ruxsat yo'q" in (a["text"] or "") for a in call_x.answers),
+          "chat: begona odam javob tugmasini bosa olmaydi")
+
+    # =========================================================
+    # 11) WRITING (YOZMA ISH RASMI) TOPSHIRISH + BAHO
+    # =========================================================
+    fb.sent.clear()
+    w = Msg(555, photo=[Media("PH-SMALL"), Media("PH-BIG")])
+    await B.handle_speaking_submission(w)
+    sub_w = FAKE_ROWS["speaking_submissions"][-1]
+    check(sub_w["media_type"] == "writing" and sub_w["telegram_file_id"] == "PH-BIG",
+          "writing: rasm media_type='writing' + eng katta fayl id")
+    check(sub_w["status"] == "kutilmoqda", "writing: status='kutilmoqda'")
+    ph = [x for x in fb.sent if x["kind"] == "photo" and x["chat_id"] == ADMIN]
+    check(len(ph) == 1, "writing: rasm ustozga yuborildi")
+    cap = ph[0]["caption"] if ph else ""
+    check("YANGI WRITING (YOZMA ISH) TOPSHIRILDI!" in cap
+          and "Yozma ish (Rasm)" in cap and st1["name"] in cap and st1["school_class"] in cap,
+          "writing: kaptor aynan spec bo'yicha (ism + sinf)")
+    wbtns = [t for t, _ in btn_texts(ph[0]["reply_markup"])]
+    check(all(str(n) in wbtns for n in range(1, 11))
+          and "❌ Bekor qilish (Qabul qilmaslik)" in wbtns,
+          "writing: [10]..[1] + bekor qilish tugmalari")
+    check(any("Qabul qilindi" in (r["text"] or "") for r in w.replies),
+          "writing: o'quvchiga qabul tasdiqi")
+
+    debt_w = FAKE_ROWS["students"][0]["speaking_debt"]
+    fb.sent.clear()
+    call_w = Call(ADMIN, f"g:{sub_w['id']}:10", msg=CallMsg(caption="c"))
+    await B.on_grade_tap(call_w)
+    gr_w = [g for g in FAKE_ROWS["grades"]
+            if g["student_id"] == st1["id"] and g["category"] == "Writing"]
+    check(len(gr_w) == 1 and gr_w[0]["grade"] == 10
+          and gr_w[0]["note"] == "Writing (Telegram)",
+          "writing: grades ga category='Writing', note='Writing (Telegram)'")
+    check(FAKE_ROWS["students"][0]["speaking_debt"] == debt_w,
+          "writing: speaking qarzi o'zgarmaydi")
+    wnotes = [x["text"] for x in fb.sent if x["kind"] == "message" and x["chat_id"] == 555]
+    check(wnotes == ["🎉 <b>Writing (yozma ish) vazifangiz baholandi: 10/10 ball!</b>"],
+          "writing: o'quvchiga aynan spec baho xabari")
+    check(sub_w["status"] == "baholandi" and sub_w["score"] == 10,
+          "writing: topshirik 'baholandi' belgilandi")
+
+    # bekor qilish
+    w2 = Msg(555, photo=[Media("PH-2")])
+    await B.handle_speaking_submission(w2)
+    sub_w2 = FAKE_ROWS["speaking_submissions"][-1]
+    fb.sent.clear()
+    call_rw = Call(ADMIN, f"reject:{sub_w2['id']}", msg=CallMsg(caption="c"))
+    await B.on_reject_tap(call_rw)
+    rej = [x["text"] for x in fb.sent if x["chat_id"] == 555]
+    check(any("WRITING BEKOR QILINDI" in t for t in rej),
+          "writing: bekor qilinsa o'quvchiga WRITING xabari")
+
     # =========================================================
     # KUNLIK HISOBOT + AVTOMATIK BACKUP (00:00 Toshkent)
     # =========================================================
