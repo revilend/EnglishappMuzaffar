@@ -1045,7 +1045,7 @@ async def homework_watcher():
                 await asyncio.sleep(60)
             else:
                 logging.warning(f"homework watcher: {e}")
-        await asyncio.sleep(5)
+        await asyncio.sleep(15)
 
 
 # ============================================================
@@ -1199,7 +1199,7 @@ async def voice_watcher():
             await voice_tick()
         except Exception as e:
             logging.warning(f"voice watcher: {e}")
-        await asyncio.sleep(5)
+        await asyncio.sleep(15)
 
 
 # ============================================================
@@ -1271,7 +1271,7 @@ async def grades_watcher():
             await grade_tick()
         except Exception as e:
             logging.warning(f"grades watcher: {e}")
-        await asyncio.sleep(5)
+        await asyncio.sleep(15)
 
 
 async def message_tick() -> int:
@@ -1323,7 +1323,7 @@ async def messages_watcher():
             await message_tick()
         except Exception as e:
             logging.warning(f"messages watcher: {e}")
-        await asyncio.sleep(5)
+        await asyncio.sleep(15)
 
 
 # ============================================================
