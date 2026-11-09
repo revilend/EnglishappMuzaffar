@@ -398,6 +398,31 @@ check(text().includes('Malika Yusupova') && studentCards() >= 1, "qidiruv: davom
 setVal('#s-search', '');
 check(studentCards() === 6, "qidiruv: tozalandi → barcha o'quvchilar qaytdi");
 
+/* ================= 4b. QARZDORLAR EKRANI ================= */
+click('[data-act="nav"][data-screen="debtors"]');
+check(text().includes('Qarzdorlar') && qa('.debtor-card').length === 2,
+  "qarzdorlar: alohida ekranda 2 ta qarzdor");
+check(text().includes('50 000 so\'m') && text().includes('umumiy qarz'),
+  "qarzdorlar: summalar va umumiy qarz ko'rinadi");
+check(qa('.debtor-meta').length === 2 && text().includes("Oxirgi to'lov"),
+  "qarzdorlar: oxirgi to'lov sanasi maydoni");
+check(!!q('[data-act="remind-debtors"]'), "qarzdorlar: eslatma tugmasi ekranda");
+const firstDebtor = qa('.debtor-card')[0];
+const firstDebtorName = firstDebtor.querySelector('.s-name').textContent;
+click(firstDebtor.querySelector('[data-act="pay-student"]'));
+check(q('#modal-overlay').hidden === false && !!q('#pay-sum'), "qarzdorlar: to'lov modali ochildi");
+setVal('#pay-sum', '20000');
+clickAct('save-pay');
+check(q('#modal-overlay').hidden === true, "qarzdorlar: to'lov saqlandi");
+check(text().includes('30 000 so\'m'), "qarzdorlar: qarz 30 000 so'mga kamaydi");
+check(/Oxirgi to'lov: <b>\d{2}\.\d{2}\.\d{4}<\/b>/.test(qa('.debtor-card').filter(c => c.textContent.includes(firstDebtorName))[0].innerHTML),
+  "qarzdorlar: oxirgi to'lov sanasi yangilandi");
+const payLocal = JSON.parse(win.localStorage.getItem('et_payments') || '[]');
+check(payLocal.length === 1 && payLocal[0].amount === 20000, "qarzdorlar: to'lov tarixga yozildi");
+click('[data-act="nav"][data-screen="students"]');
+check(studentCards() === 6, "qarzdorlar: '← Orqaga' o'quvchilarga qaytardi");
+
+
 /* ================= 5. YANGI O'QUVCHI + LOGIN/PAROL ================= */
 clickAct('open-add-student');
 check(q('#modal-overlay').hidden === false, 'modal: o\'quvchi qo\'shish ochildi');

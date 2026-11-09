@@ -1685,3 +1685,12 @@ html[data-theme="dark"] .st-inset {
 .att-scroll::-webkit-scrollbar { width: 6px; }
 .att-scroll::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, .18); border-radius: 999px; }
 .pay-history { margin-top: 6px; }
+
+/* ==================== QARZDORLAR EKRANI ==================== */
+.debtor-list { display: flex; flex-direction: column; gap: 9px; }
+.debtor-card { border-left: 3px solid var(--danger); }
+.debtor-top { align-items: flex-start; gap: 10px; }
+.debtor-card .s-name { font-weight: 800; font-size: 14px; }
+.debtor-meta { margin-top: 7px; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.debtor-actions { display: flex; gap: 8px; margin-top: 9px; }
+.debtor-actions .btn { flex: 1; }

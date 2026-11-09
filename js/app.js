@@ -102,7 +102,7 @@ const state = {
 
 const AUTH_SCREENS = ['login'];
 /* Faqat ustoz ruxsat beradigan ekranlar */
-const TEACHER_SCREENS = ['groups', 'students', 'grades', 'attendance', 'speaking'];
+const TEACHER_SCREENS = ['groups', 'students', 'debtors', 'grades', 'attendance', 'speaking'];
 
 
 function initials(name) {
@@ -2779,6 +2779,64 @@ function groupCard(g, students) {
   </div>`;
 }
 
+/* ==================== QARZDORLAR (faqat ustoz) ==================== */
+function lastPaymentOf(sid) {
+  const rows = getPayments().filter(function (p) { return p.sid === sid; });
+  if (!rows.length) return null;
+  return rows.slice().sort(function (a, b) {
+    return String(b.createdAt).localeCompare(String(a.createdAt));
+  })[0];
+}
+
+function debtorCard(s) {
+  const g = groupById(s.groupId);
+  const debt = Math.max(0, Number(s.paymentDebt) || 0);
+  const lp = lastPaymentOf(s.id);
+  const lpDate = lp ? String(lp.createdAt || '').slice(0, 10) : '';
+  return `<div class="card debtor-card">
+    <div class="row between debtor-top">
+      <div class="col">
+        <span class="s-name">${esc(s.fullName)}</span>
+        <div class="muted small">${g ? esc(g.name) : 'Guruh taylanmagan'}</div>
+      </div>
+      <span class="pay-status due">${fmtSom(debt)} so'm</span>
+    </div>
+    <div class="debtor-meta">
+      ${lp && lpDate
+        ? `${ico('calendar', 13)} Oxirgi to'lov: <b>${fmtDMY(lpDate)}</b> · ${fmtSom(lp.amount)} so'm`
+        : `${ico('calendar', 13)} Oxirgi to'lov: <span class="muted">hali to'lov yo'q</span>`}
+    </div>
+    <div class="debtor-actions">
+      <button type="button" class="btn btn-xs btn-primary" data-act="pay-student" data-sid="${s.id}">💵 To'lov kiritish</button>
+      <button type="button" class="btn btn-xs ghost" data-act="open-chat" data-sid="${s.id}">${ico('message', 14)} Xabar</button>
+    </div>
+  </div>`;
+}
+
+function debtorsScreen() {
+  if (!isTeacher()) return blockedScreen("Bu bo'lim faqat Muzaffar Amirov uchun");
+  const debtors = debtorsList().slice().sort(function (a, b) {
+    return (Number(b.paymentDebt) || 0) - (Number(a.paymentDebt) || 0);
+  });
+  const total = debtors.reduce(function (a, s) { return a + (Number(s.paymentDebt) || 0); }, 0);
+  return `
+  <div class="screen-head">
+    <div>
+      <h2 class="screen-title">💳 Qarzdorlar</h2>
+      <div class="muted small">${debtors.length} nafar · umumiy qarz: ${fmtSom(total)} so'm</div>
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm" data-act="nav" data-screen="students">← Orqaga</button>
+  </div>
+
+  ${debtors.length ? `
+  <button type="button" class="btn btn-primary btn-block debtors-btn" data-act="remind-debtors">
+    <span class="debtors-ico">📢</span> Barcha qarzdorlarga eslatma yuborish
+  </button>
+  <div class="debtor-list">${debtors.map(debtorCard).join('')}</div>`
+  : emptyState("Qarzdor o'quvchi yo'q — hamma to'langan ✓", 'checkCircle')}
+  `;
+}
+
 function groupsScreen() {
   if (!isTeacher()) return blockedScreen("Bu bo'lim faqat Muzaffar Amirov uchun");
   const groups = getGroups();
@@ -2886,6 +2944,7 @@ function studentsScreen() {
   <button type="button" class="btn btn-primary btn-block debtors-btn" data-act="remind-debtors">
     <span class="debtors-ico">📢</span> Barcha qarzdorlarga eslatma yuborish
   </button>
+  <button type="button" class="btn btn-ghost btn-block" data-act="nav" data-screen="debtors">💳 Qarzdorlar ro'yxati</button>
 
   <div class="chips${state.classHint ? ' is-hl' : ''}">
     ${chips.map(c => `<button type="button" class="chip-btn ${state.filterClass === c ? 'active' : ''}" data-act="filter-class" data-class="${esc(c)}">${esc(tClass(c))}</button>`).join('')}
@@ -4631,6 +4690,7 @@ const SCREENS = {
   'home': homeScreen,
   'groups': groupsScreen,
   'students': studentsScreen,
+  'debtors': debtorsScreen,
   'grades': gradesScreen,
   'attendance': attendanceScreen,
   'speaking': speakingScreen,
