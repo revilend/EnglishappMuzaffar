@@ -1276,20 +1276,28 @@ def grade_alert_text(grade) -> str:
 
 
 def msg_alert_from_teacher(text: str) -> str:
-    return "💬 <b>Muzaffar Amirovdan yangi xabar:</b>\n\n" + html.escape(text)
+    return (
+        "💬 <b>Muzaffar Amirovdan yangi xabar:</b>\n\n"
+        + html.escape(text)
+        + "\n\n<i>(Javob qaytarish uchun to'g'ridan-to'g'ri botga yozishingiz mumkin)</i>"
+    )
 
 
-def msg_alert_from_student(name: str, text: str) -> str:
-    return f"💬 <b>{html.escape(name)}: Yangi xabar keldi</b>\n\n" + html.escape(text)
+def msg_alert_from_student(name: str, text: str, school_class: str = "—") -> str:
+    return (
+        "💬 <b>O'quvchidan yangi xabar!</b>\n"
+        f"👤 <b>{html.escape(str(name or '?'))}</b> ({html.escape(str(school_class or '—'))}):\n\n"
+        f"<i>\"{html.escape(text)}\"</i>"
+    )
 
 
-async def send_alert(chat_id, text: str) -> bool:
+async def send_alert(chat_id, text: str, reply_markup=None) -> bool:
     """Ovozli (sound) tezkor xabar yuboradi; muvaffaqiyatsiz bo'lsa False."""
     if bot is None or not chat_id:
         return False
     try:
         await bot.send_message(chat_id=int(chat_id), text=text, parse_mode="HTML",
-                               disable_notification=False)
+                               disable_notification=False, reply_markup=reply_markup)
         return True
     except Exception as e:
         logging.warning(f"alert -> {chat_id}: {e}")
@@ -1338,44 +1346,113 @@ async def grades_watcher():
         await asyncio.sleep(15)
 
 
+MSG_CURSOR_KEY = "last_message_id"
+_delivered_msg_ids: set = set()  # handler orqali darhol yuborilganlar — watcher takrorlamaydi
+
+
+def _load_msg_cursor():
+    """bot_settings'dan oxirgi yetkazilgan xabar id'sini o'qiydi (restartga chidamli)."""
+    try:
+        rows = supabase.table("bot_settings").select("value").eq(
+            "key", MSG_CURSOR_KEY).limit(1).execute().data or []
+        if rows:
+            return int(str(rows[0].get("value") or "0"))
+    except Exception as e:
+        logging.warning(f"msg cursor load: {e}")
+    return None
+
+
+def _save_msg_cursor(mid) -> None:
+    """Kursorni bot_settings'ga yozadi — bot qayta ishga tushsa ham xabar yo'qolmaydi."""
+    try:
+        supabase.table("bot_settings").upsert(
+            {"key": MSG_CURSOR_KEY, "value": str(int(mid))}
+        ).execute()
+    except Exception as e:
+        logging.warning(f"msg cursor save: {e}")
+
+
+def _mark_msg_delivered(mid) -> None:
+    """Handler darhol yuborgan xabar id'sini belgilaydi (watcher dublikat yubormaydi)."""
+    try:
+        i = int(mid)
+    except (TypeError, ValueError):
+        return
+    _delivered_msg_ids.add(i)
+    if len(_delivered_msg_ids) > 300:
+        for old in sorted(_delivered_msg_ids)[:150]:
+            _delivered_msg_ids.discard(old)
+
+
 async def message_tick() -> int:
-    """Yangi chat xabarini qabul qiluvchiga tezkor xabar qiladi (test qilinadigan mantiq)."""
+    """Yangi chat xabarini qabul qiluvchiga tezkor xabar qiladi (test qilinadigan mantiq).
+
+    - Har bir xabar alohida try-except'da: bittasi xato bo'lsa keyingilari yetkaziladi.
+    - Kursor `bot_settings.last_message_id`da saqlanadi → restartda ham yangi xabarlar
+      o'tkazib yuborilmaydi, eski tarix esa qayta yuborilmaydi.
+    """
     global _last_msg_seen
-    rows = supabase.table("messages").select("id, student_id, sender, text").order("id").execute().data or []
-    if _last_msg_seen is None:
-        # birinchi start: mavjud xabarlarni SPAM qilmaymiz
-        _last_msg_seen = rows[-1]["id"] if rows else 0
-        logging.info(f"messages watcher: {len(rows)} ta mavjud xabar ko'rib chiqildi")
+    try:
+        rows = supabase.table("messages").select(
+            "id, student_id, sender, text").order("id").execute().data or []
+    except Exception as e:
+        logging.warning(f"messages watcher: {e}")
         return 0
+
+    if _last_msg_seen is None:
+        stored = _load_msg_cursor()
+        if stored is None:
+            # Birinchi start: mavjud tarixni SPAM qilmaymiz, kursorni saqlab qo'yamiz
+            try:
+                stored = int(rows[-1].get("id")) if rows else 0
+            except (TypeError, ValueError):
+                stored = 0
+            if rows:
+                _save_msg_cursor(stored)
+            logging.info(f"messages watcher: boshlang'ich kursor {stored} ({len(rows)} ta xabar)")
+        _last_msg_seen = stored
+
     sent = 0
+    advanced = False
     for row in rows:
-        if row["id"] <= _last_msg_seen:
+        try:
+            mid = int(row.get("id"))
+        except (TypeError, ValueError):
             continue
-        _last_msg_seen = row["id"]  # qayta yuborilmaydi
+        if mid <= _last_msg_seen:
+            continue
+        _last_msg_seen = mid
+        advanced = True
+        if mid in _delivered_msg_ids:
+            continue  # allaqachon to'g'ridan-to'g'ri yuborilgan
         sender = row.get("sender")
         text = str(row.get("text") or "")
-        if sender == "teacher":
-            # Ustoz yozgan → o'quvchiga
-            try:
+        try:
+            if sender == "teacher":
+                # Ustoz (saytdan) yozgan → o'quvchiga
                 studs = supabase.table("students").select("id, telegram_chat_id").\
-                    eq("id", row["student_id"]).limit(1).execute().data
-            except Exception as e:
-                logging.warning(f"messages watcher student: {e}")
-                continue
-            if studs and await send_alert(studs[0].get("telegram_chat_id"),
-                                          msg_alert_from_teacher(text)):
-                sent += 1
-        elif sender == "student":
-            # O'quvchi yozgan → ustozga
-            try:
-                studs = supabase.table("students").select("id, name").\
-                    eq("id", row["student_id"]).limit(1).execute().data
-            except Exception as e:
-                logging.warning(f"messages watcher name: {e}")
-                continue
-            name = (studs[0].get("name") if studs else None) or "O'quvchi"
-            if await send_alert(config.ADMIN_ID, msg_alert_from_student(name, text)):
-                sent += 1
+                    eq("id", row.get("student_id")).limit(1).execute().data
+                if studs and await send_alert(studs[0].get("telegram_chat_id"),
+                                              msg_alert_from_teacher(text)):
+                    sent += 1
+            elif sender == "student":
+                # O'quvchi yozgan → ustozga, [↩️ Javob yozish] tugmasi bilan
+                studs = supabase.table("students").select("id, name, school_class").\
+                    eq("id", row.get("student_id")).limit(1).execute().data
+                if not studs:
+                    logging.warning(f"messages watcher: o'quvchi topilmadi (id={row.get('student_id')})")
+                    continue
+                st = studs[0]
+                alert = msg_alert_from_student(st.get("name") or "O'quvchi", text,
+                                               st.get("school_class") or "—")
+                if await send_alert(config.ADMIN_ID, alert,
+                                    reply_student_keyboard(st.get("id"))):
+                    sent += 1
+        except Exception as e:
+            # Bitta xabar (masalan, bloklangan o'quvchi) qolganlarini to'xtatmaydi
+            logging.warning(f"messages watcher (id={mid}): {e}")
+    if advanced:
+        _save_msg_cursor(_last_msg_seen)
     return sent
 
 
@@ -1874,17 +1951,6 @@ def cancel_reply_keyboard() -> InlineKeyboardMarkup:
     ]])
 
 
-def _bump_last_msg_seen(msg_id) -> None:
-    """O'zimiz yuborgan xabarni messages_watcher takror yubormasligi uchun."""
-    global _last_msg_seen
-    try:
-        mid = int(msg_id)
-    except (TypeError, ValueError):
-        return
-    if _last_msg_seen is None or mid > _last_msg_seen:
-        _last_msg_seen = mid
-
-
 async def handle_student_text(message: types.Message, student: dict) -> None:
     """O'quvchi erkin matnini messages'ga yozadi va ustozga tugma bilan yuboradi."""
     text = (message.text or "").strip()
@@ -1907,7 +1973,7 @@ async def handle_student_text(message: types.Message, student: dict) -> None:
             reply_markup=reply_student_keyboard(student["id"]),
             parse_mode="HTML",
         )
-        _bump_last_msg_seen(msg_id)
+        _mark_msg_delivered(msg_id)
     except Exception as e:
         logging.error(f"student message -> teacher: {e}")
 
@@ -2016,7 +2082,8 @@ async def on_teacher_reply(message: types.Message, state: FSMContext):
             msg_id = res.data[0].get("id")
     except Exception as e:
         logging.error(f"teacher message insert: {e}")
-    _bump_last_msg_seen(msg_id)
+    if sent:
+        _mark_msg_delivered(msg_id)
 
     try:
         if sent:

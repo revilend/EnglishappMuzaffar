@@ -82,6 +82,7 @@ def reset_rows():
         "speaking_submissions": [],
         "audio_submissions": [],
         "homework": [],
+        "bot_settings": [],
     })
 
 
@@ -178,6 +179,25 @@ class FakeQuery:
                 r.update(self.payload)
             return R([dict(r) for r in matched])
 
+        if self.op == "upsert":
+            payload = self.payload if isinstance(self.payload, list) else [self.payload]
+            out = []
+            for p in payload:
+                p = dict(p)
+                key = "key" if "key" in p else "id"
+                found = None
+                for r in rows:
+                    if r.get(key) == p.get(key):
+                        found = r
+                        break
+                if found is not None:
+                    found.update(p)
+                    out.append(dict(found))
+                else:
+                    rows.append(p)
+                    out.append(dict(p))
+            return R(out)
+
         if self.op == "delete":
             keep, removed = [], []
             for r in rows:
@@ -200,6 +220,9 @@ class FakeTable:
 
     def update(self, payload):
         return FakeQuery(self.name, "update", payload)
+
+    def upsert(self, payload):
+        return FakeQuery(self.name, "upsert", payload)
 
     def delete(self):
         return FakeQuery(self.name, "delete")
@@ -1005,6 +1028,9 @@ async def main():
     check(sent == 1 and len(to_student) == 1, "notif: message — ustoz yozgan → o'quvchiga")
     check(to_student and "Muzaffar Amirovdan yangi xabar:" in to_student[0]["text"],
           "notif: message — o'quvchiga matn specda aniq")
+    check(to_student and "(Javob qaytarish uchun to'g'ridan-to'g'ri botga yozishingiz mumkin)"
+          in to_student[0]["text"],
+          "notif: message — o'quvchiga javob yo'riqnomasi qo'shildi")
     check(to_student and "Ertaga dars bor" in to_student[0]["text"],
           "notif: message — xabar matni yetdi")
     check(to_student and to_student[0].get("disable_notification") is False,
@@ -1017,14 +1043,60 @@ async def main():
     sent = await B.message_tick()
     to_teacher = [s for s in fb.sent if s["kind"] == "message" and s["chat_id"] == config.ADMIN_ID]
     check(sent == 1 and len(to_teacher) == 1, "notif: message — o'quvchi yozgan → ustozga")
-    check(to_teacher and "Nilufar Ergasheva: Yangi xabar keldi" in to_teacher[0]["text"],
-          "notif: message — ustozga matn specda aniq")
+    check(to_teacher and to_teacher[0]["text"] ==
+          "💬 <b>O'quvchidan yangi xabar!</b>\n"
+          "👤 <b>Nilufar Ergasheva</b> (9-sinf):\n\n"
+          "<i>\"Yaxshiman\"</i>",
+          "notif: message — ustozga matn specda aniq (ism + sinf)")
+    check(to_teacher and btn_texts(to_teacher[0]["reply_markup"]) ==
+          [("↩️ Javob yozish", "reply_student:2")],
+          "notif: message — [ ↩️ Javob yozish ] -> reply_student:<id>")
     check(to_teacher and "Yaxshiman" in to_teacher[0]["text"],
           "notif: message — ustozga xabar matni yetdi")
     check(to_teacher and to_teacher[0].get("disable_notification") is False,
           "notif: message — ustozga ovozli (sound) yetkazish")
     again = await B.message_tick()
     check(again == 0, "notif: message — takrorlanish spam qilmaydi")
+
+    # --- (b2) restart: kursor bot_settings'dan tiklanadi ---
+    FAKE_ROWS["bot_settings"] = [{"key": "last_message_id", "value": "71"}]
+    FAKE_ROWS["messages"].append({"id": 72, "student_id": 1, "sender": "teacher",
+                                  "text": "Offline kelgan xabar",
+                                  "created_at": "2026-10-05T10:10:00Z"})
+    B._last_msg_seen = None
+    fb.sent.clear()
+    sent = await B.message_tick()
+    check(sent == 1 and any("Offline kelgan xabar" in (x.get("text") or "") for x in fb.sent),
+          "notif: message — restartdan keyin offline xabar yetkaziladi")
+    _cur = [r for r in FAKE_ROWS["bot_settings"] if r.get("key") == "last_message_id"]
+    check(bool(_cur) and _cur[0].get("value") == "72",
+          "notif: message — kursor bot_settings'da saqlanadi")
+
+    # --- (b3) bitta xatolik keyingi xabarlarni to'xtatmaydi ---
+    FAKE_ROWS["messages"].append({"id": 73, "student_id": 1, "sender": "teacher",
+                                  "text": "Bloklangan o'quvchi",
+                                  "created_at": "2026-10-05T10:11:00Z"})
+    FAKE_ROWS["messages"].append({"id": 74, "student_id": 2, "sender": "teacher",
+                                  "text": "Keyingi xabar",
+                                  "created_at": "2026-10-05T10:12:00Z"})
+    _orig_send = fb.send_message
+
+    async def _boom(chat_id, text, **kw):
+        if int(chat_id) == 555:
+            raise RuntimeError("bot blocked")
+        await _orig_send(chat_id, text, **kw)
+
+    fb.send_message = _boom
+    fb.sent.clear()
+    try:
+        sent = await B.message_tick()
+    finally:
+        fb.send_message = _orig_send
+    check(sent == 1 and any(x["chat_id"] == 666 and "Keyingi xabar" in x["text"]
+                            for x in fb.sent),
+          "notif: message — xatolik keyingi xabarni to'xtatmaydi")
+    check(B._last_msg_seen == 74,
+          "notif: message — xatolikdan keyin ham kursor oldinga suriladi")
 
     # --- (c) voice ruxsati — mavjud oqim ham ovozli ---
     B._voice_seen = {1: False, 2: True, 3: True}
@@ -1063,6 +1135,7 @@ async def main():
     reset_rows()
     B.pending_logins.clear()
     B._last_msg_seen = None
+    B._delivered_msg_ids.clear()
     fb.sent.clear()
     st1 = [x for x in FAKE_ROWS["students"] if x.get("telegram_chat_id") == 555][0]
 
