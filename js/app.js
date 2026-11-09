@@ -51,6 +51,7 @@ const K = {
   messages: 'et_messages',
   homework: 'et_homework',
   homeworkDone: 'et_hw_done',
+  payments: 'et_payments',
   loginFails: 'et_login_fails',
   speakLog: 'et_speak_log',
   tgsubs: 'et_tg_subs',
@@ -140,6 +141,7 @@ function getGrades() { return store.get(K.grades, {}); }
 function getAttendance() { return store.get(K.attendance, {}) || {}; }
 function getSpeaking() { return store.get(K.speaking, []) || []; }
 function getHomework() { return store.get(K.homework, []) || []; }
+function getPayments() { return store.get(K.payments, []) || []; }
 function getTgSubs() { return store.get(K.tgsubs, []) || []; }
 function studentById(id) { return getStudents().filter(s => s.id === id)[0] || null; }
 function groupById(id) { return getGroups().filter(g => g.id === id)[0] || null; }
@@ -293,6 +295,7 @@ const CloudSync = (function () {
       password: acc.password || s.password || '',
       speaking_debt: Number(s.speakingDebt) || 0,
       payment_debt: Number(s.paymentDebt) || 0,
+      fee_period: s.feePeriod || null,
       voice_allowed: s.voiceAllowed !== false
     };
   }
@@ -527,6 +530,7 @@ const CloudSync = (function () {
           password: r.password || '',
           speakingDebt: Number(r.speaking_debt) || 0,
           paymentDebt: Number(r.payment_debt) || 0,
+          feePeriod: r.fee_period || '',
           telegramChatId: r.telegram_chat_id == null ? null : Number(r.telegram_chat_id),
           voiceAllowed: r.voice_allowed !== false,
           lastDevice: r.last_device || '',
@@ -571,6 +575,8 @@ const CloudSync = (function () {
       store.set(K.students, students);
       store.set(K.grades, grades);
       store.set(K.attendance, attendance);
+      await pullPayments();
+      applyMonthlyFees();
 
       /* speaking slotlari: eski lokal id → yangi id */
       const slots = getSpeaking();
@@ -640,6 +646,7 @@ const CloudSync = (function () {
       password: row.password || '',
       speakingDebt: Number(row.speaking_debt) || 0,
       paymentDebt: Number(row.payment_debt) || 0,
+      feePeriod: row.fee_period || '',
       telegramChatId: row.telegram_chat_id == null ? null : Number(row.telegram_chat_id),
       voiceAllowed: row.voice_allowed !== false,
       lastDevice: row.last_device || '',
@@ -662,6 +669,7 @@ const CloudSync = (function () {
     store.set(K.students, students);
     store.set(K.grades, grades);
     store.set(K.attendance, attendance);
+    await pullPayments(dbId);
 
     /* xabarlar — faqat o'z suhbati */
     const mRes = await client.from('messages').select('id, student_id, sender, text, created_at')
@@ -940,9 +948,45 @@ const CloudSync = (function () {
     return res.data || [];
   }
 
+  /* --- payments: to'lovlar tarixi --- */
+  async function pullPayments(dbId) {
+    if (!ready()) return;
+    try {
+      let q = client.from('payments').select('*').order('created_at', { ascending: true });
+      if (dbId != null) q = q.eq('student_id', dbId);
+      const res = await q;
+      if (res.error) return;
+      store.set(K.payments, (res.data || []).map(function (r) {
+        return {
+          id: 'p' + r.id, dbId: r.id, sid: 's' + r.student_id,
+          amount: Number(r.amount) || 0, note: r.note || '', createdAt: r.created_at || ''
+        };
+      }));
+    } catch (e) { /* payments jadvali hali yaratilmagan */ }
+  }
+
+  async function addPayment(sid, dbId, amount, note) {
+    const local = {
+      id: 'p' + Date.now(), dbId: null, sid: sid,
+      amount: Number(amount) || 0, note: note || '', createdAt: new Date().toISOString()
+    };
+    const list = getPayments(); list.push(local); store.set(K.payments, list);
+    if (!ready() || dbId == null) return local;
+    try {
+      const res = await client.from('payments')
+        .insert({ student_id: dbId, amount: Number(amount) || 0, note: note || '' }).select();
+      if (res.error) throw res.error;
+      if (res.data && res.data[0]) {
+        local.dbId = res.data[0].id;
+        store.set(K.payments, getPayments());
+      }
+    } catch (e) { console.warn('[cloud] payment:', (e && e.message) || e); }
+    return local;
+  }
+
   /* --- Zaxira: jadvallarni olish / qayta tiklash --- */
   const BACKUP_TABLES = ['groups', 'students', 'attendance', 'grades', 'messages', 'speaking_submissions',
-    'audio_submissions', 'homework', 'speaking_slots'];
+    'audio_submissions', 'homework', 'speaking_slots', 'payments'];
 
   async function fetchBackup() {
     if (!ready()) return null;
@@ -970,7 +1014,7 @@ const CloudSync = (function () {
     try {
       /* 1) avval bog'liq qatorlar, keyin asosiy jadvallar (FK uchun) */
       const delOrder = ['messages', 'grades', 'attendance', 'speaking_submissions', 'audio_submissions',
-        'homework', 'speaking_slots', 'students', 'groups'];
+        'homework', 'speaking_slots', 'payments', 'students', 'groups'];
       for (let i = 0; i < delOrder.length; i++) {
         const res = await client.from(delOrder[i]).delete().gte('id', 0);
         if (res.error && !missing(res.error)) throw res.error;
@@ -1223,6 +1267,7 @@ const CloudSync = (function () {
     removeHomeworkMedia: removeHomeworkMedia,
     queueMessages: queueMessages,
     messageStatus: messageStatus,
+    addPayment: addPayment,
     fetchMessages: fetchMessages,
     pushGroup: pushGroup,
     pushStudent: pushStudent,
@@ -2413,7 +2458,48 @@ function saveHomework() {
   finish(oldUrl, existing ? existing.mediaType : '');
 }
 
+/* ==================== AVTOMATIK OYLIK TO'LOV ==================== */
+function currentPeriod() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+/* Har oy boshida guruh oylik to'lovini o'quvchi qarziga bir marta qo'shadi */
+function applyMonthlyFees() {
+  if (!isTeacher()) return 0;
+  const period = currentPeriod();
+  let changed = 0;
+  const list = getStudents().map(function (s) {
+    const g = groupById(s.groupId);
+    const fee = g ? Math.max(0, Number(g.monthlyFee) || 0) : 0;
+    if (!fee || s.feePeriod === period) return s;
+    changed += 1;
+    return Object.assign({}, s, {
+      paymentDebt: Math.max(0, Number(s.paymentDebt) || 0) + fee,
+      feePeriod: period
+    });
+  });
+  if (!changed) return 0;
+  store.set(K.students, list);
+  list.forEach(function (s) { if (s.feePeriod === period) CloudSync.pushStudent(s.id); });
+  return changed;
+}
+
+/* O'quvchi kabineti: to'lovlar tarixi */
+function payHistoryHTML(st) {
+  const rows = getPayments().filter(function (p) { return p.sid === st.id; })
+    .sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
+  if (!rows.length) return `<div class="empty"><span class="empty-ico">💵</span>Hozircha to'lov yo'q</div>`;
+  return `<div class="pay-history att-scroll">${rows.map(function (p) {
+    const d = String(p.createdAt || '').slice(0, 10);
+    return `<div class="att-line">
+      <span class="gr-date">${d ? fmtDM(d) : '—'}</span>
+      <span class="col"><strong>${fmtSom(p.amount)} so'm</strong>${p.note ? `<span class="gr-note">${esc(p.note)}</span>` : ''}</span>
+    </div>`;
+  }).join('')}</div>`;
+}
+
 function teacherHome() {
+  applyMonthlyFees();
   const groups = getGroups();
   const students = getStudents();
   const classSet = {};
@@ -2512,11 +2598,17 @@ function studentPortal() {
   const cnt = { present: 0, absent: 0, excused: 0 };
   ownAtt.forEach(a => { cnt[a.status] = (cnt[a.status] || 0) + 1; });
   const statusLabel = { present: 'Keldi', absent: 'Kelmadi', excused: 'Sababli' };
-  const attRows = ownAtt.length ? ownAtt.map(a => `
+  const attLine = a => `
     <div class="att-line">
       <span class="gr-date">${fmtDM(a.date)}</span>
       <span class="att-tag on-${a.status}">${statusLabel[a.status]}</span>
-    </div>`).join('') : `<div class="empty"><span class="empty-ico">${ICON.cal}</span>Davomat yozuvi yo'q</div>`;
+    </div>`;
+  const attRows = ownAtt.length ? ownAtt.map(attLine).join('') : `<div class="empty"><span class="empty-ico">${ICON.cal}</span>Davomat yozuvi yo'q</div>`;
+  const attLastRows = ownAtt.length ? ownAtt.slice(0, 3).map(attLine).join('') : attRows;
+  const attPct = ownAtt.length ? Math.round((cnt.present * 100) / ownAtt.length) : 0;
+  const attMissed = (cnt.absent || 0) + (cnt.excused || 0);
+  const payDebt = Math.max(0, Number(st.paymentDebt) || 0);
+  const gFee = g ? Math.max(0, Number(g.monthlyFee) || 0) : 0;
 
   /* --- Speaking vaqti --- */
   const mineSlots = getSpeaking()
@@ -2580,14 +2672,29 @@ function studentPortal() {
   </div>
   <div class="card">${gradeRows}</div>
 
-  <div class="section-title">Mening davomatim</div>
-  <div class="card">
-    <div class="att-summary">
-      <span class="att-pill">✓ Keldi: ${cnt.present}</span>
-      <span class="att-pill">✕ Kelmadi: ${cnt.absent}</span>
-      <span class="att-pill">? Sababli: ${cnt.excused}</span>
+  <div class="section-title">${ico('cal', 13)} Mening davomatim</div>
+  <div class="card att-card">
+    <div class="row between att-head">
+      <div class="col">
+        <div class="strong-label">📅 Davomat: ${attPct}% qatnashgan (${attMissed} ta qoldirilgan)</div>
+        <div class="muted small">${cnt.present} keldi · ${cnt.absent} kelmadi · ${cnt.excused} sababli</div>
+      </div>
+      <button type="button" class="btn btn-xs ghost att-toggle" data-act="att-toggle" aria-expanded="${!!state.attOpen}">${state.attOpen ? '▴ Yopish' : '▾ Ochish'}</button>
     </div>
-    ${attRows}
+    ${state.attOpen ? `<div class="att-scroll">${attRows}</div>
+    <button type="button" class="btn btn-xs ghost btn-block" data-act="att-toggle">▴ Yopish</button>`
+    : `<div class="att-last">${attLastRows}</div>
+    <button type="button" class="btn btn-xs ghost btn-block" data-act="att-toggle">▾ Barchasini ko'rish</button>`}
+  </div>
+
+  <div class="section-title">💵 To'lovlar</div>
+  <div class="card">
+    <div class="row between">
+      <span class="pay-status ${payDebt > 0 ? 'due' : 'ok'}">${payDebt > 0 ? `🔴 To'lov qarzi: ${fmtSom(payDebt)} so'm` : "🟢 To'langan"}</span>
+      ${gFee ? `<span class="pill">Oylik: ${fmtSom(gFee)} so'm</span>` : ''}
+    </div>
+    <div class="muted small" style="margin-top:5px">To'lovlar tarixi</div>
+    ${payHistoryHTML(st)}
   </div>
 
   <div class="section-title">Speaking vaqtim</div>
@@ -2842,6 +2949,7 @@ function savePayment(sid) {
     ? Object.assign({}, x, { paymentDebt: after }) : x);
   store.set(K.students, list);
   CloudSync.pushStudent(sid);
+  CloudSync.addPayment(sid, st.dbId, paid, "To'lov qabul qilindi");
   CloudSync.queueMessages([{
     student_id: st.dbId != null ? st.dbId : null,
     chat_id: st.telegramChatId || null,
@@ -3186,7 +3294,7 @@ function saveStudent() {
 
   const id = 's' + Date.now();
   const students = getStudents();
-  students.push({ id, fullName: name, schoolClass: cls, groupId: gid, speakingDebt: 0, paymentDebt: 0, audioSubmissions: [] });
+  students.push({ id, fullName: name, schoolClass: cls, groupId: gid, speakingDebt: 0, paymentDebt: 0, feePeriod: '', audioSubmissions: [] });
   store.set(K.students, students);
 
   accounts[login] = { login, password: pass, role: 'student', studentId: id, name };
@@ -3660,6 +3768,7 @@ function restoreLocal(data) {
       password: st.password || '',
       speakingDebt: Number(st.speaking_debt) || 0,
       paymentDebt: Number(st.payment_debt) || 0,
+      feePeriod: st.fee_period || '',
       voiceAllowed: st.voice_allowed !== false,
       telegramChatId: st.telegram_chat_id == null ? null : Number(st.telegram_chat_id),
       lastDevice: st.last_device || '',
@@ -3724,6 +3833,20 @@ function restoreLocal(data) {
     };
   }).filter(Boolean);
   store.set(K.homework, hw);
+
+  /* to'lovlar tarixi */
+  store.set(K.payments, (data.payments || []).map((pm, i) => {
+    const sid = toNumId(pm && pm.student_id);
+    if (sid == null) return null;
+    return {
+      id: 'p' + (pm.id != null ? pm.id : i + 1),
+      dbId: pm.id != null ? toNumId(pm.id) : null,
+      sid: 's' + sid,
+      amount: Number(pm.amount) || 0,
+      note: pm.note || '',
+      createdAt: pm.created_at || ''
+    };
+  }).filter(Boolean));
 
   /* Telegram speaking topshiriklari */
   const subs = (data.speaking_submissions || []).map(t => {
@@ -4940,6 +5063,7 @@ document.addEventListener('click', function (e) {
     'hw-remove-media': removeHwMedia,
     'pay-student': function () { openPayModal(btn.getAttribute('data-sid')); },
     'save-pay': function () { savePayment(btn.getAttribute('data-sid')); },
+    'att-toggle': function () { state.attOpen = !state.attOpen; render(); },
     'remind-debtors': openRemindDebtors,
     'do-remind-debtors': sendDebtorsReminder,
     'del-hw': function () { openDeleteHw(btn.getAttribute('data-hid')); },

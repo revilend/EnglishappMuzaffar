@@ -213,3 +213,20 @@ create policy "homework_media_update" on storage.objects
 drop policy if exists "homework_media_delete" on storage.objects;
 create policy "homework_media_delete" on storage.objects
   for delete using (bucket_id = 'homework-media');
+
+-- ============================================================
+-- TO'LOVLAR TARIXI + AVTOMATIK OYLIK HISOB
+-- ============================================================
+alter table students add column if not exists fee_period text;
+
+create table if not exists payments (
+  id bigint generated always as identity primary key,
+  student_id bigint references students(id) on delete cascade,
+  amount bigint not null default 0,
+  note text,
+  created_at timestamptz not null default now()
+);
+create index if not exists payments_student_idx on payments (student_id, created_at);
+alter table payments enable row level security;
+drop policy if exists "payments_all" on payments;
+create policy "payments_all" on payments for all using (true) with check (true);

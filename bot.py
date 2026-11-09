@@ -1049,6 +1049,49 @@ async def homework_watcher():
 
 
 # ============================================================
+# AVTOMATIK OYLIK TO'LOV: guruh narxini qarzga qo'shish
+# ============================================================
+async def monthly_fee_tick() -> int:
+    """Joriy oy uchun guruh oylik to'lovini o'quvchi qarziga bir marta qo'shadi."""
+    period = datetime.now(timezone.utc).strftime("%Y-%m")
+    try:
+        groups = supabase.table("groups").select("id, monthly_fee").execute().data or []
+        fees = {g["id"]: int(g.get("monthly_fee") or 0) for g in groups}
+        studs = supabase.table("students").select(
+            "id, group_id, payment_debt, fee_period"
+        ).execute().data or []
+    except Exception as e:
+        logging.warning(f"monthly fee: {e}")
+        return 0
+
+    charged = 0
+    for st in studs:
+        fee = fees.get(st.get("group_id")) or 0
+        if fee <= 0 or st.get("fee_period") == period:
+            continue
+        try:
+            supabase.table("students").update({
+                "payment_debt": int(st.get("payment_debt") or 0) + fee,
+                "fee_period": period,
+            }).eq("id", st["id"]).execute()
+            charged += 1
+        except Exception as e:
+            logging.warning(f"monthly fee student {st.get('id')}: {e}")
+    return charged
+
+
+async def monthly_fee_watcher():
+    """Oyda bir marta oylik to'lovni barcha guruh a'zolariga yozadi."""
+    await asyncio.sleep(8)
+    while True:
+        try:
+            await monthly_fee_tick()
+        except Exception as e:
+            logging.warning(f"monthly fee watcher: {e}")
+        await asyncio.sleep(3600)
+
+
+# ============================================================
 # TELEGRAM OUTBOX: sayt yozgan chek/eslatmalarni yuborish
 # ============================================================
 async def outbox_tick() -> int:
@@ -1290,7 +1333,8 @@ BACKUP_TABLES = ["groups", "students", "attendance", "grades", "messages", "spea
 RESTORE_PLAN = [
     ("groups", ["id", "name", "days", "time", "monthly_fee"]),
     ("students", ["id", "name", "school_class", "group_id", "login", "password", "speaking_debt",
-                  "voice_allowed", "telegram_chat_id", "last_device", "last_seen", "payment_debt"]),
+                  "voice_allowed", "telegram_chat_id", "last_device", "last_seen", "payment_debt",
+                  "fee_period"]),
     ("attendance", ["id", "student_id", "date", "status"]),
     ("grades", ["id", "student_id", "date", "grade", "category", "note"]),
     ("messages", ["id", "student_id", "sender", "text", "created_at"]),
@@ -1298,6 +1342,7 @@ RESTORE_PLAN = [
                               "feedback", "created_at"]),
     ("audio_submissions", ["id", "student_id", "date", "url", "status", "score", "feedback", "created_at"]),
     ("homework", ["id", "group_id", "title", "description", "due_date", "media_url", "media_type", "created_at"]),
+    ("payments", ["id", "student_id", "amount", "note", "created_at"]),
 ]
 pending_restore_file = {}
 
@@ -1677,6 +1722,7 @@ async def main():
     _bg_tasks.add(asyncio.create_task(grades_watcher()))     # yangi baho
     _bg_tasks.add(asyncio.create_task(messages_watcher()))   # yangi chat xabari
     _bg_tasks.add(asyncio.create_task(outbox_watcher()))     # chek / qarz eslatmalari
+    _bg_tasks.add(asyncio.create_task(monthly_fee_watcher()))  # oylik to'lov qarzi
 
     # Diagnostika: qaysi bot jonli — logda username ko'rinadi
     try:

@@ -1675,3 +1675,13 @@ html[data-theme="dark"] .st-inset {
 .pay-sum { font-size: 12px; color: var(--muted); }
 .pay-balance { font-size: 13px; font-weight: 800; }
 .pay-hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+
+/* ==================== O'QUVCHI: DAVOMAT AKKORDEONI ==================== */
+.att-card .att-head { align-items: flex-start; gap: 10px; }
+.att-card .att-head .strong-label { font-size: 13px; font-weight: 800; }
+.att-toggle { white-space: nowrap; }
+.att-last { margin-top: 4px; }
+.att-scroll { max-height: 240px; overflow-y: auto; overscroll-behavior: contain; }
+.att-scroll::-webkit-scrollbar { width: 6px; }
+.att-scroll::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, .18); border-radius: 999px; }
+.pay-history { margin-top: 6px; }

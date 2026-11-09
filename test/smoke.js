@@ -344,6 +344,21 @@ check(groupCards() === 2, "vaqt: sinov guruhi o'chirildi → yana 2 ta guruh");
 check(!JSON.parse(win.localStorage.getItem('et_groups')).some(g => g.name === 'Vaqtli Guruh'),
   "vaqt: sinov guruhi bazadan ham o'chdi");
 
+/* --- Avtomatik oylik to'lov: guruh narxi qarzga oyiga bir marta qo'shiladi --- */
+win.localStorage.setItem('et_students', JSON.stringify(JSON.parse(win.localStorage.getItem('et_students') || '[]').map(s => Object.assign({}, s, { paymentDebt: 0, feePeriod: '' }))));
+click(qa('.group-card').filter(c => c.textContent.includes('IELTS Band 7.0'))[0].querySelector('[data-act="edit-group"]'));
+setVal('#f-gfee', '50000');
+clickAct('save-edit-group');
+click('[data-act="nav"][data-screen="home"]');
+const feeSt1 = JSON.parse(win.localStorage.getItem('et_students') || '[]').filter(s => s.groupId === 'g1');
+check(feeSt1.length === 2 && feeSt1.every(s => Number(s.paymentDebt) === 50000 && /^\d{4}-\d{2}$/.test(s.feePeriod)),
+  "moliya: oylik to'lov guruh a'zolari qarziga avtomatik qo'shildi");
+click('[data-act="nav"][data-screen="home"]');
+const feeSt2 = JSON.parse(win.localStorage.getItem('et_students') || '[]').filter(s => s.groupId === 'g1');
+check(JSON.stringify(feeSt2.map(s => [s.id, s.paymentDebt, s.feePeriod])) === JSON.stringify(feeSt1.map(s => [s.id, s.paymentDebt, s.feePeriod])),
+  "moliya: oylik qarz oy ichida takror qo'shilmaydi");
+click('[data-act="nav"][data-screen="groups"]');
+
 /* --- Guruh kartasini bosish → faqat shu guruh o'quvchilari --- */
 click(qa('.group-card').filter(c => c.textContent.includes('IELTS Band 7.0'))[0]);
 check(text().includes("O'quvchilar"), "guruh→o'quvchi: guruh kartasi bosilganda o'quvchilar ekrani ochildi");
@@ -539,9 +554,15 @@ check(text().includes('Mening baholarim'), 'student: "Mening baholarim"');
 check(qa('.grade-row').length > 0, 'student: baholar ro\'yxati bor');
 check(!!q('.avg-badge') && /\d\.\d/.test(q('.avg-badge').textContent), 'student: "O\'rtacha baho" badge');
 check(text().includes('Mening davomatim'), 'student: "Mening davomatim"');
+  check(/\d+% qatnashgan/.test(text()), "davomat: akkordeonda foiz statistika");
+  check(!!q('.att-toggle') && !!q('.att-last') && !q('.att-scroll'), "davomat: boshida yig'ilgan (oxirgi 3 ta)");
+  click(q('.att-toggle'));
+  check(!!q('.att-scroll') && text().includes('Yopish'), "davomat: barchasini ko'rish — ichki skroll ochildi");
+  click(q('.att-toggle'));
+  check(!q('.att-scroll'), "davomat: qayta yig'ildi");
 check(text().includes('Speaking vaqtim'), 'student: "Speaking vaqtim"');
-check(!text().includes("To'lov"), 'moliya: o\'quvchi kabinetida to\'lov kartasi yo\'q');
-check(!text().includes("so'm"), 'moliya: o\'quvchi kabinetida narx yo\'q');
+check(!!q('.pay-status') && text().includes("To'lovlar tarixi"), "moliya: o'quvchi kabinetida qarz holati + to'lovlar tarixi");
+check(text().includes("To'lov qarzi") || text().includes("To'langan"), "moliya: o'quvchi kabinetida qarz summasi ko'rinadi");
 
 /* Boshqalarning ma'lumotlari KO'RINMASLIGI kerak */
 check(!text().includes('Nilufar Ergasheva'), 'maxfiy: boshqa o\'quvchi ismi yo\'q');
