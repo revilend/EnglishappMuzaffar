@@ -1000,7 +1000,32 @@ const until = async (fn, ms) => {
   check(q('#modal-overlay').hidden === false, "uyga vazifa: modali ochildi");
   check(!!q('#hw-group') && !!q('#hw-title') && !!q('#hw-desc') && !!q('#hw-due'),
     "uyga vazifa: guruh/mavzu/tavsif/muddat formasi");
-  check(!!q('#hw-file'), "uyga vazifa: rasm/video/audio yuklash maydoni (saytda) bor");
+  check(!!q('#hw-media-input') && q('#hw-media-input').type === 'file',
+    "uyga vazifa: fayl tanlash maydoni (#hw-media-input) mavjud");
+  check(!!q('label.hw-upload-btn[for="hw-media-input"]') &&
+    q('label.hw-upload-btn').textContent.includes('Fayl tanlash'),
+    "uyga vazifa: ko'rinadigan 'Fayl tanlash' tugmasi bor");
+  check(!!q('#hw-media-clear') && q('#hw-media-clear').hidden === true,
+    "uyga vazifa: [✕] tugmasi (fayl tanlanmaguncha yashirin)");
+  check(!!q('#hw-media-status') && q('#hw-media-status').textContent.includes('50MB'),
+    "uyga vazifa: 50MB chegara status matni");
+  /* Rasm tanlansa — nom, preview va ✕ ko'rinadi; ✕ bekor qiladi */
+  const fImg = new win.File([new Uint8Array([1, 2, 3])], 'daftar.png', { type: 'image/png' });
+  const fInput = q('#hw-media-input');
+  Object.defineProperty(fInput, 'files', { configurable: true, value: [fImg] });
+  fInput.dispatchEvent(new win.Event('change'));
+  check(q('#hw-media-status').textContent.includes('daftar.png'),
+    "uyga vazifa: tanlangan fayl nomi statusda ko'rinadi");
+  check(q('#hw-media-clear').hidden === false, "uyga vazifa: fayl tanlangach ✕ ko'rinadi");
+  check(q('#hw-file-box').textContent.includes('daftar.png'),
+    "uyga vazifa: tanlangan fayl preview blokida ko'rinadi");
+  check(q('#hw-media-status').textContent.includes('tanlandi'),
+    "uyga vazifa: '✅ Rasm tanlandi' statusi");
+  click('#hw-media-clear');
+  check(q('#hw-media-clear').hidden === true &&
+    !q('#hw-file-box').textContent.includes('daftar.png') &&
+    q('#hw-media-status').textContent.includes('50MB'),
+    "uyga vazifa: ✕ tanlangan faylni bekor qiladi");
   clickAct('save-hw');
   check(q('#hw-error').classList.contains('show'), "uyga vazifa: bo'sh mavzu rad etildi");
   setVal('#hw-title', 'Present Perfect shakli');

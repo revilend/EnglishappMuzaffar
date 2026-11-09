@@ -2305,6 +2305,7 @@ function openHwModal(hid) {
   if (hid != null && !cur) return;
   state.hwEditId = cur ? String(cur.id) : null;
   state.hwNewMedia = null;
+  revokeHwPreview();
   openModal(`
     <div class="modal-head">
       <h3>${cur ? 'Uyga vazifani tahrirlash' : "Uyga vazifa qo'shish"}</h3>
@@ -2321,10 +2322,19 @@ function openHwModal(hid) {
     <label class="field-label" for="hw-due">Topshirish muddati</label>
     <input class="input" id="hw-due" type="date" value="${cur && cur.dueDate ? esc(cur.dueDate) : todayKey()}" />
 
-    <label class="field-label" for="hw-file">Rasm, video yoki audio <span class="muted small">(saytda ijro etiladi)</span></label>
-    <input class="input" id="hw-file" type="file" accept="image/*,video/*,audio/*" />
-    <div id="hw-file-box">${hwMediaPreviewHTML(cur)}</div>
-    <p class="muted small" style="margin-top:6px">Fayl Supabase Storage'dagi <b>homework-media</b> bucketiga yuklanadi. Bot og'ir faylni yubormaydi — o'quvchi vazifani saytda ko'radi.</p>
+    <div class="hw-upload">
+      <label class="field-label" for="hw-media-input">📎 Rasm, Video yoki Audio biriktirish (ixtiyoriy):</label>
+      <div class="hw-upload-row">
+        <label class="hw-upload-btn" for="hw-media-input">
+          <span class="hw-upload-ico" aria-hidden="true">📁</span>
+          <span>Fayl tanlash</span>
+        </label>
+        <input type="file" id="hw-media-input" class="hw-file-input" accept="image/*,video/*,audio/*" />
+        <button type="button" id="hw-media-clear" class="hw-upload-clear" data-act="hw-clear-file" aria-label="Tanlangan faylni bekor qilish" hidden>✕</button>
+      </div>
+      <p id="hw-media-status" class="hw-upload-status">Maksimal hajm: 50MB (Rasm, mp4 video yoki mp3 audio)</p>
+      <div id="hw-file-box">${hwMediaPreviewHTML(cur)}</div>
+    </div>
 
     <div class="field-error" id="hw-error"></div>
     <div class="modal-actions">
@@ -2332,8 +2342,38 @@ function openHwModal(hid) {
       <button type="button" class="btn btn-primary" data-act="save-hw">Saqlash</button>
     </div>
   `);
-  const fi = $('#hw-file');
+  const fi = $('#hw-media-input');
   if (fi) fi.addEventListener('change', function () { onHwFilePick(fi); });
+}
+
+const HW_MAX_BYTES = 50 * 1024 * 1024; /* 50MB */
+
+function fmtFileSize(bytes) {
+  const n = Number(bytes) || 0;
+  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  return Math.max(1, Math.round(n / 1024)) + ' KB';
+}
+
+function setHwStatus(text, kind) {
+  const el = $('#hw-media-status');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('err', 'busy');
+  if (kind === 'err') el.classList.add('err');
+  if (kind === 'busy') el.classList.add('busy');
+}
+
+function currentHw() {
+  return state.hwEditId
+    ? getHomework().filter(x => String(x.id) === String(state.hwEditId))[0] || null
+    : null;
+}
+
+function revokeHwPreview() {
+  if (state.hwPreviewUrl && window.URL && URL.revokeObjectURL) {
+    try { URL.revokeObjectURL(state.hwPreviewUrl); } catch (e) { /* ignore */ }
+  }
+  state.hwPreviewUrl = null;
 }
 
 function detectMediaType(file) {
@@ -2352,38 +2392,98 @@ function hwMediaPreviewHTML(h) {
   if (!h || !h.mediaUrl) return '';
   const type = hwMediaType(h);
   const label = type === 'image' ? '🖼 Rasm' : type === 'video' ? '🎬 Video' : type === 'audio' ? '🎧 Audio' : '📎 Fayl';
+  let media = '';
+  if (type === 'image') {
+    media = `<img class="hw-prev-img" src="${esc(h.mediaUrl)}" alt="${esc(h.title || 'Rasm')}" loading="lazy" />`;
+  } else if (type === 'video') {
+    media = `<video class="hw-prev-video" controls playsinline preload="metadata" src="${esc(h.mediaUrl)}"></video>`;
+  } else if (type === 'audio') {
+    media = `<audio class="hw-prev-audio" controls preload="metadata" src="${esc(h.mediaUrl)}"></audio>`;
+  } else {
+    media = `<a class="hw-prev-link" href="${esc(h.mediaUrl)}" target="_blank" rel="noopener">📎 Faylni ochish</a>`;
+  }
   return `<div class="hw-file-preview">
-    <div class="row between"><span class="hw-file-name">${label} yuklangan</span></div>
+    <div class="row between"><span class="hw-file-name">${label} yuklangan</span><span class="hw-media-tag">Saytda ijro etiladi</span></div>
+    ${media}
     <div class="hw-file-actions"><button type="button" class="btn btn-xs danger" data-act="hw-remove-media">✕ Faylni o'chirish</button></div>
   </div>`;
 }
 
 function onHwFilePick(inp) {
-  const f = inp && inp.files && inp.files[0];
-  state.hwNewMedia = f || null;
+  const f = (inp && inp.files && inp.files[0]) || null;
   const box = $('#hw-file-box');
-  if (!box) return;
+  const clearBtn = $('#hw-media-clear');
+  revokeHwPreview();
+
+  /* Noto'g'ri tur yoki juda katta fayl — darhol ogohlantiramiz */
+  if (f) {
+    const badType = !detectMediaType(f);
+    const tooBig = f.size > HW_MAX_BYTES;
+    if (badType || tooBig) {
+      state.hwNewMedia = null;
+      if (inp) inp.value = '';
+      if (clearBtn) clearBtn.hidden = true;
+      if (box) box.innerHTML = hwMediaPreviewHTML(currentHw());
+      setHwStatus(tooBig
+        ? "Fayl hajmi 50MB dan oshib ketdi — kichikroq fayl tanlang."
+        : "Faqat rasm, video yoki audio fayl tanlash mumkin.", 'err');
+      return;
+    }
+  }
+
+  state.hwNewMedia = f;
+  if (clearBtn) clearBtn.hidden = !f;
   if (!f) {
-    const cur = state.hwEditId ? getHomework().filter(x => String(x.id) === String(state.hwEditId))[0] : null;
-    box.innerHTML = hwMediaPreviewHTML(cur);
+    if (box) box.innerHTML = hwMediaPreviewHTML(currentHw());
+    setHwStatus("Maksimal hajm: 50MB (Rasm, mp4 video yoki mp3 audio)");
     return;
   }
+
   const type = detectMediaType(f);
   const label = type === 'image' ? '🖼 Rasm' : type === 'video' ? '🎬 Video' : type === 'audio' ? '🎧 Audio' : '📎 Fayl';
-  box.innerHTML = `<div class="hw-file-preview">
+  let media = '';
+  if (window.URL && URL.createObjectURL) {
+    state.hwPreviewUrl = URL.createObjectURL(f);
+    if (type === 'image') {
+      media = `<img class="hw-prev-img" src="${state.hwPreviewUrl}" alt="" />`;
+    } else if (type === 'video') {
+      media = `<video class="hw-prev-video" controls playsinline preload="metadata" src="${state.hwPreviewUrl}"></video>`;
+    } else if (type === 'audio') {
+      media = `<audio class="hw-prev-audio" controls preload="metadata" src="${state.hwPreviewUrl}"></audio>`;
+    }
+  }
+  if (box) box.innerHTML = `<div class="hw-file-preview">
     <div class="row between"><span class="hw-file-name">${esc(f.name)}</span><span class="hw-media-tag">${label}</span></div>
-    <div class="pay-hint">${Math.max(1, Math.round(f.size / 1024))} KB · saqlaganda yuklanadi</div>
-    <div class="hw-file-actions"><button type="button" class="btn btn-xs danger" data-act="hw-remove-media">✕ Faylni o'chirish</button></div>
+    ${media}
+    <div class="pay-hint">${fmtFileSize(f.size)} · «Saqlash» bosilganda yuklanadi</div>
+    <div class="hw-file-actions"><button type="button" class="btn btn-xs danger" data-act="hw-clear-file">✕ Bekor qilish</button></div>
   </div>`;
+  setHwStatus("✅ " + label + " tanlandi: " + f.name + " (" + fmtFileSize(f.size) + ")");
+}
+
+/* Tanlangan (hali yuklanmagan) faylni bekor qiladi; bazadagi fayl tegilmaydi */
+function clearHwFilePick() {
+  state.hwNewMedia = null;
+  revokeHwPreview();
+  const inp = $('#hw-media-input');
+  if (inp) inp.value = '';
+  const clearBtn = $('#hw-media-clear');
+  if (clearBtn) clearBtn.hidden = true;
+  const box = $('#hw-file-box');
+  if (box) box.innerHTML = hwMediaPreviewHTML(currentHw());
+  setHwStatus("Maksimal hajm: 50MB (Rasm, mp4 video yoki mp3 audio)");
 }
 
 /* Faylni o'chirish: mavjud fayl → Storage + bazadan darhol; yangi tanlov → faqat bekor qilish */
 function removeHwMedia() {
   if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
   state.hwNewMedia = null;
-  const inp = $('#hw-file');
+  revokeHwPreview();
+  const inp = $('#hw-media-input');
   if (inp) inp.value = '';
-  const cur = state.hwEditId ? getHomework().filter(x => String(x.id) === String(state.hwEditId))[0] : null;
+  const clearBtn = $('#hw-media-clear');
+  if (clearBtn) clearBtn.hidden = true;
+  const cur = currentHw();
   if (cur && cur.mediaUrl) {
     const oldUrl = cur.mediaUrl;
     const list = getHomework().map(x => String(x.id) === String(cur.id)
@@ -2398,6 +2498,7 @@ function removeHwMedia() {
   }
   const box = $('#hw-file-box');
   if (box) box.innerHTML = hwMediaPreviewHTML(null);
+  setHwStatus("Maksimal hajm: 50MB (Rasm, mp4 video yoki mp3 audio)");
 }
 
 function saveHomework() {
@@ -2414,6 +2515,11 @@ function saveHomework() {
   }
   if (file && !detectMediaType(file)) {
     if (err) { err.textContent = "Faqat rasm, video yoki audio fayl tanlang"; err.classList.add('show'); }
+    return;
+  }
+  if (file && file.size > HW_MAX_BYTES) {
+    if (err) { err.textContent = "Fayl hajmi 50MB dan oshib ketdi"; err.classList.add('show'); }
+    setHwStatus("Fayl hajmi 50MB dan oshib ketdi — kichikroq fayl tanlang.", 'err');
     return;
   }
   const btn = $('[data-act="save-hw"]');
@@ -2446,12 +2552,16 @@ function saveHomework() {
 
   const oldUrl = existing && existing.mediaUrl ? existing.mediaUrl : '';
   if (file) {
+    setHwStatus("⏳ Fayl yuklanmoqda... " + fmtFileSize(file.size) + " (uzun videoda biroz kutish mumkin)", 'busy');
     CloudSync.uploadHomeworkMedia(file).then(function (res) {
+      setHwStatus("✅ Fayl yuklandi");
       if (oldUrl) CloudSync.removeHomeworkMedia(oldUrl);
+      revokeHwPreview();
       finish(res.url, detectMediaType(file));
     }).catch(function (e) {
       if (btn) { btn.disabled = false; btn.textContent = 'Saqlash'; }
       if (err) { err.textContent = "Faylni yuklab bo'lmadi: " + ((e && e.message) || 'xatolik'); err.classList.add('show'); }
+      setHwStatus("❌ Yuklashda xatolik: " + ((e && e.message) || 'xatolik'), 'err');
     });
     return;
   }
@@ -3130,6 +3240,7 @@ function openModal(html) {
   $('#modal-overlay').hidden = false;
 }
 function closeModal() {
+  revokeHwPreview();
   $('#modal-overlay').hidden = true;
   $('#modal-sheet').innerHTML = '';
   state.editor = null;
@@ -5121,6 +5232,7 @@ document.addEventListener('click', function (e) {
     'save-hw': function () { saveHomework(); },
     'hw-edit': function () { openHwModal(btn.getAttribute('data-hid')); },
     'hw-remove-media': removeHwMedia,
+    'hw-clear-file': clearHwFilePick,
     'pay-student': function () { openPayModal(btn.getAttribute('data-sid')); },
     'save-pay': function () { savePayment(btn.getAttribute('data-sid')); },
     'att-toggle': function () { state.attOpen = !state.attOpen; render(); },
