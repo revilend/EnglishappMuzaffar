@@ -1026,6 +1026,19 @@ const until = async (fn, ms) => {
     !q('#hw-file-box').textContent.includes('daftar.png') &&
     q('#hw-media-status').textContent.includes('50MB'),
     "uyga vazifa: ✕ tanlangan faylni bekor qiladi");
+  check(q('#hw-media-input').getAttribute('accept') ===
+    '.jpg,.jpeg,.png,.mp4,.mov,.webm,.mp3,.wav,.m4a,.aac,.pdf',
+    "uyga vazifa: accept aniq kengaytmalar (kamera emas, fayllar/galereya)");
+  check(!q('#hw-media-input').hasAttribute('capture'),
+    "uyga vazifa: capture atributi yo'q — telefon kamerani avtomatik ochmaydi");
+  /* PDF ham qabul qilinadi va havola sifatida ko'rsatiladi */
+  const fPdf = new win.File([new Uint8Array([1])], 'insho.pdf', { type: 'application/pdf' });
+  Object.defineProperty(fInput, 'files', { configurable: true, value: [fPdf] });
+  fInput.dispatchEvent(new win.Event('change'));
+  check(q('#hw-media-status').textContent.includes('insho.pdf') &&
+    q('#hw-media-status').textContent.includes('PDF'),
+    "uyga vazifa: PDF fayl qabul qilinadi (📄 PDF)");
+  click('#hw-media-clear');
   clickAct('save-hw');
   check(q('#hw-error').classList.contains('show'), "uyga vazifa: bo'sh mavzu rad etildi");
   setVal('#hw-title', 'Present Perfect shakli');

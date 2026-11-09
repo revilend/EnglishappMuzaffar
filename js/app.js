@@ -906,32 +906,55 @@ const CloudSync = (function () {
     if (res.error) throw res.error;
   }
 
-  /* --- homework-media (Supabase Storage): faqat sayt yuklaydi/o'chiradi --- */
-  const MEDIA_BUCKET = 'homework-media';
+  /* --- homework media (Supabase Storage): faqat sayt yuklaydi/o'chiradi ---
+     Bucket nomi 'homework-media' yoki 'homework_media' bo'lishi mumkin:
+     ikkalasi ham qo'llab-quvvatlanadi, birinchisidan boshlab urinib ko'riladi. */
+  const MEDIA_BUCKETS = ['homework-media', 'homework_media'];
+  const MEDIA_BUCKET = MEDIA_BUCKETS[0];
   function mediaPath(url) {
-    const marker = '/storage/v1/object/public/' + MEDIA_BUCKET + '/';
-    const i = String(url || '').indexOf(marker);
-    if (i < 0) return null;
-    return decodeURIComponent(String(url).slice(i + marker.length).split('?')[0]);
+    const raw = String(url || '');
+    for (let i = 0; i < MEDIA_BUCKETS.length; i++) {
+      const bucket = MEDIA_BUCKETS[i];
+      const marker = '/storage/v1/object/public/' + bucket + '/';
+      const at = raw.indexOf(marker);
+      if (at >= 0) {
+        return { bucket: bucket, path: decodeURIComponent(raw.slice(at + marker.length).split('?')[0]) };
+      }
+    }
+    return null;
   }
   async function uploadHomeworkMedia(file) {
     if (!ready()) throw new Error('Supabase sozlanmagan');
     const ext = String((file && file.name) || '').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
     const path = 'hw/' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.' + ext;
-    const res = await client.storage.from(MEDIA_BUCKET).upload(path, file, {
-      cacheControl: '3600', upsert: false, contentType: (file && file.type) || undefined
-    });
-    if (res.error) throw res.error;
-    const pub = client.storage.from(MEDIA_BUCKET).getPublicUrl(path);
-    return { url: pub.data.publicUrl, path: path };
+    let lastErr = null;
+    for (let i = 0; i < MEDIA_BUCKETS.length; i++) {
+      const bucket = MEDIA_BUCKETS[i];
+      try {
+        const res = await client.storage.from(bucket).upload(path, file, {
+          cacheControl: '3600', upsert: false, contentType: (file && file.type) || undefined
+        });
+        if (res.error) throw res.error;
+        const pub = client.storage.from(bucket).getPublicUrl(path);
+        return { url: pub.data.publicUrl, path: path, bucket: bucket };
+      } catch (e) {
+        lastErr = e;
+        console.warn('[cloud] media upload (' + bucket + '):', (e && e.message) || e);
+      }
+    }
+    throw lastErr || new Error('Storage bucket topilmadi');
   }
   async function removeHomeworkMedia(url) {
-    const path = mediaPath(url);
-    if (!path) return;
-    try {
-      const res = await client.storage.from(MEDIA_BUCKET).remove([path]);
-      if (res.error) throw res.error;
-    } catch (e) { console.warn('[cloud] media del:', (e && e.message) || e); }
+    const found = mediaPath(url);
+    if (!found || !found.path) return;
+    /* Avval URL'dagi bucket, keyin ikkinchi nom sinaladi */
+    const order = [found.bucket].concat(MEDIA_BUCKETS.filter(function (b) { return b !== found.bucket; }));
+    for (let i = 0; i < order.length; i++) {
+      try {
+        const res = await client.storage.from(order[i]).remove([found.path]);
+        if (!res.error) return;
+      } catch (e) { console.warn('[cloud] media del (' + order[i] + '):', (e && e.message) || e); }
+    }
   }
 
   /* --- telegram_outbox: sayt yozadi, bot yuboradi (chek / eslatma) --- */
@@ -2166,6 +2189,7 @@ function isHwDone(hid) {
 
 function hwMediaType(h) {
   const t = String((h && h.mediaType) || '').toLowerCase();
+  if (t === 'pdf' || t === 'file') return 'pdf';
   return (t === 'image' || t === 'video' || t === 'audio') ? t : '';
 }
 function hwMediaHTML(h) {
@@ -2178,6 +2202,9 @@ function hwMediaHTML(h) {
   if (type === 'video') {
     return `<div class="hw-media"><video class="plyr-video" controls playsinline preload="metadata" src="${esc(url)}"></video>
       <div class="hw-media-bar"><span class="hw-media-tag">🎬 Video · tezlik va fullscreen mavjud</span></div></div>`;
+  }
+  if (type === 'pdf') {
+    return `<div class="hw-media"><a class="hw-doc-link" href="${esc(url)}" target="_blank" rel="noopener">📄 PDF faylni ochish</a></div>`;
   }
   return `<div class="hw-media"><audio class="plyr-audio" controls preload="metadata" src="${esc(url)}"></audio>
     <div class="hw-media-bar"><span class="hw-media-tag">🎧 Audio · listening uchun tezlikni o'zgartiring</span></div></div>`;
@@ -2329,7 +2356,7 @@ function openHwModal(hid) {
           <span class="hw-upload-ico" aria-hidden="true">📁</span>
           <span>Fayl tanlash</span>
         </label>
-        <input type="file" id="hw-media-input" class="hw-file-input" accept="image/*,video/*,audio/*" />
+        <input type="file" id="hw-media-input" class="hw-file-input" accept=".jpg,.jpeg,.png,.mp4,.mov,.webm,.mp3,.wav,.m4a,.aac,.pdf" />
         <button type="button" id="hw-media-clear" class="hw-upload-clear" data-act="hw-clear-file" aria-label="Tanlangan faylni bekor qilish" hidden>✕</button>
       </div>
       <p id="hw-media-status" class="hw-upload-status">Maksimal hajm: 50MB (Rasm, mp4 video yoki mp3 audio)</p>
@@ -2385,13 +2412,14 @@ function detectMediaType(file) {
   if (['png', 'jpg', 'jpeg', 'webp', 'gif'].indexOf(ext) >= 0) return 'image';
   if (['mp4', 'webm', 'mov', 'm4v'].indexOf(ext) >= 0) return 'video';
   if (['mp3', 'm4a', 'ogg', 'wav', 'aac'].indexOf(ext) >= 0) return 'audio';
+  if (m === 'application/pdf' || ext === 'pdf') return 'pdf';
   return '';
 }
 
 function hwMediaPreviewHTML(h) {
   if (!h || !h.mediaUrl) return '';
   const type = hwMediaType(h);
-  const label = type === 'image' ? '🖼 Rasm' : type === 'video' ? '🎬 Video' : type === 'audio' ? '🎧 Audio' : '📎 Fayl';
+  const label = type === 'image' ? '🖼 Rasm' : type === 'video' ? '🎬 Video' : type === 'audio' ? '🎧 Audio' : type === 'pdf' ? '📄 PDF' : '📎 Fayl';
   let media = '';
   if (type === 'image') {
     media = `<img class="hw-prev-img" src="${esc(h.mediaUrl)}" alt="${esc(h.title || 'Rasm')}" loading="lazy" />`;
@@ -2440,7 +2468,7 @@ function onHwFilePick(inp) {
   }
 
   const type = detectMediaType(f);
-  const label = type === 'image' ? '🖼 Rasm' : type === 'video' ? '🎬 Video' : type === 'audio' ? '🎧 Audio' : '📎 Fayl';
+  const label = type === 'image' ? '🖼 Rasm' : type === 'video' ? '🎬 Video' : type === 'audio' ? '🎧 Audio' : type === 'pdf' ? '📄 PDF' : '📎 Fayl';
   let media = '';
   if (window.URL && URL.createObjectURL) {
     state.hwPreviewUrl = URL.createObjectURL(f);
