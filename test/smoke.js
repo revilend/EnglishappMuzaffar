@@ -226,8 +226,8 @@ check(['tint-indigo', 'tint-emerald', 'tint-sky', 'tint-amber', 'tint-purple', '
   .every(t => qa('.quick-ico.' + t).length === 1),
   'icon: indigo/emerald/sky/amber/purple/slate tints har biri bittadan');
 check(!!q('.screen-title svg') && !!q('.stat-ico svg'), 'icon: bo"lim sarlavhasi va status kartalari SVG ikonka');
-check(!/[\u{1F300}-\u{1FAFF}]/u.test(q('#screen').textContent),
-  "icon: dashboardda cartoon emoji qolmagan (faqat vektor ikonka)");
+check(!/[\u{1F300}-\u{1FAFF}]/u.test(q('#screen').textContent.replace(/[🟢🔴💵📢]/gu, '')),
+  "icon: dashboardda cartoon emoji qolmagan (to'lov belgilari mustasno)");
 
 /* --- Stat kartalari bosiladigan (Guruhlar / O'quvchilar / Sinflar) --- */
 check(qa('.stat-grid .card.stat').length === 3, 'stat: 3 ta stat karta render bo\'ldi');
@@ -238,6 +238,7 @@ check(text().includes('Guruhlar') && groupCards() === 2, "stat: 'Guruhlar' karta
 click('[data-act="nav"][data-screen="home"]');
 clickAct('stat-students');
 check(text().includes("O'quvchilar") && studentCards() === 6, "stat: 'O'quvchilar' kartasi → O'quvchilar ekrani (6 ta)");
+  check(!!q('[data-act="remind-debtors"]'), "qarz: barcha qarzdorlarga eslatma tugmasi bor");
 click('[data-act="nav"][data-screen="home"]');
 clickAct('stat-classes');
 check(studentCards() === 6 && qa('.chips.is-hl').length === 1 && qa('[data-act="filter-class"]').length >= 4,
@@ -245,21 +246,22 @@ check(studentCards() === 6 && qa('.chips.is-hl').length === 1 && qa('[data-act="
 click('[data-act="nav"][data-screen="home"]');
 
 /* Moliyaviy ma'lumotlar UMUMAN yo'q */
-check(!text().includes("so'm"), 'moliya: dashboardda narx yo\'q');
-check(!text().includes("To'lov") && !text().includes('Narx'), 'moliya: to\'lov/narx kartasi yo\'q');
+check(qa('.pay-status').length >= 1, "moliya: o'quvchi kartasida to'lov holati ko'rinadi");
+check(!!q('[data-act="pay-student"]'), "moliya: '💵 To'lov kiritish' tugmasi bor");
 
 /* ================= 3. GURUHLAR ================= */
 click('[data-act="nav"][data-screen="groups"]');
 check(text().includes('Guruhlar'), 'guruhlar: ekran');
 check(groupCards() === 2, 'guruhlar: 2 ta guruh');
 check(text().includes('IELTS Band 7.0') && text().includes('18:00'), 'guruhlar: nom + dars vaqti');
-check(!text().includes("so'm"), 'moliya: guruh kartasida narx yo\'q');
+check(text().includes('Oylik to\'lov'), "moliya: guruh kartasida oylik to'lov ko'rinadi");
 
 /* --- Kunlik vaqt picker: har bir kun uchun alohida <input type=time> --- */
 clickAct('open-add-group');
 check(q('#modal-overlay').hidden === false && qa('#f-days input').length === 7,
   "guruh: modalda haftaning 7 ta kuni (Dushanba–Yakshanba)");
 check(!q('#f-gtime'), "vaqt: eski yagona #f-gtime hardcode input olib tashlandi");
+  check(!!q('#f-gfee'), "guruh: oylik to'lov summasi maydoni bor");
 check(qa('#f-times .dt-time').length === 0, "vaqt: kun tanlanmaguncha picker yo'q");
 setVal('#f-gname', 'Vaqtli Guruh');
 const pickDay = name => {
@@ -952,6 +954,7 @@ const until = async (fn, ms) => {
   check(q('#modal-overlay').hidden === false, "uyga vazifa: modali ochildi");
   check(!!q('#hw-group') && !!q('#hw-title') && !!q('#hw-desc') && !!q('#hw-due'),
     "uyga vazifa: guruh/mavzu/tavsif/muddat formasi");
+  check(!!q('#hw-file'), "uyga vazifa: rasm/video/audio yuklash maydoni (saytda) bor");
   clickAct('save-hw');
   check(q('#hw-error').classList.contains('show'), "uyga vazifa: bo'sh mavzu rad etildi");
   setVal('#hw-title', 'Present Perfect shakli');
@@ -1002,6 +1005,7 @@ const until = async (fn, ms) => {
   logout();
   loginAs('m_amirov', '123');
   check(!!q('[data-act="del-hw"]'), "o'chirish: ustoz kartasida 🗑 (SVG) tugma bor");
+  check(!!q('[data-act="hw-edit"]'), "uyga vazifa: tahrirlash (edit) tugmasi bor");
   click(q('[data-act="del-hw"]'));
   check(q('#modal-overlay').hidden === false &&
     q('#modal-sheet').textContent.includes("Haqiqatan ham ushbu uyga vazifani o'chirmoqchimisiz?"),

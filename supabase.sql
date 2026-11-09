@@ -160,3 +160,56 @@ create unique index if not exists students_login_unique
 --
 -- Eslatma: hozirgi publishable kalit faqat o'qish/yozish beradi (DDL yo'q),
 -- shuning uchun shu faylni bir marta ishga tushirish shart:
+
+-- ============================================================
+-- UYGA VAZIFA MEDIA (rasm/video/audio FAQAT saytda)
+-- ============================================================
+alter table homework add column if not exists media_url text;
+alter table homework add column if not exists media_type text;
+
+-- ============================================================
+-- OYLIK TO'LOV VA O'QUVCHI QARZI
+-- ============================================================
+alter table groups add column if not exists monthly_fee bigint not null default 0;
+alter table students add column if not exists payment_debt bigint not null default 0;
+
+-- ============================================================
+-- TELEGRAM OUTBOX: sayt yozadi, bot yuboradi (chek / eslatma)
+-- ============================================================
+create table if not exists telegram_outbox (
+  id bigint generated always as identity primary key,
+  student_id bigint references students(id) on delete cascade,
+  chat_id bigint,
+  text text not null,
+  status text not null default 'pending',
+  error text,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz
+);
+create index if not exists telegram_outbox_pending_idx on telegram_outbox (status, id);
+alter table telegram_outbox enable row level security;
+drop policy if exists "telegram_outbox_all" on telegram_outbox;
+create policy "telegram_outbox_all" on telegram_outbox for all using (true) with check (true);
+
+-- ============================================================
+-- STORAGE: homework-media bucket (public o'qish, sayt yozadi/o'chiradi)
+-- ============================================================
+insert into storage.buckets (id, name, public)
+values ('homework-media', 'homework-media', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "homework_media_read" on storage.objects;
+create policy "homework_media_read" on storage.objects
+  for select using (bucket_id = 'homework-media');
+
+drop policy if exists "homework_media_insert" on storage.objects;
+create policy "homework_media_insert" on storage.objects
+  for insert with check (bucket_id = 'homework-media');
+
+drop policy if exists "homework_media_update" on storage.objects;
+create policy "homework_media_update" on storage.objects
+  for update using (bucket_id = 'homework-media');
+
+drop policy if exists "homework_media_delete" on storage.objects;
+create policy "homework_media_delete" on storage.objects
+  for delete using (bucket_id = 'homework-media');

@@ -1639,3 +1639,39 @@ html[data-theme="dark"] .st-inset {
   box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18);
 }
 .section-title svg { width: 13px; height: 13px; vertical-align: -2px; margin-right: 3px; }
+
+/* ==================== UYGA VAZIFA MEDIA (Plyr) ==================== */
+.hw-media { margin-top: 9px; }
+.hw-media img.hw-media-img {
+  display: block; width: 100%; max-height: 320px; object-fit: cover;
+  border-radius: 12px; cursor: zoom-in; background: #000;
+}
+.hw-media .plyr, .hw-media video, .hw-media audio { width: 100%; border-radius: 12px; }
+.hw-media audio { min-height: 40px; }
+.hw-media .plyr { --plyr-color-main: #4f46e5; border-radius: 12px; overflow: hidden; }
+.hw-media-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.hw-media-tag { font-size: 11.5px; font-weight: 700; color: var(--muted); letter-spacing: .2px; }
+.hw-media-zoom { position: fixed; inset: 0; z-index: 9999; background: rgba(2, 6, 23, .92); display: flex; align-items: center; justify-content: center; padding: 14px; }
+.hw-media-zoom img { max-width: 100%; max-height: 100%; border-radius: 10px; }
+.hw-edit { background: none; border: 0; padding: 4px; color: var(--muted); cursor: pointer; border-radius: 8px; }
+.hw-edit:hover { color: var(--accent); background: rgba(79, 70, 229, .1); }
+.hw-head-right { display: inline-flex; align-items: center; gap: 2px; }
+.hw-file-preview { margin-top: 8px; padding: 9px 11px; border: 1px dashed var(--line-2); border-radius: 12px; background: rgba(15, 23, 42, .02); }
+.hw-file-preview .row { gap: 8px; }
+.hw-file-name { font-size: 12.5px; font-weight: 600; overflow-wrap: anywhere; }
+.hw-file-actions { display: flex; gap: 8px; margin-top: 8px; }
+.hw-file-actions .btn { flex: 1; }
+
+/* ==================== TO'LOV / QARZ ==================== */
+.pay-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 9px; padding-top: 9px; border-top: 1px dashed var(--line-2); }
+.pay-status { font-size: 12.5px; font-weight: 700; }
+.pay-status.ok { color: var(--ok); }
+.pay-status.due { color: var(--danger); }
+.pay-btn { white-space: nowrap; }
+.st-inset .pay-line { margin-top: 9px; }
+.gc-fee { display: flex; align-items: center; gap: 7px; margin-top: 7px; font-size: 12.5px; font-weight: 700; color: var(--accent); }
+.debtors-btn { margin: 4px 0 12px; }
+.debtors-btn .debtors-ico { font-size: 17px; line-height: 1; }
+.pay-sum { font-size: 12px; color: var(--muted); }
+.pay-balance { font-size: 13px; font-weight: 800; }
+.pay-hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; }

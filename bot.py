@@ -968,6 +968,9 @@ HW_TEXT = (
     "Muddati: {due_date}"
 )
 
+# Bot og'ir media yubormaydi: video/audio faqat sayt ichida ochiladi
+HW_MEDIA_HINT = "\n\n🎬 Video/audio sayt ichida — pastdagi tugmani bosing."
+
 _last_hw_seen = None  # bot boshlanganda mavjud vazifalar "ko'rilgan" bo'ladi
 
 
@@ -984,7 +987,7 @@ async def broadcast_homework(row: dict) -> int:
         return 0
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📱 Ilovani ochish", web_app=WebAppInfo(url=config.WEBAPP_URL))]
+        [InlineKeyboardButton(text="📱 Saytda ochish / Ko'rish", web_app=WebAppInfo(url=config.WEBAPP_URL))]
     ])
     due = row.get("due_date") or "—"
     text = HW_TEXT.format(
@@ -993,6 +996,8 @@ async def broadcast_homework(row: dict) -> int:
         description=html.escape(str(row.get("description") or "—")),
         due_date=html.escape(str(due)),
     )
+    if row.get("media_url"):
+        text += HW_MEDIA_HINT
     sent = 0
     for st in studs:
         chat_id = st.get("telegram_chat_id")
@@ -1010,7 +1015,9 @@ async def broadcast_homework(row: dict) -> int:
 async def hw_tick():
     """Bitta kuzatuv qadamini bajaradi (test qilinadigan mantiq)."""
     global _last_hw_seen
-    rows = supabase.table("homework").select("id, group_id, title, description, due_date").order("id").execute().data or []
+    rows = supabase.table("homework").select(
+        "id, group_id, title, description, due_date, media_url"
+    ).order("id").execute().data or []
     if _last_hw_seen is None:
         # birinchi start: mavjud vazifalarni SPAM qilmaymiz
         _last_hw_seen = rows[-1]["id"] if rows else 0
@@ -1039,6 +1046,61 @@ async def homework_watcher():
             else:
                 logging.warning(f"homework watcher: {e}")
         await asyncio.sleep(5)
+
+
+# ============================================================
+# TELEGRAM OUTBOX: sayt yozgan chek/eslatmalarni yuborish
+# ============================================================
+async def outbox_tick() -> int:
+    """telegram_outbox'dagi pending qatorlarni yuboradi (chek va eslatmalar)."""
+    try:
+        rows = supabase.table("telegram_outbox").select(
+            "id, student_id, chat_id, text"
+        ).eq("status", "pending").order("id").limit(50).execute().data or []
+    except Exception as e:
+        logging.warning(f"outbox: {e}")
+        return 0
+    if not rows:
+        return 0
+
+    chats = {}
+    try:
+        studs = supabase.table("students").select("id, telegram_chat_id").execute().data or []
+        chats = {r["id"]: r.get("telegram_chat_id") for r in studs}
+    except Exception:
+        pass
+
+    sent = 0
+    for row in rows:
+        cid = row.get("chat_id") or chats.get(row.get("student_id"))
+        ok = False
+        if cid:
+            try:
+                await bot.send_message(chat_id=int(cid), text=row.get("text") or "",
+                                       parse_mode="HTML", disable_notification=False)
+                ok = True
+                sent += 1
+            except Exception as e:
+                logging.warning(f"outbox #{row.get('id')}: {e}")
+        try:
+            supabase.table("telegram_outbox").update({
+                "status": "sent" if ok else "failed",
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", row.get("id")).execute()
+        except Exception as e:
+            logging.warning(f"outbox status #{row.get('id')}: {e}")
+    return sent
+
+
+async def outbox_watcher():
+    """Sayt yozgan xabarlarni Telegramga yetkazadi (chek / qarz eslatmasi)."""
+    await asyncio.sleep(4)
+    while True:
+        try:
+            await outbox_tick()
+        except Exception as e:
+            logging.warning(f"outbox watcher: {e}")
+        await asyncio.sleep(4)
 
 
 # ============================================================
@@ -1226,16 +1288,16 @@ async def messages_watcher():
 # ============================================================
 BACKUP_TABLES = ["groups", "students", "attendance", "grades", "messages", "speaking_submissions", "audio_submissions", "homework"]
 RESTORE_PLAN = [
-    ("groups", ["id", "name", "days", "time"]),
+    ("groups", ["id", "name", "days", "time", "monthly_fee"]),
     ("students", ["id", "name", "school_class", "group_id", "login", "password", "speaking_debt",
-                  "voice_allowed", "telegram_chat_id", "last_device", "last_seen"]),
+                  "voice_allowed", "telegram_chat_id", "last_device", "last_seen", "payment_debt"]),
     ("attendance", ["id", "student_id", "date", "status"]),
     ("grades", ["id", "student_id", "date", "grade", "category", "note"]),
     ("messages", ["id", "student_id", "sender", "text", "created_at"]),
     ("speaking_submissions", ["id", "student_id", "media_type", "telegram_file_id", "status", "score",
                               "feedback", "created_at"]),
     ("audio_submissions", ["id", "student_id", "date", "url", "status", "score", "feedback", "created_at"]),
-    ("homework", ["id", "group_id", "title", "description", "due_date", "created_at"]),
+    ("homework", ["id", "group_id", "title", "description", "due_date", "media_url", "media_type", "created_at"]),
 ]
 pending_restore_file = {}
 
@@ -1614,6 +1676,7 @@ async def main():
     _bg_tasks.add(asyncio.create_task(voice_watcher()))      # voice_allowed ruxsati
     _bg_tasks.add(asyncio.create_task(grades_watcher()))     # yangi baho
     _bg_tasks.add(asyncio.create_task(messages_watcher()))   # yangi chat xabari
+    _bg_tasks.add(asyncio.create_task(outbox_watcher()))     # chek / qarz eslatmalari
 
     # Diagnostika: qaysi bot jonli — logda username ko'rinadi
     try:

@@ -122,6 +122,7 @@ function normalizeStudents(list){
   return arr.map(st=>{
     const out={...st};
     if(out.speakingDebt==null) out.speakingDebt=0;
+    if(out.paymentDebt==null) out.paymentDebt=0;
     if(!Array.isArray(out.audioSubmissions)) out.audioSubmissions=[];
     return out;
   });
@@ -291,6 +292,7 @@ const CloudSync = (function () {
       login: acc.login || s.login || '',
       password: acc.password || s.password || '',
       speaking_debt: Number(s.speakingDebt) || 0,
+      payment_debt: Number(s.paymentDebt) || 0,
       voice_allowed: s.voiceAllowed !== false
     };
   }
@@ -356,6 +358,8 @@ const CloudSync = (function () {
         title: r.title || '',
         description: r.description || '',
         dueDate: r.due_date || '',
+        mediaUrl: r.media_url || '',
+        mediaType: r.media_type || '',
         createdAt: r.created_at || ''
       };
     });
@@ -374,7 +378,9 @@ const CloudSync = (function () {
         group_id: g && g.dbId != null ? g.dbId : null,
         title: hw.title,
         description: hw.description || '',
-        due_date: hw.dueDate || null
+        due_date: hw.dueDate || null,
+        media_url: hw.mediaUrl || null,
+        media_type: hw.mediaType || null
       };
       if (payload.group_id == null) return;
       if (hw.dbId == null) {
@@ -508,7 +514,7 @@ const CloudSync = (function () {
       });
 
       const groups = gRes.data.map(function (r) {
-        return { id: 'g' + r.id, dbId: r.id, name: r.name, days: r.days, time: r.time };
+        return { id: 'g' + r.id, dbId: r.id, name: r.name, days: r.days, time: r.time, monthlyFee: Number(r.monthly_fee) || 0 };
       });
       const students = sRes.data.map(function (r) {
         return {
@@ -520,6 +526,8 @@ const CloudSync = (function () {
           login: r.login || '',
           password: r.password || '',
           speakingDebt: Number(r.speaking_debt) || 0,
+          paymentDebt: Number(r.payment_debt) || 0,
+          telegramChatId: r.telegram_chat_id == null ? null : Number(r.telegram_chat_id),
           voiceAllowed: r.voice_allowed !== false,
           lastDevice: r.last_device || '',
           lastSeen: r.last_seen || null,
@@ -612,7 +620,7 @@ const CloudSync = (function () {
       const gRes = await client.from('groups').select('*').eq('id', row.group_id).limit(1);
       if (!gRes.error && gRes.data && gRes.data[0]) {
         const g = gRes.data[0];
-        groups.push({ id: 'g' + g.id, dbId: g.id, name: g.name, days: g.days, time: g.time });
+        groups.push({ id: 'g' + g.id, dbId: g.id, name: g.name, days: g.days, time: g.time, monthlyFee: Number(g.monthly_fee) || 0 });
       }
     }
 
@@ -631,6 +639,8 @@ const CloudSync = (function () {
       login: row.login || '',
       password: row.password || '',
       speakingDebt: Number(row.speaking_debt) || 0,
+      paymentDebt: Number(row.payment_debt) || 0,
+      telegramChatId: row.telegram_chat_id == null ? null : Number(row.telegram_chat_id),
       voiceAllowed: row.voice_allowed !== false,
       lastDevice: row.last_device || '',
       lastSeen: row.last_seen || null,
@@ -685,7 +695,8 @@ const CloudSync = (function () {
           return {
             id: 'h' + r.id, dbId: r.id, groupId: 'g' + r.group_id,
             title: r.title || '', description: r.description || '',
-            dueDate: r.due_date || '', createdAt: r.created_at || ''
+            dueDate: r.due_date || '', mediaUrl: r.media_url || '', mediaType: r.media_type || '',
+            createdAt: r.created_at || ''
           };
         }));
       }
@@ -713,12 +724,13 @@ const CloudSync = (function () {
   async function pushGroup(g) {
     if (!ready()) return;
     try {
+      const gPayload = { name: g.name, days: g.days, time: g.time, monthly_fee: Number(g.monthlyFee) || 0 };
       if (g.dbId == null) {
-        const res = await client.from('groups').insert({ name: g.name, days: g.days, time: g.time }).select();
+        const res = await client.from('groups').insert(gPayload).select();
         if (res.error) throw res.error;
         g.dbId = res.data[0].id;
       } else {
-        const res = await client.from('groups').update({ name: g.name, days: g.days, time: g.time }).eq('id', g.dbId);
+        const res = await client.from('groups').update(gPayload).eq('id', g.dbId);
         if (res.error) throw res.error;
       }
       const list = getGroups();
@@ -884,6 +896,48 @@ const CloudSync = (function () {
     if (!ready() || !hasHomework || dbId == null) return;
     const res = await client.from('homework').delete().eq('id', dbId);
     if (res.error) throw res.error;
+  }
+
+  /* --- homework-media (Supabase Storage): faqat sayt yuklaydi/o'chiradi --- */
+  const MEDIA_BUCKET = 'homework-media';
+  function mediaPath(url) {
+    const marker = '/storage/v1/object/public/' + MEDIA_BUCKET + '/';
+    const i = String(url || '').indexOf(marker);
+    if (i < 0) return null;
+    return decodeURIComponent(String(url).slice(i + marker.length).split('?')[0]);
+  }
+  async function uploadHomeworkMedia(file) {
+    if (!ready()) throw new Error('Supabase sozlanmagan');
+    const ext = String((file && file.name) || '').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
+    const path = 'hw/' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+    const res = await client.storage.from(MEDIA_BUCKET).upload(path, file, {
+      cacheControl: '3600', upsert: false, contentType: (file && file.type) || undefined
+    });
+    if (res.error) throw res.error;
+    const pub = client.storage.from(MEDIA_BUCKET).getPublicUrl(path);
+    return { url: pub.data.publicUrl, path: path };
+  }
+  async function removeHomeworkMedia(url) {
+    const path = mediaPath(url);
+    if (!path) return;
+    try {
+      const res = await client.storage.from(MEDIA_BUCKET).remove([path]);
+      if (res.error) throw res.error;
+    } catch (e) { console.warn('[cloud] media del:', (e && e.message) || e); }
+  }
+
+  /* --- telegram_outbox: sayt yozadi, bot yuboradi (chek / eslatma) --- */
+  async function queueMessages(rows) {
+    if (!ready() || !rows || !rows.length) return [];
+    const res = await client.from('telegram_outbox').insert(rows).select('id');
+    if (res.error) throw res.error;
+    return (res.data || []).map(function (r) { return r.id; });
+  }
+  async function messageStatus(ids) {
+    if (!ready() || !ids || !ids.length) return [];
+    const res = await client.from('telegram_outbox').select('id, status').in('id', ids);
+    if (res.error) throw res.error;
+    return res.data || [];
   }
 
   /* --- Zaxira: jadvallarni olish / qayta tiklash --- */
@@ -1165,6 +1219,10 @@ const CloudSync = (function () {
   return {
     ready: ready,
     pullAll: pullAll,
+    uploadHomeworkMedia: uploadHomeworkMedia,
+    removeHomeworkMedia: removeHomeworkMedia,
+    queueMessages: queueMessages,
+    messageStatus: messageStatus,
     fetchMessages: fetchMessages,
     pushGroup: pushGroup,
     pushStudent: pushStudent,
@@ -2061,6 +2119,28 @@ function isHwDone(hid) {
   return arr.some(id => String(id) === String(hid));
 }
 
+function hwMediaType(h) {
+  const t = String((h && h.mediaType) || '').toLowerCase();
+  return (t === 'image' || t === 'video' || t === 'audio') ? t : '';
+}
+function hwMediaHTML(h) {
+  const type = hwMediaType(h);
+  const url = String((h && h.mediaUrl) || '');
+  if (!type || !url) return '';
+  if (type === 'image') {
+    return `<div class="hw-media"><img class="hw-media-img" src="${esc(url)}" alt="${esc(h.title || 'Rasm')}" loading="lazy" /></div>`;
+  }
+  if (type === 'video') {
+    return `<div class="hw-media"><video class="plyr-video" controls playsinline preload="metadata" src="${esc(url)}"></video>
+      <div class="hw-media-bar"><span class="hw-media-tag">🎬 Video · tezlik va fullscreen mavjud</span></div></div>`;
+  }
+  return `<div class="hw-media"><audio class="plyr-audio" controls preload="metadata" src="${esc(url)}"></audio>
+    <div class="hw-media-bar"><span class="hw-media-tag">🎧 Audio · listening uchun tezlikni o'zgartiring</span></div></div>`;
+}
+function fmtSom(n) {
+  const v = Math.max(0, Math.round(Number(n) || 0));
+  return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
 function hwRowHTML(h) {
   const g = groupById(h.groupId);
   const chip = `<span class="chip-class">${g ? esc(g.name) : '—'}</span>`;
@@ -2073,11 +2153,13 @@ function hwRowHTML(h) {
       <div class="row between hw-head">
         <strong>${esc(h.title)}</strong>
         <span class="hw-head-right">${chip}
+          <button type="button" class="hw-edit" data-act="hw-edit" data-hid="${esc(String(h.id))}" aria-label="Uyga vazifani tahrirlash">${ico('brush', 15)}</button>
           <button type="button" class="hw-del" data-act="del-hw" data-hid="${esc(String(h.id))}" aria-label="Uyga vazifani o'chirish">${ico('trash', 15)}</button>
         </span>
       </div>
       ${meta}
       ${due}
+      ${hwMediaHTML(h)}
     </div>`;
   }
 
@@ -2094,6 +2176,7 @@ function hwRowHTML(h) {
         ${done ? `<span class="hw-done-badge">${ico('check', 12)} Bajarildi</span>` : ''}
         ${metaStruck}
         ${due}
+        ${hwMediaHTML(h)}
       </div>
     </div>
   </div>`;
@@ -2147,6 +2230,7 @@ function doDeleteHw(hid) {
   if (!h) return;
 
   store.set(K.homework, list.filter(x => String(x.id) !== norm));
+  if (h.mediaUrl) CloudSync.removeHomeworkMedia(h.mediaUrl);
   if (h.dbId != null) CloudSync.deleteHomework(h.dbId).catch(e => console.warn('[cloud] del hw:', (e && e.message) || e));
 
   /* o'chirilgan vazifaning bajarilganlik izlarini ham tozalash */
@@ -2168,31 +2252,107 @@ function homeworkListHTML(list) {
   return list.length ? list.map(hwRowHTML).join('') : emptyState("Hozircha uyga vazifa yo'q", 'clipboardCheck');
 }
 
-function openHwModal() {
+function openHwModal(hid) {
   if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
   const groups = getGroups();
   if (!groups.length) { toast("Avval guruh yarating", 'error'); return; }
+  const cur = hid != null ? getHomework().filter(x => String(x.id) === String(hid))[0] : null;
+  if (hid != null && !cur) return;
+  state.hwEditId = cur ? String(cur.id) : null;
+  state.hwNewMedia = null;
   openModal(`
     <div class="modal-head">
-      <h3>Uyga vazifa qo'shish</h3>
+      <h3>${cur ? 'Uyga vazifani tahrirlash' : "Uyga vazifa qo'shish"}</h3>
       <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
     </div>
     <label class="field-label" for="hw-group">Guruh</label>
     <select class="input" id="hw-group">
-      ${groups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('')}
+      ${groups.map(g => `<option value="${g.id}"${cur && cur.groupId === g.id ? ' selected' : ''}>${esc(g.name)}</option>`).join('')}
     </select>
     <label class="field-label" for="hw-title">Mavzu</label>
-    <input class="input" id="hw-title" type="text" placeholder="Masalan: Present Perfect" />
+    <input class="input" id="hw-title" type="text" placeholder="Masalan: Present Perfect" value="${cur ? esc(cur.title) : ''}" />
     <label class="field-label" for="hw-desc">Vazifa (tavsif)</label>
-    <textarea class="input" id="hw-desc" rows="3" placeholder="Nima bajarishi kerak..."></textarea>
+    <textarea class="input" id="hw-desc" rows="3" placeholder="Nima bajarishi kerak...">${cur ? esc(cur.description) : ''}</textarea>
     <label class="field-label" for="hw-due">Topshirish muddati</label>
-    <input class="input" id="hw-due" type="date" value="${todayKey()}" />
+    <input class="input" id="hw-due" type="date" value="${cur && cur.dueDate ? esc(cur.dueDate) : todayKey()}" />
+
+    <label class="field-label" for="hw-file">Rasm, video yoki audio <span class="muted small">(saytda ijro etiladi)</span></label>
+    <input class="input" id="hw-file" type="file" accept="image/*,video/*,audio/*" />
+    <div id="hw-file-box">${hwMediaPreviewHTML(cur)}</div>
+    <p class="muted small" style="margin-top:6px">Fayl Supabase Storage'dagi <b>homework-media</b> bucketiga yuklanadi. Bot og'ir faylni yubormaydi — o'quvchi vazifani saytda ko'radi.</p>
+
     <div class="field-error" id="hw-error"></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
       <button type="button" class="btn btn-primary" data-act="save-hw">Saqlash</button>
     </div>
   `);
+  const fi = $('#hw-file');
+  if (fi) fi.addEventListener('change', function () { onHwFilePick(fi); });
+}
+
+function detectMediaType(file) {
+  const m = String((file && file.type) || '').toLowerCase();
+  if (m.indexOf('image/') === 0) return 'image';
+  if (m.indexOf('video/') === 0) return 'video';
+  if (m.indexOf('audio/') === 0) return 'audio';
+  const ext = String((file && file.name) || '').split('.').pop().toLowerCase();
+  if (['png', 'jpg', 'jpeg', 'webp', 'gif'].indexOf(ext) >= 0) return 'image';
+  if (['mp4', 'webm', 'mov', 'm4v'].indexOf(ext) >= 0) return 'video';
+  if (['mp3', 'm4a', 'ogg', 'wav', 'aac'].indexOf(ext) >= 0) return 'audio';
+  return '';
+}
+
+function hwMediaPreviewHTML(h) {
+  if (!h || !h.mediaUrl) return '';
+  const type = hwMediaType(h);
+  const label = type === 'image' ? '🖼 Rasm' : type === 'video' ? '🎬 Video' : type === 'audio' ? '🎧 Audio' : '📎 Fayl';
+  return `<div class="hw-file-preview">
+    <div class="row between"><span class="hw-file-name">${label} yuklangan</span></div>
+    <div class="hw-file-actions"><button type="button" class="btn btn-xs danger" data-act="hw-remove-media">✕ Faylni o'chirish</button></div>
+  </div>`;
+}
+
+function onHwFilePick(inp) {
+  const f = inp && inp.files && inp.files[0];
+  state.hwNewMedia = f || null;
+  const box = $('#hw-file-box');
+  if (!box) return;
+  if (!f) {
+    const cur = state.hwEditId ? getHomework().filter(x => String(x.id) === String(state.hwEditId))[0] : null;
+    box.innerHTML = hwMediaPreviewHTML(cur);
+    return;
+  }
+  const type = detectMediaType(f);
+  const label = type === 'image' ? '🖼 Rasm' : type === 'video' ? '🎬 Video' : type === 'audio' ? '🎧 Audio' : '📎 Fayl';
+  box.innerHTML = `<div class="hw-file-preview">
+    <div class="row between"><span class="hw-file-name">${esc(f.name)}</span><span class="hw-media-tag">${label}</span></div>
+    <div class="pay-hint">${Math.max(1, Math.round(f.size / 1024))} KB · saqlaganda yuklanadi</div>
+    <div class="hw-file-actions"><button type="button" class="btn btn-xs danger" data-act="hw-remove-media">✕ Faylni o'chirish</button></div>
+  </div>`;
+}
+
+/* Faylni o'chirish: mavjud fayl → Storage + bazadan darhol; yangi tanlov → faqat bekor qilish */
+function removeHwMedia() {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  state.hwNewMedia = null;
+  const inp = $('#hw-file');
+  if (inp) inp.value = '';
+  const cur = state.hwEditId ? getHomework().filter(x => String(x.id) === String(state.hwEditId))[0] : null;
+  if (cur && cur.mediaUrl) {
+    const oldUrl = cur.mediaUrl;
+    const list = getHomework().map(x => String(x.id) === String(cur.id)
+      ? Object.assign({}, x, { mediaUrl: '', mediaType: '' }) : x);
+    store.set(K.homework, list);
+    const updated = list.filter(x => String(x.id) === String(cur.id))[0];
+    CloudSync.pushHomework(updated);
+    CloudSync.removeHomeworkMedia(oldUrl);
+    toast("Fayl o'chirildi");
+  } else {
+    toast("Fayl tanlanmadi");
+  }
+  const box = $('#hw-file-box');
+  if (box) box.innerHTML = hwMediaPreviewHTML(null);
 }
 
 function saveHomework() {
@@ -2202,26 +2362,55 @@ function saveHomework() {
   const desc = $('#hw-desc') ? $('#hw-desc').value.trim() : '';
   const due = $('#hw-due') ? $('#hw-due').value : '';
   const err = $('#hw-error');
+  const file = state.hwNewMedia || null;
   if (!title) {
     if (err) { err.textContent = "Mavzuni kiriting"; err.classList.add('show'); }
     return;
   }
-  const hw = {
-    id: 'h' + Date.now(),
-    dbId: null,
-    groupId: gid || null,
-    title: title,
-    description: desc,
-    dueDate: due,
-    createdAt: new Date().toISOString()
+  if (file && !detectMediaType(file)) {
+    if (err) { err.textContent = "Faqat rasm, video yoki audio fayl tanlang"; err.classList.add('show'); }
+    return;
+  }
+  const btn = $('[data-act="save-hw"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Yuklanmoqda...'; }
+  const editId = state.hwEditId;
+  const existing = editId ? getHomework().filter(x => String(x.id) === String(editId))[0] : null;
+
+  const finish = function (mediaUrl, mediaType) {
+    let hw;
+    if (existing) {
+      hw = Object.assign({}, existing, {
+        groupId: gid || null, title: title, description: desc, dueDate: due,
+        mediaUrl: mediaUrl || '', mediaType: mediaType || ''
+      });
+      store.set(K.homework, getHomework().map(x => String(x.id) === String(existing.id) ? hw : x));
+    } else {
+      hw = {
+        id: 'h' + Date.now(), dbId: null, groupId: gid || null, title: title,
+        description: desc, dueDate: due, mediaUrl: mediaUrl || '', mediaType: mediaType || '',
+        createdAt: new Date().toISOString()
+      };
+      const list = getHomework(); list.unshift(hw); store.set(K.homework, list);
+    }
+    CloudSync.pushHomework(hw);
+    state.hwEditId = null; state.hwNewMedia = null;
+    closeModal();
+    render();
+    toast(existing ? 'Uyga vazifa yangilandi ✓' : "Uyga vazifa qo'shildi");
   };
-  const list = getHomework();
-  list.unshift(hw);
-  store.set(K.homework, list);
-  CloudSync.pushHomework(hw);
-  closeModal();
-  render();
-  toast('Uyga vazifa qo\'shildi');
+
+  const oldUrl = existing && existing.mediaUrl ? existing.mediaUrl : '';
+  if (file) {
+    CloudSync.uploadHomeworkMedia(file).then(function (res) {
+      if (oldUrl) CloudSync.removeHomeworkMedia(oldUrl);
+      finish(res.url, detectMediaType(file));
+    }).catch(function (e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Saqlash'; }
+      if (err) { err.textContent = "Faylni yuklab bo'lmadi: " + ((e && e.message) || 'xatolik'); err.classList.add('show'); }
+    });
+    return;
+  }
+  finish(oldUrl, existing ? existing.mediaType : '');
 }
 
 function teacherHome() {
@@ -2460,6 +2649,7 @@ function groupScheduleText(g) {
 function groupCard(g, students) {
   const cnt = students.filter(s => s.groupId === g.id).length;
   const sched = groupScheduleText(g);
+  const fee = Math.max(0, Number(g.monthlyFee) || 0);
   return `<div class="card group-card" data-act="filter-group" data-gid="${g.id}" style="cursor:pointer" role="button" title="O'quvchilarni ko'rsatish">
     <div class="row between">
       <h3 class="card-h">${esc(g.name)}</h3>
@@ -2471,6 +2661,7 @@ function groupCard(g, students) {
         : `<div class="meta-row">${ico('calendar', 15)} <span>${esc(g.days)}</span></div>
            <div class="meta-row">${ico('clock', 15)} <span>${esc(g.time)}</span></div>`}
     </div>
+    <div class="gc-fee">💵 Oylik to'lov: ${fee > 0 ? `<b>${fmtSom(fee)} so'm</b>` : `<span class="muted">belgilanmagan</span>`}</div>
     <div class="muted small" style="margin-top:7px">Bosib, guruh o'quvchilarini ko'rish</div>
     <div class="gc-actions">
       <button type="button" class="btn btn-ghost btn-sm" data-act="grade-group-go" data-group="${g.id}">${ico('grades', 15)} Baholar</button>
@@ -2500,6 +2691,7 @@ function groupsScreen() {
 /* ==================== O'QUVCHILAR (faqat ustoz) ==================== */
 function studentCard(s) {
   const g = groupById(s.groupId);
+  const debt = Math.max(0, Number(s.paymentDebt) || 0);
   const acc = Object.keys(accounts).map(k => accounts[k]).filter(a => a.studentId === s.id)[0];
   return `<div class="card student-card">
     <div class="st-head">
@@ -2527,6 +2719,10 @@ function studentCard(s) {
         <span class="lbl-strong">${ico('mic', 15)} ${t('Ovozli ruxsat')}</span>
         <button type="button" class="switch${s.voiceAllowed !== false ? ' on' : ''}" data-act="voice-toggle" data-sid="${s.id}"
                 role="switch" aria-checked="${s.voiceAllowed !== false}" aria-label="${t('Ovozli ruxsat')}"></button>
+      </div>
+      <div class="pay-line">
+        <span class="pay-status ${debt > 0 ? 'due' : 'ok'}">${debt > 0 ? `🔴 To'lov qarzi: ${fmtSom(debt)} so'm` : "🟢 To'langan"}</span>
+        <button type="button" class="btn btn-xs ghost pay-btn" data-act="pay-student" data-sid="${s.id}">💵 To'lov kiritish</button>
       </div>
     </div>
     <div class="st-actions">
@@ -2580,6 +2776,10 @@ function studentsScreen() {
     <input class="input" id="s-search" type="search" placeholder="O'quvchi ismini kiriting..." value="${esc(state.search)}" />
   </div>
 
+  <button type="button" class="btn btn-primary btn-block debtors-btn" data-act="remind-debtors">
+    <span class="debtors-ico">📢</span> Barcha qarzdorlarga eslatma yuborish
+  </button>
+
   <div class="chips${state.classHint ? ' is-hl' : ''}">
     ${chips.map(c => `<button type="button" class="chip-btn ${state.filterClass === c ? 'active' : ''}" data-act="filter-class" data-class="${esc(c)}">${esc(tClass(c))}</button>`).join('')}
   </div>
@@ -2587,6 +2787,124 @@ function studentsScreen() {
   <div id="students-list">${studentListHTML()}</div>
   <button type="button" class="btn btn-ghost btn-block" data-act="nav" data-screen="groups">${ico('groups', 16)} Guruhlar</button>
   `;
+}
+
+/* ==================== TO'LOV VA QARZ ESLATMALARI ==================== */
+function openPayModal(sid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const st = studentById(sid);
+  if (!st) return;
+  const g = groupById(st.groupId);
+  const debt = Math.max(0, Number(st.paymentDebt) || 0);
+  const fee = g ? Math.max(0, Number(g.monthlyFee) || 0) : 0;
+  openModal(`
+    <div class="modal-head">
+      <h3>To'lov kiritish</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+    <div class="editor-info">
+      <div class="avatar">${esc(initials(st.fullName))}</div>
+      <div class="col">
+        <div class="s-name">${esc(st.fullName)}</div>
+        <div class="muted small">${g ? esc(g.name) : 'Guruh taylanmagan'}${fee ? ' • oylik: ' + fmtSom(fee) + " so'm" : ''}</div>
+      </div>
+    </div>
+    <div class="card" style="margin:9px 0">
+      <div class="row between"><span class="muted small">Joriy qarz</span>
+        <span class="pay-balance">${debt > 0 ? fmtSom(debt) + " so'm" : "🟢 To'langan"}</span></div>
+    </div>
+    <label class="field-label" for="pay-sum">To'lov summasi (so'mda)</label>
+    <input class="input" id="pay-sum" type="number" min="0" step="1000" inputmode="numeric" value="${debt > 0 ? debt : (fee || '')}" />
+    <p class="pay-hint">Kiritilgan summa qarzdan ayiriladi. O'quvchining Telegramiga chek-xabarnoma yuboriladi.</p>
+    <div class="field-error" id="pay-error"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
+      <button type="button" class="btn btn-primary" data-act="save-pay" data-sid="${esc(String(sid))}">💵 To'lovni saqlash</button>
+    </div>
+  `);
+}
+
+function savePayment(sid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const st = studentById(sid);
+  if (!st) return;
+  const inp = $('#pay-sum');
+  const sum = Math.round(Number(inp ? inp.value : 0) || 0);
+  const err = $('#pay-error');
+  if (!sum || sum <= 0) {
+    if (err) { err.textContent = "To'lov summasini kiriting"; err.classList.add('show'); }
+    return;
+  }
+  const before = Math.max(0, Number(st.paymentDebt) || 0);
+  const after = Math.max(0, before - sum);
+  const paid = Math.min(sum, before) || sum;
+  const list = getStudents().map(x => String(x.id) === String(sid)
+    ? Object.assign({}, x, { paymentDebt: after }) : x);
+  store.set(K.students, list);
+  CloudSync.pushStudent(sid);
+  CloudSync.queueMessages([{
+    student_id: st.dbId != null ? st.dbId : null,
+    chat_id: st.telegramChatId || null,
+    text: `💵 <b>To'lov qabul qilindi!</b>\n\n<b>${esc(st.fullName)}</b>, ingliz tili darslari uchun <b>${fmtSom(paid)} so'm</b> to'lov qabul qilindi.\n${after > 0 ? `Qolgan qarz: <b>${fmtSom(after)} so'm</b>` : "Qarzingiz yo'q — rahmat! 🟢"}\n\n<i>Hurmat bilan, Muzaffar Amirov</i>`
+  }]).catch(function (e) { console.warn('[outbox]', (e && e.message) || e); });
+  closeModal();
+  render();
+  toast(`To'lov kiritildi ✓${after > 0 ? ' Qarz: ' + fmtSom(after) + " so'm" : ''}`);
+}
+
+function debtorsList() {
+  return getStudents().filter(s => (Number(s.paymentDebt) || 0) > 0);
+}
+
+function openRemindDebtors() {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const debtors = debtorsList();
+  if (!debtors.length) { toast("Qarzdor o'quvchi yo'q ✓"); return; }
+  const total = debtors.reduce((a, s) => a + (Number(s.paymentDebt) || 0), 0);
+  const noTg = debtors.filter(s => !s.telegramChatId).length;
+  openModal(`
+    <div class="modal-head">
+      <h3>Eslatma yuborish</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+    <div class="confirm-body">
+      <div class="confirm-emoji tint-amber">📢</div>
+      <p class="confirm-text">${debtors.length} nafar qarzdor o'quvchiga Telegram orqali shaxsiy eslatma yuborilsinmi?</p>
+      <p class="muted small" style="margin-top:7px">Umumiy qarzdorlik: <b>${fmtSom(total)} so'm</b></p>
+      ${noTg ? `<p class="muted small" style="margin-top:7px">⚠️ ${noTg} nafar o'quvchida Telegram ulanmagan — ularga yuborilmaydi.</p>` : ''}
+    </div>
+    <div class="confirm-actions">
+      <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
+      <button type="button" class="btn btn-primary" data-act="do-remind-debtors">Ha, yuborish</button>
+    </div>
+  `);
+}
+
+function sendDebtorsReminder() {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const debtors = debtorsList();
+  if (!debtors.length) { closeModal(); toast("Qarzdor o'quvchi yo'q ✓"); return; }
+  const rows = debtors.filter(s => s.telegramChatId).map(s => ({
+    student_id: s.dbId != null ? s.dbId : null,
+    chat_id: s.telegramChatId,
+    text: `⚠️ <b>To'lov eslatmasi!</b>\n\nHurmatli o'quvchi / ota-ona, <b>${esc(s.fullName)}</b>ning ingliz tili darslari uchun <b>${fmtSom(s.paymentDebt)} so'm</b> to'lov qarzdorligi mavjud.\n\nIltimos, to'lovni o'z vaqtida amalga oshirishingizni so'raymiz.\n\n<i>Hurmat bilan, Muzaffar Amirov</i>`
+  }));
+  closeModal();
+  if (!rows.length) { toast("O'quvchilarda Telegram ulanmagan", 'error'); return; }
+  const okText = `✅ ${rows.length} nafar qarzdorga eslatma yuborildi!`;
+  CloudSync.queueMessages(rows).then(function (ids) {
+    if (!ids.length) { toast(okText); return; }
+    let tries = 0;
+    const timer = setInterval(function () {
+      tries += 1;
+      CloudSync.messageStatus(ids).then(function (list) {
+        const pending = (list || []).filter(x => x.status === 'pending').length;
+        if (pending === 0 || tries >= 12) { clearInterval(timer); toast(okText); }
+      }).catch(function () { if (tries >= 12) clearInterval(timer); });
+    }, 1500);
+  }).catch(function (e) {
+    toast('Eslatma yuborilmadi: ' + ((e && e.message) || 'xatolik'), 'error');
+  });
 }
 
 /* ==================== PROFIL ==================== */
@@ -2677,6 +2995,9 @@ function openAddGroup() {
     <div id="f-times" class="day-times" aria-live="polite"></div>
     <p class="muted small" style="margin-top:8px">Kunni tanlang — har bir kun uchun alohida vaqtni belgilang (masalan Dushanba 09:15, Shanba 11:00).</p>
 
+    <label class="field-label" for="f-gfee">Oylik to'lov summasi (so'mda)</label>
+    <input class="input" id="f-gfee" type="number" min="0" step="1000" inputmode="numeric" placeholder="Masalan: 300000" />
+
     <button type="button" class="btn btn-primary btn-block" data-act="save-group">Saqlash</button>
   `);
 }
@@ -2756,8 +3077,9 @@ function saveGroup() {
   const encoded = days.map(d => (times[d] ? d + ' ' + times[d] : d)).join(', ');
   const firstTime = days.map(d => times[d] || '').filter(Boolean)[0] || '';
 
+  const fee = Math.max(0, Math.round(Number(($('#f-gfee') ? $('#f-gfee').value : 0)) || 0));
   const groups = getGroups();
-  groups.push({ id: 'g' + Date.now(), name, days: encoded, time: firstTime });
+  groups.push({ id: 'g' + Date.now(), name, days: encoded, time: firstTime, monthlyFee: fee });
   store.set(K.groups, groups);
   CloudSync.pushGroup(groups[groups.length - 1]);
   closeModal();
@@ -2804,6 +3126,9 @@ function openEditGroup(gid) {
 
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
+    <label class="field-label" for="f-gfee">Oylik to'lov summasi (so'mda)</label>
+    <input class="input" id="f-gfee" type="number" min="0" step="1000" inputmode="numeric" value="${g && g.monthlyFee ? String(g.monthlyFee) : ''}" placeholder="Masalan: 300000" />
+
       <button type="button" class="btn btn-primary" data-act="save-edit-group" data-gid="${esc(String(gid))}">Saqlash</button>
     </div>
   `);
@@ -2831,8 +3156,9 @@ function saveEditGroup(gid) {
   const encoded = days.map(d => (times[d] ? d + ' ' + times[d] : d)).join(', ');
   const firstTime = days.map(d => times[d] || '').filter(Boolean)[0] || '';
 
+  const fee = Math.max(0, Math.round(Number(($('#f-gfee') ? $('#f-gfee').value : 0)) || 0));
   const list = getGroups().map(x => String(x.id) === String(gid)
-    ? Object.assign({}, x, { name: name, days: encoded, time: firstTime })
+    ? Object.assign({}, x, { name: name, days: encoded, time: firstTime, monthlyFee: fee })
     : x);
   store.set(K.groups, list);
   const updated = list.filter(x => String(x.id) === String(gid))[0];
@@ -2860,7 +3186,7 @@ function saveStudent() {
 
   const id = 's' + Date.now();
   const students = getStudents();
-  students.push({ id, fullName: name, schoolClass: cls, groupId: gid, speakingDebt: 0, audioSubmissions: [] });
+  students.push({ id, fullName: name, schoolClass: cls, groupId: gid, speakingDebt: 0, paymentDebt: 0, audioSubmissions: [] });
   store.set(K.students, students);
 
   accounts[login] = { login, password: pass, role: 'student', studentId: id, name };
@@ -2951,6 +3277,9 @@ function openEditStudent(sid) {
     </select>
     <p class="muted small" style="margin-top:8px">Guruh o'zgartirilsa, mavjud baholar va davomat tarixi saqlanib qoladi.</p>
 
+    <label class="field-label" for="es-debt">To'lov qarzi (so'mda)</label>
+    <input class="input" id="es-debt" type="number" min="0" step="1000" inputmode="numeric" value="${Math.max(0, Number(st.paymentDebt) || 0)}" />
+
     <div class="field-error" id="es-error"></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
@@ -2966,6 +3295,7 @@ function saveEditStudent(sid) {
   const name = (($('#es-name') && $('#es-name').value) || '').trim();
   const cls = $('#es-class') ? $('#es-class').value : cur.schoolClass;
   const gid = $('#es-group') ? $('#es-group').value : '';
+  const debt = Math.max(0, Math.round(Number(($('#es-debt') ? $('#es-debt').value : 0)) || 0));
   const err = $('#es-error');
   if (!name) {
     if (err) { err.textContent = "Ism familiyani kiriting"; err.classList.add('show'); }
@@ -2974,7 +3304,7 @@ function saveEditStudent(sid) {
   /* Faqat name/schoolClass/group_id yangilanadi — baholar va davomat
      student_id bo'yicha qoladi (Supabase'da alohida jadvallar) */
   const list = getStudents().map(x => String(x.id) === String(sid)
-    ? Object.assign({}, x, { fullName: name, schoolClass: cls, groupId: gid || null })
+    ? Object.assign({}, x, { fullName: name, schoolClass: cls, groupId: gid || null, paymentDebt: debt })
     : x);
   store.set(K.students, list);
   CloudSync.pushStudent(sid);
@@ -3296,7 +3626,7 @@ function restoreLocal(data) {
   const groups = (data.groups || []).map(g => {
     const n = toNumId(g.id);
     if (n == null) return null;
-    return { id: 'g' + n, dbId: n, name: g.name || '', days: g.days || '', time: g.time || '' };
+    return { id: 'g' + n, dbId: n, name: g.name || '', days: g.days || '', time: g.time || '', monthlyFee: Number(g.monthly_fee) || 0 };
   }).filter(Boolean);
 
   /* ovozli topshiriklar (audio_submissions) — o'quvchiga bog'lab tiklaymiz */
@@ -3329,6 +3659,7 @@ function restoreLocal(data) {
       login: st.login || '',
       password: st.password || '',
       speakingDebt: Number(st.speaking_debt) || 0,
+      paymentDebt: Number(st.payment_debt) || 0,
       voiceAllowed: st.voice_allowed !== false,
       telegramChatId: st.telegram_chat_id == null ? null : Number(st.telegram_chat_id),
       lastDevice: st.last_device || '',
@@ -3388,7 +3719,8 @@ function restoreLocal(data) {
     return {
       id: 'h' + n, dbId: n, groupId: gid != null ? 'g' + gid : null,
       title: h.title || '', description: h.description || '',
-      dueDate: h.due_date || '', createdAt: h.created_at || ''
+      dueDate: h.due_date || '', mediaUrl: h.media_url || '', mediaType: h.media_type || '',
+      createdAt: h.created_at || ''
     };
   }).filter(Boolean);
   store.set(K.homework, hw);
@@ -4603,7 +4935,13 @@ document.addEventListener('click', function (e) {
 
     /* --- Uyga vazifalar --- */
     'open-hw': openHwModal,
-    'save-hw': saveHomework,
+    'save-hw': function () { saveHomework(); },
+    'hw-edit': function () { openHwModal(btn.getAttribute('data-hid')); },
+    'hw-remove-media': removeHwMedia,
+    'pay-student': function () { openPayModal(btn.getAttribute('data-sid')); },
+    'save-pay': function () { savePayment(btn.getAttribute('data-sid')); },
+    'remind-debtors': openRemindDebtors,
+    'do-remind-debtors': sendDebtorsReminder,
     'del-hw': function () { openDeleteHw(btn.getAttribute('data-hid')); },
     'do-del-hw': function () { doDeleteHw(btn.getAttribute('data-hid')); },
     'toggle-hw': function () { toggleHwDone(btn.getAttribute('data-hid')); },
@@ -4759,3 +5097,53 @@ $('#modal-overlay').addEventListener('click', function (e) {
 
 
 /* Week navigation is now rendered directly in gradesScreen() template. */
+
+/* ==================== PLYR: video/audio pleyer (fullscreen, tezlik, ±10s) ==================== */
+function initPlyr() {
+  if (!window.Plyr) return;
+  $$('.hw-media video, .hw-media audio').forEach(function (el) {
+    if (el.getAttribute('data-plyr-ready')) return;
+    if (el.closest && el.closest('.plyr')) return;
+    el.setAttribute('data-plyr-ready', '1');
+    const isAudio = el.tagName === 'AUDIO';
+    try {
+      new window.Plyr(el, {
+        controls: isAudio
+          ? ['restart', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'duration', 'mute', 'volume', 'settings']
+          : ['play-large', 'restart', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'duration', 'mute', 'volume', 'settings', 'pip', 'fullscreen'],
+        settings: ['speed'],
+        speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
+        seekTime: 10,
+        keyboard: { focused: true, global: false },
+        tooltips: { controls: true, seek: true }
+      });
+    } catch (e) { console.warn('[plyr]', (e && e.message) || e); }
+  });
+}
+function watchHwMedia() {
+  initPlyr();
+  if (!window.MutationObserver || !document.body) return;
+  let timer = null;
+  new window.MutationObserver(function () {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(initPlyr, 80);
+  }).observe(document.body, { childList: true, subtree: true });
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchHwMedia);
+else watchHwMedia();
+
+/* Rasmni to'liq ekranda ko'rish */
+document.addEventListener('click', function (ev) {
+  const img = ev.target && ev.target.closest ? ev.target.closest('.hw-media-img') : null;
+  if (!img) return;
+  const url = img.getAttribute('src');
+  if (!url) return;
+  const box = document.createElement('div');
+  box.className = 'hw-media-zoom';
+  const big = document.createElement('img');
+  big.src = url;
+  big.alt = img.getAttribute('alt') || '';
+  box.appendChild(big);
+  box.addEventListener('click', function () { box.remove(); });
+  document.body.appendChild(box);
+});
