@@ -7,6 +7,7 @@ Run:  .venv/bin/python test/bot_check.py
 
 
 import asyncio
+import glob
 import json
 import os
 import re
@@ -15,7 +16,9 @@ from datetime import datetime, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, ".venv", "lib", "python3.12", "site-packages"))
+# .venv ichidagi python versiyasiga bog'lanmaslik uchun site-packages glob bilan topiladi
+for _sp in glob.glob(os.path.join(ROOT, ".venv", "lib", "python*", "site-packages")):
+    sys.path.insert(0, _sp)
 
 os.environ.setdefault("PORT", "10999")
 

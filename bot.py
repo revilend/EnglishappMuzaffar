@@ -22,7 +22,6 @@ from aiogram.types import (
 )
 from supabase import create_client, Client
 import config
-config.WEBAPP_URL = "https://teachermuzaffar.uz/"
 
 
 logging.basicConfig(level=logging.INFO)
@@ -35,6 +34,23 @@ except Exception as _e:
 
 dp = Dispatcher()
 supabase: Client = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
+
+
+def teacher_password() -> str:
+    """Ustoz paroli — veb-ilova bot_settings'ga yozadigan qiymat (fallback: 123).
+
+    Shu bilan veb-ilovada parol o'zgartirilganda bot ham yangi parolni qabul qiladi.
+    """
+    try:
+        rows = supabase.table("bot_settings").select("value").eq(
+            "key", "teacher_password").limit(1).execute().data or []
+        if rows:
+            value = str(rows[0].get("value") or "").strip()
+            if value:
+                return value
+    except Exception as e:
+        logging.warning(f"teacher_password: {e}")
+    return "123"
 
 
 # ============================================================
@@ -373,7 +389,7 @@ async def attempt_login(message: types.Message, login: str, password: str):
     """Login/parolni tekshirib, students.telegram_chat_id ni ulaydi."""
     try:
         # Ustoz tekshiruvi
-        if login.lower() == "m_amirov" and password == "123":
+        if login.lower() == "m_amirov" and password == teacher_password():
             await message.answer("👑 <b>Xush kelibsiz, Muzaffar Amirov!</b>\n\nUstoz hisobingiz ulandi.", reply_markup=admin_reply_keyboard(), parse_mode="HTML")
             return
         # O'quvchini bazadan qidirish
@@ -418,7 +434,7 @@ async def attempt_login(message: types.Message, login: str, password: str):
             pass
     except Exception as e:
         logging.error(f"attempt_login fatal: {e}")
-        await message.answer(f"⚠️ Xatolik yuz berdi: {e}")
+        await message.answer("⚠️ Xatolik yuz berdi. Birozdan so'ng qayta urinib ko'ring.")
 
 
 async def _login_exists(login: str) -> bool:
@@ -437,7 +453,7 @@ async def _finish_login_password(message: types.Message, uid: int, login: str, p
     '''2-qadam: parolni tekshirib, hisobni ulaydi yoki qayta so'raydi.'''
     pwd = str(password).strip()
     if str(login).lower() == "m_amirov":
-        if pwd == "123":
+        if pwd == teacher_password():
             pending_logins.pop(uid, None)
             try:
                 await message.answer(
@@ -1211,11 +1227,13 @@ async def messages_watcher():
 BACKUP_TABLES = ["groups", "students", "attendance", "grades", "messages", "speaking_submissions", "audio_submissions", "homework"]
 RESTORE_PLAN = [
     ("groups", ["id", "name", "days", "time"]),
-    ("students", ["id", "name", "school_class", "group_id", "login", "password", "speaking_debt"]),
+    ("students", ["id", "name", "school_class", "group_id", "login", "password", "speaking_debt",
+                  "voice_allowed", "telegram_chat_id", "last_device", "last_seen"]),
     ("attendance", ["id", "student_id", "date", "status"]),
     ("grades", ["id", "student_id", "date", "grade", "category", "note"]),
     ("messages", ["id", "student_id", "sender", "text", "created_at"]),
-    ("speaking_submissions", ["id", "media_type", "telegram_file_id", "status", "created_at"]),
+    ("speaking_submissions", ["id", "student_id", "media_type", "telegram_file_id", "status", "score",
+                              "feedback", "created_at"]),
     ("audio_submissions", ["id", "student_id", "date", "url", "status", "score", "feedback", "created_at"]),
     ("homework", ["id", "group_id", "title", "description", "due_date", "created_at"]),
 ]

@@ -131,6 +131,30 @@ drop policy if exists "demo user_sessions all" on public.user_sessions;
 create policy "demo user_sessions all" on public.user_sessions
   for all using (true) with check (true);
 
+-- 9) Speaking slotlari (1-on-1) — barcha qurilmalarda bir xil
+create table if not exists public.speaking_slots (
+  id         bigint generated always as identity primary key,
+  date       date not null,
+  start_time text not null default '',
+  end_time   text not null default '',
+  student_id bigint references public.students (id) on delete set null,
+  score      smallint check (score between 1 and 10),
+  created_at timestamptz not null default now()
+);
+create index if not exists speaking_slots_date_idx
+  on public.speaking_slots (date, start_time);
+alter table public.speaking_slots enable row level security;
+drop policy if exists "demo speaking_slots all" on public.speaking_slots;
+create policy "demo speaking_slots all" on public.speaking_slots
+  for all using (true) with check (true);
+
+-- 10) Login takrorlanmasligi (bir xil login ikki o'quvchida bo'lmasin).
+--     Agar bazada allaqachon dublikat login bo'lsa, avval ularni tuzating —
+--     aks holda bu qator xato beradi.
+create unique index if not exists students_login_unique
+  on public.students (lower(login))
+  where login is not null and login <> '';
+
 -- Realtime (ixtiyoriy): chat xabarlarini jonli yangilash uchun
 -- Supabase Dashboard → Database → Replication → "messages" jadvalini yoqing.
 --

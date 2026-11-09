@@ -43,6 +43,8 @@ Guruh + sana (bugun) → [✓ Keldi] [✕ Kelmadi] [? Sababli] → "Davomatni sa
 - Ustoz maxsus vaqt slotlari yaratadi (masalan `14:00 – 14:20`, `14:20 – 14:40`)
 - Har slotga bitta o'quvchi tayinlanadi
 - "Baholash" → 1–10 ball → **o'quvchining baholar jurnaliga darhol yoziladi**
+- Slotlar Supabase `speaking_slots` jadvalida saqlanadi — **barcha qurilmalarda bir xil**,
+  o'quvchi o'z speaking vaqtini kabinetida ko'radi
 
 ### 6. Rollarni keskin ajratish
 **Ustoz:** guruhlar, o'quvchilar ro'yxati, telefonlar, davomat, jurnal, speaking.
@@ -94,6 +96,7 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 | `messages` | ustoz ↔ o'quvchi chati (real-time) |
 | `homework` | uyga vazifalar (mavzu, tavsif, muddat) — bot guruhga xabar qiladi |
 | `speaking_submissions` | Telegram voice/video topshiriklar (holat, ball) |
+| `speaking_slots` | 1-on-1 speaking slotlari (sana, vaqt, o'quvchi, ball) |
 | `audio_submissions` | eski brauzer topshiriklari (zaxira uchun) |
 | `bot_settings` | tizim sozlamalari — ustoz paroli (`teacher_password`) |
 
@@ -109,7 +112,8 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 
 **Sozlash (1 qadam):** `supabase.sql` faylini Supabase Dashboard → SQL Editor'da
 **Run** bosing (hammasi idempotent — qayta ishga tushirish xavfsiz). Yangi qo'shimcha:
-`homework` jadvali, `students.telegram_chat_id` va `voice_allowed` ustunlari.
+`homework` va `speaking_slots` jadvallari, `students.telegram_chat_id` va `voice_allowed`
+ustunlari hamda `students.login` uchun **unique indeks** (bir xil login ikki o'quvchida bo'lmaydi).
 
 > ⚠️ Konfiguratsiya olib tashlansa ilova **localStorage** rejimida ishlayveradi
 > (graceful fallback). Publishing kaliti xavfsiz (faqat o'qish/yozish uchun;
@@ -139,7 +143,8 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 **Veb ilovada (Ustoz → Profil → "Ma'lumotlar Bazasi Zaxirasi"):**
 
 - **📥 Bazani yuklab olish (Backup)** — barcha jadvallar (`groups`, `students`,
-  `attendance`, `grades`, `messages`, `speaking_submissions`) bitta vaqt muhrli
+  `attendance`, `grades`, `messages`, `speaking_submissions`, `speaking_slots`,
+  `homework`, `audio_submissions`) bitta vaqt muhrli
   JSON faylga yig'iladi va yuklab oladi: `english_crm_backup_2026-10-13.json`.
 - **📤 Bazani qayta tiklash (Restore)** — saqlangan JSON faylni tanlang → tasdiq
   modali: *"Haqiqatan ham bazani ushbu fayldan qayta tiklamoqchimisiz? Hozirgi
@@ -212,6 +217,19 @@ Ilova **haqiqiy Supabase jadvallariga to'g'ridan-to'g'ri** o'qiydi va yozadi:
 - **Speaking sessiyalar jurnali**: bir xil sana uchun ko'p baholash — avvalgi sessiya
   yo'qolmaydi (note ga qo'shiladi + `et_speak_log` jurnalida saqlanadi); har bir
   baholash `speaking_debt` ni 1 ga kamaytiradi (0 dan past tushmaydi) va Supabase'ga yoziladi.
+
+### 18b. Ma'lumotlar chegarasi va qolgan xavf
+- **O'quvchi endi faqat o'z ma'lumotlarini yuklaydi:** o'z qatori, baholari, davomati,
+  xabarlari, speaking topshiriqlari va o'z guruhi. Boshqa o'quvchilarning ismlari,
+  parollari va baholari uning brauzeriga **tushmaydi**. Ustoz qurilmasi butun bazani oladi.
+- **Ustoz paroli yagona manbadan:** veb-ilova parolni `bot_settings`ga yozadi, bot esa
+  `/login`da aynan shu qiymatni o'qiydi — parol o'zgartirilsa bot ham yangi parolni qabul qiladi.
+- **Qolgan xavf (muhim):** Supabase RLS siyosatlari hamon `using (true)` va publishable
+  kalit ochiq. Texnik bilimli odam brauzer konsoli yoki REST API orqali bazaga to'g'ridan-to'g'ri
+  murojaat qilishi mumkin, `students.password` esa hozircha **ochiq matnda**. Buni statik
+  (GitHub Pages) arxitektura ichida brauzer tomonidan yopib bo'lmaydi: to'liq yechim —
+  Supabase Auth + qat'iy RLS yoki kichik server API, hamda parollarni hash qilish.
+  Bu ish alohida bosqich sifatida rejalashtirilgan.
 
 ## Telegram bot (aiogram 3.x)
 
@@ -300,7 +318,7 @@ css/styles.css    — Telegram tema o'zgaruvchilari bilan (yorug'/qorong'i)
 js/data.js        — statik konfiguratsiya (sinflar, kunlar, kategoriyalar — demo ma'lumot YO'Q)
 js/app.js         — kirish, rollar, kabinet, jurnal, davomat, speaking
 test/smoke.js     — jsdom asosida butun oqimni sinovdan o'tkazadi (278 tekshiruv)
-supabase.sql      — messages/homework/speaking_submissions + telegram_chat_id (SQL Editor'da Run)
+supabase.sql      — messages/homework/speaking_submissions/speaking_slots + unique login (SQL Editor'da Run)
 bot.py            — Telegram bot (aiogram 3.x): /start + xabar funksiyalari
 config.py         — BOT_TOKEN, WEBAPP_URL, ADMIN_ID
 requirements.txt  — aiogram>=3.13.0, aiohttp>=3.9.0
