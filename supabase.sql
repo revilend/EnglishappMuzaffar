@@ -150,3 +150,104 @@ create policy "demo user_sessions all" on public.user_sessions
 --
 -- Eslatma: hozirgi publishable kalit faqat o'qish/yozish beradi (DDL yo'q),
 -- shuning uchun shu faylni bir marta ishga tushirish shart:
+
+
+-- ============================================================
+-- 9) Eng yangi qo'shilgan ustunlar va jadvallar (Moliya, To'lovlar, Outbox)
+-- ============================================================
+
+-- Guruhlar (maktab / repetitorlik va oylik to'lov)
+alter table public.groups add column if not exists monthly_fee numeric default 0;
+alter table public.groups add column if not exists group_type text default 'school';
+
+-- O'quvchilar (to'lov qarzi, oxirgi to'lov tafsilotlari, xesh)
+alter table public.students add column if not exists payment_debt numeric default 0;
+alter table public.students add column if not exists last_paid_month text;
+alter table public.students add column if not exists last_payment_info text;
+alter table public.students add column if not exists password_hash text;
+alter table public.students add column if not exists fee_period text;
+
+-- Uyga vazifalar (ko'p faylli biriktirmalar: video, audio, rasm, pdf, doc)
+alter table public.homework add column if not exists attachments jsonb default '[]'::jsonb;
+alter table public.homework add column if not exists media_url text;
+alter table public.homework add column if not exists media_type text;
+
+-- 10) Telegram Outbox (Saytdan bot orqali o'quvchilarga to'lov/eslatma xabarlari yuborish)
+create table if not exists public.telegram_outbox (
+  id          bigint generated always as identity primary key,
+  chat_id     text,
+  student_id  bigint references public.students (id) on delete set null,
+  text        text not null,
+  status      text not null default 'pending' check (status in ('pending', 'sent', 'failed')),
+  created_at  timestamptz not null default now()
+);
+create index if not exists telegram_outbox_status_idx on public.telegram_outbox (status, created_at);
+alter table public.telegram_outbox enable row level security;
+drop policy if exists "demo telegram_outbox all" on public.telegram_outbox;
+create policy "demo telegram_outbox all" on public.telegram_outbox
+  for all using (true) with check (true);
+
+-- 11) To'lovlar tarixi (payments / student_payments)
+create table if not exists public.payments (
+  id          bigint generated always as identity primary key,
+  student_id  bigint not null references public.students (id) on delete cascade,
+  amount      numeric not null default 0,
+  note        text,
+  period      text,
+  created_at  timestamptz not null default now()
+);
+create index if not exists payments_student_idx on public.payments (student_id, created_at);
+alter table public.payments enable row level security;
+drop policy if exists "demo payments all" on public.payments;
+create policy "demo payments all" on public.payments
+  for all using (true) with check (true);
+
+create table if not exists public.student_payments (
+  id          bigint generated always as identity primary key,
+  student_id  bigint not null references public.students (id) on delete cascade,
+  group_id    bigint references public.groups (id) on delete set null,
+  month_key   text,
+  month_name  text,
+  amount_due  numeric default 0,
+  amount_paid numeric default 0,
+  is_paid     boolean default false,
+  paid_at     timestamptz,
+  note        text,
+  created_at  timestamptz default now()
+);
+alter table public.student_payments enable row level security;
+drop policy if exists "demo student_payments all" on public.student_payments;
+create policy "demo student_payments all" on public.student_payments
+  for all using (true) with check (true);
+
+-- 12) Oylik to'lovlar jadvali (monthly_fees — har bir oy uchun guruh narxi)
+create table if not exists public.monthly_fees (
+  id          bigint generated always as identity primary key,
+  group_id    bigint not null references public.groups (id) on delete cascade,
+  period      text not null,
+  month_key   text,
+  amount      numeric not null default 0,
+  created_at  timestamptz not null default now(),
+  unique (group_id, period)
+);
+create index if not exists monthly_fees_group_idx on public.monthly_fees (group_id, period);
+alter table public.monthly_fees enable row level security;
+drop policy if exists "demo monthly_fees all" on public.monthly_fees;
+create policy "demo monthly_fees all" on public.monthly_fees
+  for all using (true) with check (true);
+
+-- 13) 1-on-1 Speaking Slotlari (speaking_slots)
+create table if not exists public.speaking_slots (
+  id          bigint generated always as identity primary key,
+  date        date not null,
+  start_time  text not null,
+  end_time    text not null,
+  student_id  bigint references public.students (id) on delete set null,
+  score       smallint check (score between 1 and 10),
+  created_at  timestamptz not null default now()
+);
+create index if not exists speaking_slots_date_idx on public.speaking_slots (date);
+alter table public.speaking_slots enable row level security;
+drop policy if exists "demo speaking_slots all" on public.speaking_slots;
+create policy "demo speaking_slots all" on public.speaking_slots
+  for all using (true) with check (true);
