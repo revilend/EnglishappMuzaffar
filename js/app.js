@@ -3740,7 +3740,7 @@ function saveAddedDebt(sid) {
 
 /* Qarz eslatmasi matni (bitta o'quvchi va ommaviy uchun bir xil) */
 function debtReminderText(s) {
-  return `⚠️ <b>To'lov eslatmasi!</b>\n\nHurmatli o'quvchi / ota-ona, <b>${esc(s.fullName)}</b>ning ingliz tili darslari uchun <b>${fmtSom(s.paymentDebt)} so'm</b> to'lov qarzdorligi mavjud.\n\nIltimos, to'lovni amalga oshirishingizni so'raymiz.\n\n<i>Hurmat bilan, Muzaffar Amirov</i>`;
+  return `⚠️ <b>To'lov eslatmasi!</b>\n\nHurmatli o'quvchi / ota-ona, <b>${esc(s.fullName)}</b>ning ingliz tili darslari uchun <b>${fmtSom(s.paymentDebt)} so'm</b> to'lov qarzdorligi mavjud.\n\nIltimos, to'lovni amalga oshirishingizni so'raymiz.`;
 }
 
 function debtRowOf(s) {
@@ -3858,7 +3858,7 @@ function savePayment(sid) {
     CloudSync.queueMessages([{
       student_id: st.dbId != null ? st.dbId : null,
       chat_id: String(st.telegramChatId),
-      text: `💵 <b>To'lov qabul qilindi!</b>\n\n<b>${esc(st.fullName)}</b>, ${esc(monthName)} uchun <b>${fmtSom(sum)} so'm</b> to'lov qabul qilindi.\n${after > 0 ? `Qolgan qarz: <b>${fmtSom(after)} so'm</b>` : "Qarzingiz yo'q — rahmat! 🟢"}\n\n<i>Hurmat bilan, Muzaffar Amirov</i>`,
+      text: `💵 <b>To'lov qabul qilindi!</b>\n\n<b>${esc(st.fullName)}</b>, ${esc(monthName)} uchun <b>${fmtSom(sum)} so'm</b> to'lov qabul qilindi.\n${after > 0 ? `Qolgan qarz: <b>${fmtSom(after)} so'm</b>` : "Qarzingiz yo'q — rahmat! 🟢"}`,
       status: 'pending'
     }]).catch(function (e) { console.warn('[outbox]', (e && e.message) || e); });
   }
