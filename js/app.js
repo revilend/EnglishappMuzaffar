@@ -1069,7 +1069,14 @@ const CloudSync = (function () {
   /* --- telegram_outbox: sayt yozadi, bot yuboradi (chek / eslatma) --- */
   async function queueMessages(rows) {
     if (!ready() || !rows || !rows.length) return [];
-    const res = await client.from('telegram_outbox').insert(rows).select('id');
+    let res = await client.from('telegram_outbox').insert(rows).select('id');
+    if (res.error && /student_id|schema cache|column/i.test(String(res.error.message || ''))) {
+      /* student_id ustuni hali ochilmagan bo'lsa — faqat chat_id, text, status bilan xatosiz yozadi */
+      const cleanRows = rows.map(function (r) {
+        return { chat_id: String(r.chat_id || ''), text: String(r.text || ''), status: r.status || 'pending' };
+      });
+      res = await client.from('telegram_outbox').insert(cleanRows).select('id');
+    }
     if (res.error) throw res.error;
     return (res.data || []).map(function (r) { return r.id; });
   }
@@ -3379,7 +3386,8 @@ function paymentsScreen() {
     const g = groupById(s.groupId);
     const fee = feeForGroup(s.groupId, period);
     const paid = paidFor(s.id, period);
-    const remain = Math.max(0, fee - paid);
+    const debt = Math.max(0, Number(s.paymentDebt) || 0);
+    const isDue = debt > 0;
     expected += fee; collected += paid;
     return `<div class="card pay-row">
       <div class="row between pay-row-head">
@@ -3387,15 +3395,17 @@ function paymentsScreen() {
           <span class="s-name">${esc(s.fullName)}</span>
           <div class="muted small">${g ? esc(g.name) : '—'}</div>
         </div>
-        <span class="pay-status ${remain > 0 ? 'due' : 'ok'}">${remain > 0 ? `${fmtSom(remain)} so'm qarz` : "🟢 To'langan"}</span>
+        <span class="pay-status ${isDue ? 'due' : 'ok'}">${isDue ? `${fmtSom(debt)} so'm qarz` : "🟢 To'langan"}</span>
       </div>
       <div class="pay-row-meta">
         <span>Oylik: <b>${fee ? fmtSom(fee) + " so'm" : 'belgilanmagan'}</b></span>
-        <span>To'langan: <b>${fmtSom(paid)} so'm</b></span>
+        <span>Joriy qarz: <b style="color:${isDue ? '#ef4444' : '#10b981'}">${fmtSom(debt)} so'm</b></span>
       </div>
       <div class="pay-actions">
         <button type="button" class="btn btn-xs btn-primary" data-act="pay-student"
                 data-sid="${s.id}" data-period="${esc(period)}">💵 To'lov kiritish</button>
+        <button type="button" class="btn btn-xs ghost" data-act="debt-add" data-sid="${s.id}">➕ Qarz qo'shish</button>
+        <button type="button" class="btn btn-xs ghost" data-act="remind-student" data-sid="${s.id}">🔔 Eslatma yuborish</button>
         <button type="button" class="btn btn-xs ghost" data-act="fee-schedule" data-gid="${s.groupId}">🗓 Oylik jadval</button>
       </div>
     </div>`;
@@ -3597,7 +3607,7 @@ function studentCard(s) {
       <div class="pay-actions">
         <button type="button" class="btn btn-xs ghost" data-act="debt-add" data-sid="${s.id}">➕ Qarz qo'shish</button>
         <button type="button" class="btn btn-xs ghost pay-btn" data-act="pay-student" data-sid="${s.id}">💵 To'lov kiritish</button>
-        ${debt > 0 ? `<button type="button" class="btn btn-xs ghost" data-act="remind-student" data-sid="${s.id}">🔔 Eslatma yuborish</button>` : ''}
+        <button type="button" class="btn btn-xs ghost" data-act="remind-student" data-sid="${s.id}">🔔 Eslatma yuborish</button>
       </div>` : ''}
     </div>
     <div class="st-actions">
