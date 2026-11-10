@@ -1581,6 +1581,307 @@ async def on_free_text(message: types.Message):
         logging.error(f"on_free_text: {e}")
 
 
+
+# ============================================================
+# Karta to'lov cheklari (payment_receipts) — Kuzatuvchi va Tasdiqlash
+# ============================================================
+MONTHS_UZ_MAP = {
+    "01": "Yanvar", "02": "Fevral", "03": "Mart", "04": "Aprel",
+    "05": "May", "06": "Iyun", "07": "Iyul", "08": "Avgust",
+    "09": "Sentabr", "10": "Oktabr", "11": "Noyabr", "12": "Dekabr"
+}
+
+def format_month_key(key: str) -> str:
+    if not key:
+        return "Joriy oy"
+    m = re.match(r"^(\d{4})-(\d{2})$", str(key).strip())
+    if m:
+        year, month = m.group(1), m.group(2)
+        m_name = MONTHS_UZ_MAP.get(month, month)
+        return f"{m_name} {year}"
+    return str(key)
+
+
+_last_receipt_seen = None
+
+async def broadcast_receipt_to_admin(receipt: dict):
+    r_id = receipt.get("id")
+    st_id = receipt.get("student_id")
+    amount = int(receipt.get("amount") or 0)
+    month_key = receipt.get("month_key") or ""
+    month_name = format_month_key(month_key)
+    receipt_url = receipt.get("receipt_url")
+
+    student_name = "O'quvchi"
+    group_name = "Repetitorlik"
+    try:
+        s_res = supabase.table("students").select("id, name, group_id, telegram_chat_id").eq("id", st_id).limit(1).execute().data
+        if s_res:
+            student_name = s_res[0].get("name") or "O'quvchi"
+            g_id = s_res[0].get("group_id")
+            if g_id:
+                g_res = supabase.table("groups").select("id, name").eq("id", g_id).limit(1).execute().data
+                if g_res:
+                    group_name = g_res[0].get("name") or "Repetitorlik"
+    except Exception as e:
+        logging.warning(f"receipt lookup student: {e}")
+
+    caption = (
+        "💳 <b>YANGI TO'LOV CHEKI KELDI!</b>\n\n"
+        f"👤 <b>O'quvchi:</b> {html.escape(student_name)} ({html.escape(group_name)})\n"
+        f"📅 <b>Oy:</b> {html.escape(month_name)}\n"
+        f"💰 <b>Summa:</b> {amount:,} so'm\n\n"
+        "To'lov tushganini tekshirib, tasdiqlang:"
+    ).replace(",", " ")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"pay_ok:{r_id}"),
+            InlineKeyboardButton(text="❌ Rad etish", callback_data=f"pay_no:{r_id}")
+        ]
+    ])
+
+    try:
+        if receipt_url:
+            await bot.send_photo(
+                chat_id=config.ADMIN_ID,
+                photo=receipt_url,
+                caption=caption,
+                reply_markup=kb,
+                parse_mode="HTML"
+            )
+        else:
+            await bot.send_message(
+                chat_id=config.ADMIN_ID,
+                text=caption,
+                reply_markup=kb,
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        logging.error(f"send receipt to admin: {e}")
+        try:
+            fallback_text = caption + f"\n\n📎 <b>Chek havolasi:</b> {receipt_url}"
+            await bot.send_message(
+                chat_id=config.ADMIN_ID,
+                text=fallback_text,
+                reply_markup=kb,
+                parse_mode="HTML"
+            )
+        except Exception as e2:
+            logging.error(f"fallback send receipt to admin: {e2}")
+
+async def receipt_tick() -> int:
+    global _last_receipt_seen
+    try:
+        rows = supabase.table("payment_receipts").select("id, student_id, month_key, amount, receipt_url, status, created_at")\
+            .eq("status", "kutilmoqda").order("id").execute().data or []
+    except Exception as e:
+        msg = str(e)
+        if "PGRST205" in msg or "payment_receipts" in msg:
+            return 0
+        logging.warning(f"receipt_tick: {e}")
+        return 0
+
+    if _last_receipt_seen is None:
+        _last_receipt_seen = rows[-1]["id"] if rows else 0
+        logging.info(f"receipts watcher: {len(rows)} ta kutilayotgan chek ko'rib chiqildi")
+        return 0
+
+    sent = 0
+    for r in rows:
+        if r["id"] > _last_receipt_seen:
+            await broadcast_receipt_to_admin(r)
+            _last_receipt_seen = r["id"]
+            sent += 1
+    return sent
+
+async def receipt_watcher():
+    await asyncio.sleep(4)
+    while True:
+        try:
+            await receipt_tick()
+        except Exception as e:
+            logging.warning(f"receipt watcher loop: {e}")
+        await asyncio.sleep(6)
+
+
+@dp.callback_query(F.data.startswith("pay_ok:"))
+async def on_pay_ok(call: types.CallbackQuery):
+    if call.from_user.id != config.ADMIN_ID:
+        await call.answer("Ruxsat yo'q", show_alert=True)
+        return
+    try:
+        r_id = int(call.data.split(":", 1)[1])
+    except Exception:
+        await call.answer("Noto'g'ri so'rov", show_alert=True)
+        return
+
+    try:
+        res = supabase.table("payment_receipts").select("*").eq("id", r_id).limit(1).execute().data
+    except Exception as e:
+        logging.error(f"pay_ok load receipt: {e}")
+        await call.answer("Bazaga ulanib bo'lmadi", show_alert=True)
+        return
+
+    if not res:
+        await call.answer("Chek topilmadi", show_alert=True)
+        return
+    receipt = res[0]
+    if receipt.get("status") == "tasdiqlandi":
+        await call.answer("Bu chek allaqachon tasdiqlangan", show_alert=True)
+        return
+    if receipt.get("status") == "rad_etildi":
+        await call.answer("Bu chek allaqachon rad etilgan", show_alert=True)
+        return
+
+    student_id = receipt["student_id"]
+    amount = int(receipt.get("amount") or 0)
+    month_key = receipt.get("month_key") or ""
+    month_name = format_month_key(month_key)
+
+    # 1. payment_receipts.status = 'tasdiqlandi'
+    try:
+        supabase.table("payment_receipts").update({"status": "tasdiqlandi"}).eq("id", r_id).execute()
+    except Exception as e:
+        logging.error(f"pay_ok update receipt: {e}")
+
+    # 2. students.payment_debt ni kamaytirish
+    st_name = "O'quvchi"
+    chat_id = None
+    new_debt = 0
+    try:
+        st_rows = supabase.table("students").select("id, name, group_id, payment_debt, telegram_chat_id").eq("id", student_id).limit(1).execute().data
+        if st_rows:
+            st = st_rows[0]
+            st_name = st.get("name") or "O'quvchi"
+            chat_id = st.get("telegram_chat_id")
+            old_debt = int(st.get("payment_debt") or 0)
+            new_debt = max(0, old_debt - amount)
+            supabase.table("students").update({"payment_debt": new_debt}).eq("id", student_id).execute()
+            
+            # student_payments va payments ga yozish
+            try:
+                supabase.table("student_payments").insert({
+                    "student_id": student_id,
+                    "group_id": st.get("group_id"),
+                    "month_key": month_key,
+                    "month_name": month_name,
+                    "amount_paid": amount,
+                    "is_paid": True,
+                    "paid_at": datetime.now(timezone.utc).isoformat(),
+                    "note": f"{month_name} oyi uchun to'lov (karta cheki tasdiqlandi)"
+                }).execute()
+            except Exception as e_sp:
+                logging.warning(f"insert student_payments: {e_sp}")
+            try:
+                supabase.table("payments").insert({
+                    "student_id": student_id,
+                    "amount": amount,
+                    "period": month_key,
+                    "note": f"{month_name} oyi uchun to'lov (karta cheki)"
+                }).execute()
+            except Exception as e_p:
+                logging.warning(f"insert payments: {e_p}")
+    except Exception as e:
+        logging.error(f"pay_ok update student: {e}")
+
+    # 3. O'quvchiga xabar
+    if chat_id:
+        try:
+            msg = (
+                "🎉 <b>To'lovingiz tasdiqlandi!</b>\n\n"
+                f"{month_name} oyi uchun to'lovingiz qabul qilindi. Rahmat!"
+            )
+            await bot.send_message(chat_id=int(chat_id), text=msg, parse_mode="HTML")
+        except Exception as e:
+            logging.error(f"pay_ok notify student {chat_id}: {e}")
+
+    # 4. Ustoz xabarini yangilash
+    done_text = (
+        "✅ <b>TO'LOV TASDIQLANDI!</b>\n\n"
+        f"👤 <b>O'quvchi:</b> {html.escape(st_name)}\n"
+        f"📅 <b>Oy:</b> {html.escape(month_name)}\n"
+        f"💰 <b>Qabul qilingan summa:</b> {amount:,} so'm\n"
+        f"📉 <b>Qolgan qarz:</b> {new_debt:,} so'm"
+    ).replace(",", " ")
+
+    try:
+        if call.message.caption is not None:
+            await call.message.edit_caption(caption=done_text, parse_mode="HTML")
+        else:
+            await call.message.edit_text(done_text, parse_mode="HTML")
+    except Exception:
+        pass
+    await call.answer("To'lov tasdiqlandi! ✓")
+
+
+@dp.callback_query(F.data.startswith("pay_no:"))
+async def on_pay_no(call: types.CallbackQuery):
+    if call.from_user.id != config.ADMIN_ID:
+        await call.answer("Ruxsat yo'q", show_alert=True)
+        return
+    try:
+        r_id = int(call.data.split(":", 1)[1])
+    except Exception:
+        await call.answer("Noto'g'ri so'rov", show_alert=True)
+        return
+
+    try:
+        res = supabase.table("payment_receipts").select("*").eq("id", r_id).limit(1).execute().data
+    except Exception as e:
+        logging.error(f"pay_no load receipt: {e}")
+        await call.answer("Bazaga ulanib bo'lmadi", show_alert=True)
+        return
+
+    if not res:
+        await call.answer("Chek topilmadi", show_alert=True)
+        return
+    receipt = res[0]
+    if receipt.get("status") in ("tasdiqlandi", "rad_etildi"):
+        await call.answer(f"Bu chek allaqachon ko'rib chiqilgan ({receipt.get('status')})", show_alert=True)
+        return
+
+    student_id = receipt["student_id"]
+    amount = int(receipt.get("amount") or 0)
+    month_name = format_month_key(receipt.get("month_key") or "")
+
+    # 1. payment_receipts.status = 'rad_etildi'
+    try:
+        supabase.table("payment_receipts").update({"status": "rad_etildi"}).eq("id", r_id).execute()
+    except Exception as e:
+        logging.error(f"pay_no update receipt: {e}")
+
+    # 2. O'quvchiga xabar
+    st_name = "O'quvchi"
+    try:
+        st_rows = supabase.table("students").select("id, name, telegram_chat_id").eq("id", student_id).limit(1).execute().data
+        if st_rows:
+            st_name = st_rows[0].get("name") or "O'quvchi"
+            chat_id = st_rows[0].get("telegram_chat_id")
+            if chat_id:
+                msg = "❌ Yuborgan to'lov chekingiz rad etildi. Iltimos, ustoz bilan bog'laning."
+                await bot.send_message(chat_id=int(chat_id), text=msg, parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"pay_no notify student: {e}")
+
+    # 3. Ustoz xabarini yangilash
+    done_text = (
+        "❌ <b>TO'LOV CHEKI RAD ETILDI</b>\n\n"
+        f"👤 <b>O'quvchi:</b> {html.escape(st_name)}\n"
+        f"📅 <b>Oy:</b> {html.escape(month_name)}\n"
+        f"💰 <b>Summa:</b> {amount:,} so'm"
+    ).replace(",", " ")
+
+    try:
+        if call.message.caption is not None:
+            await call.message.edit_caption(caption=done_text, parse_mode="HTML")
+        else:
+            await call.message.edit_text(done_text, parse_mode="HTML")
+    except Exception:
+        pass
+    await call.answer("Chek rad etildi")
+
+
 # Asosiy ishga tushirish
 _bg_tasks: set = set()  # fon vazifalari GC'dan himoya uchun shu yerda saqlanadi
 
@@ -1603,6 +1904,7 @@ async def main():
     _bg_tasks.add(asyncio.create_task(voice_watcher()))      # voice_allowed ruxsati
     _bg_tasks.add(asyncio.create_task(grades_watcher()))     # yangi baho
     _bg_tasks.add(asyncio.create_task(messages_watcher()))   # yangi chat xabari
+    _bg_tasks.add(asyncio.create_task(receipt_watcher()))    # to'lov cheklari
 
     # Diagnostika: qaysi bot jonli — logda username ko'rinadi
     try:

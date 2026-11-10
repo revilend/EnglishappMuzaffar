@@ -251,3 +251,20 @@ alter table public.speaking_slots enable row level security;
 drop policy if exists "demo speaking_slots all" on public.speaking_slots;
 create policy "demo speaking_slots all" on public.speaking_slots
   for all using (true) with check (true);
+
+-- 14) To'lov cheklari (payment_receipts — o'quvchi chek yuklaydi, botda ustoz tasdiqlaydi)
+create table if not exists public.payment_receipts (
+  id          bigint generated always as identity primary key,
+  student_id  bigint not null references public.students (id) on delete cascade,
+  month_key   text not null,
+  amount      numeric not null default 0,
+  receipt_url text not null,
+  status      text not null default 'kutilmoqda' check (status in ('kutilmoqda', 'tasdiqlandi', 'rad_etildi')),
+  created_at  timestamptz not null default now()
+);
+create index if not exists payment_receipts_student_idx on public.payment_receipts (student_id, created_at);
+create index if not exists payment_receipts_status_idx on public.payment_receipts (status, created_at);
+alter table public.payment_receipts enable row level security;
+drop policy if exists "demo payment_receipts all" on public.payment_receipts;
+create policy "demo payment_receipts all" on public.payment_receipts
+  for all using (true) with check (true);
