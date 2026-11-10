@@ -64,6 +64,8 @@ create table if not exists public.homework (
   title       text not null,
   description text not null default '',
   due_date    date,
+  media_url   text,      -- Rasm/video/audio faylining Supabase Storage havolasi
+  media_type  text,        -- 'image', 'video', 'audio'
   created_at  timestamptz not null default now()
 );
 
@@ -78,6 +80,18 @@ create policy "demo homework all" on public.homework
 --    ovozli topshirishga ruxsat bayrog'i
 alter table public.students add column if not exists telegram_chat_id bigint;
 alter table public.students add column if not exists voice_allowed boolean not null default true;
+alter table public.students add column if not exists payment_debt integer not null default 0;
+
+-- Guruh oylik tolamasi
+alter table public.groups add column if not exists monthly_fee integer not null default 0;
+
+-- 5c) XAVFSIZLIK ESIZTMALARI
+--   * public.students.password — SHA-256 xesh (64 ta hex belgi) ko'rinishida saqlanadi.
+--     Yangi qo'shilgan yoki o'zgartirilgan parollar faqat xesh sifatida yoziladi.
+--     Eski ochiq parollar orqaga moslik uchun qabul qilinadi (login paytida).
+--   * Media fayllar: Supabase Storage'dagi 'homework_media' bucket (public read).
+--     Dashboard → Storage → New bucket → nomi: homework_media → Public: ON.
+--   * Fayl yuklash faqat sayt orqali; bot og'ir media fayllarni yubormaydi.
 
 -- 6) RLS — demo uchun ochiq (anon kalit bilan to'liq o'qish/yozish)
 alter table public.audio_submissions enable row level security;
@@ -131,142 +145,8 @@ drop policy if exists "demo user_sessions all" on public.user_sessions;
 create policy "demo user_sessions all" on public.user_sessions
   for all using (true) with check (true);
 
--- 9) Speaking slotlari (1-on-1) — barcha qurilmalarda bir xil
-create table if not exists public.speaking_slots (
-  id         bigint generated always as identity primary key,
-  date       date not null,
-  start_time text not null default '',
-  end_time   text not null default '',
-  student_id bigint references public.students (id) on delete set null,
-  score      smallint check (score between 1 and 10),
-  created_at timestamptz not null default now()
-);
-create index if not exists speaking_slots_date_idx
-  on public.speaking_slots (date, start_time);
-alter table public.speaking_slots enable row level security;
-drop policy if exists "demo speaking_slots all" on public.speaking_slots;
-create policy "demo speaking_slots all" on public.speaking_slots
-  for all using (true) with check (true);
-
--- 10) Login takrorlanmasligi (bir xil login ikki o'quvchida bo'lmasin).
---     Agar bazada allaqachon dublikat login bo'lsa, avval ularni tuzating —
---     aks holda bu qator xato beradi.
-create unique index if not exists students_login_unique
-  on public.students (lower(login))
-  where login is not null and login <> '';
-
 -- Realtime (ixtiyoriy): chat xabarlarini jonli yangilash uchun
 -- Supabase Dashboard → Database → Replication → "messages" jadvalini yoqing.
 --
 -- Eslatma: hozirgi publishable kalit faqat o'qish/yozish beradi (DDL yo'q),
 -- shuning uchun shu faylni bir marta ishga tushirish shart:
-
--- ============================================================
--- UYGA VAZIFA MEDIA (rasm/video/audio FAQAT saytda)
--- ============================================================
-alter table homework add column if not exists media_url text;
-alter table homework add column if not exists media_type text;
-
--- ============================================================
--- OYLIK TO'LOV VA O'QUVCHI QARZI
--- ============================================================
-alter table groups add column if not exists monthly_fee bigint not null default 0;
-alter table students add column if not exists payment_debt bigint not null default 0;
-
--- ============================================================
--- TELEGRAM OUTBOX: sayt yozadi, bot yuboradi (chek / eslatma)
--- ============================================================
-create table if not exists telegram_outbox (
-  id bigint generated always as identity primary key,
-  student_id bigint references students(id) on delete cascade,
-  chat_id bigint,
-  text text not null,
-  status text not null default 'pending',
-  error text,
-  created_at timestamptz not null default now(),
-  sent_at timestamptz
-);
-create index if not exists telegram_outbox_pending_idx on telegram_outbox (status, id);
-alter table telegram_outbox enable row level security;
-drop policy if exists "telegram_outbox_all" on telegram_outbox;
-create policy "telegram_outbox_all" on telegram_outbox for all using (true) with check (true);
-
--- ============================================================
--- STORAGE: homework-media bucket (public o'qish, sayt yozadi/o'chiradi)
--- ============================================================
-insert into storage.buckets (id, name, public)
-values ('homework-media', 'homework-media', true)
-on conflict (id) do update set public = true;
-
-drop policy if exists "homework_media_read" on storage.objects;
-create policy "homework_media_read" on storage.objects
-  for select using (bucket_id = 'homework-media');
-
-drop policy if exists "homework_media_insert" on storage.objects;
-create policy "homework_media_insert" on storage.objects
-  for insert with check (bucket_id = 'homework-media');
-
-drop policy if exists "homework_media_update" on storage.objects;
-create policy "homework_media_update" on storage.objects
-  for update using (bucket_id = 'homework-media');
-
-drop policy if exists "homework_media_delete" on storage.objects;
-create policy "homework_media_delete" on storage.objects
-  for delete using (bucket_id = 'homework-media');
-
--- ============================================================
--- TO'LOVLAR TARIXI + AVTOMATIK OYLIK HISOB
--- ============================================================
-alter table students add column if not exists fee_period text;
-
-create table if not exists payments (
-  id bigint generated always as identity primary key,
-  student_id bigint references students(id) on delete cascade,
-  amount bigint not null default 0,
-  note text,
-  created_at timestamptz not null default now()
-);
-create index if not exists payments_student_idx on payments (student_id, created_at);
-alter table payments enable row level security;
-drop policy if exists "payments_all" on payments;
-create policy "payments_all" on payments for all using (true) with check (true);
-
--- ============================================================
--- GURUH TURI: 'school' (maktab, bepul) | 'tutoring' (repetitorlik)
--- Faqat ustoz panelida ko'rinadi — o'quvchilarga KO'RSATILMAYDI.
--- Maktab guruhi o'quvchilariga pul/to'lov/qarz haqidagi hech narsa chiqmaydi.
--- ============================================================
--- Mavjud guruhlar repetitorlik bo'lib qoladi (to'lovlari yashirilmaydi).
--- Yangi guruh qo'shishda ustoz panelida standart 'school' tanlanadi.
-alter table groups add column if not exists group_type text not null default 'tutoring';
-do $$ begin
-  alter table groups add constraint groups_group_type_chk
-    check (group_type in ('school', 'tutoring'));
-exception when duplicate_object then null; end $$;
-
--- ============================================================
--- KO'P FAYLLI UYGA VAZIFA BIRIKTIRMALARI
--- attachments: [{url, type, name, size}, ...]
--- ============================================================
-alter table homework add column if not exists attachments jsonb not null default '[]'::jsonb;
-
--- ============================================================
--- OYLIK TO'LOV JADVALI (repetitorlik guruhlari uchun)
--- Har bir guruh + oy uchun alohida summa: 2026-11 → 100000
--- ============================================================
-create table if not exists public.monthly_fees (
-  id         bigint generated always as identity primary key,
-  group_id   bigint not null references public.groups (id) on delete cascade,
-  period     text not null,                -- 'YYYY-MM'
-  amount     bigint not null default 0,
-  created_at timestamptz not null default now(),
-  unique (group_id, period)
-);
-create index if not exists monthly_fees_group_idx on public.monthly_fees (group_id, period);
-alter table public.monthly_fees enable row level security;
-drop policy if exists "monthly_fees_all" on public.monthly_fees;
-create policy "monthly_fees_all" on public.monthly_fees for all using (true) with check (true);
-
--- To'lov qaysi oy uchun qilinganini saqlash
-alter table payments add column if not exists period text;
-create index if not exists payments_period_idx on payments (student_id, period);

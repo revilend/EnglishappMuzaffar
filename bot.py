@@ -1,16 +1,15 @@
 import asyncio
+import hashlib
 import html
 import io
 import json
 import logging
 import os
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.filters import Command, CommandStart
 from aiogram.filters.state import StateFilter
 from aiogram.types import (
@@ -24,6 +23,7 @@ from aiogram.types import (
 )
 from supabase import create_client, Client
 import config
+config.WEBAPP_URL = "https://teachermuzaffar.uz/"
 
 
 logging.basicConfig(level=logging.INFO)
@@ -34,25 +34,8 @@ except Exception as _e:
     bot = None
     logging.error(f"BOT_TOKEN yaroqsiz: {_e}")
 
-dp = Dispatcher(storage=MemoryStorage())
+dp = Dispatcher()
 supabase: Client = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
-
-
-def teacher_password() -> str:
-    """Ustoz paroli — veb-ilova bot_settings'ga yozadigan qiymat (fallback: 123).
-
-    Shu bilan veb-ilovada parol o'zgartirilganda bot ham yangi parolni qabul qiladi.
-    """
-    try:
-        rows = supabase.table("bot_settings").select("value").eq(
-            "key", "teacher_password").limit(1).execute().data or []
-        if rows:
-            value = str(rows[0].get("value") or "").strip()
-            if value:
-                return value
-    except Exception as e:
-        logging.warning(f"teacher_password: {e}")
-    return "123"
 
 
 # ============================================================
@@ -85,7 +68,6 @@ ADMIN_MENU = {
 STUDENT_MENU = {
     "speak": "🎙 Speaking topshirish",
     "grades": "📊 Baholarim va Qarzim",
-    "grades_school": "📊 Baholarim",
     "login": "🔑 Login orqali ulash",
 }
 
@@ -104,38 +86,15 @@ def admin_reply_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def _is_school_group(group_id) -> bool:
-    """Guruh turi 'school' (maktab, bepul) bo'lsa True.
-
-    Guruh turi o'quvchiga KO'RSATILMAYDI — faqat ustoz panelida ko'rinadi.
-    Ustun hali qo'shilmagan / eski guruh bo'lsa — repetitorlik (to'lovlar ko'rinadi).
-    """
-    if group_id is None:
-        return False
-    try:
-        rows = supabase.table("groups").select("group_type").eq("id", group_id).limit(1).execute().data
-    except Exception as e:
-        # Ustun hali qo'shilmagan bo'lsa — eski xatti-harakat (repetitorlik)
-        logging.warning(f"group_type lookup: {e}")
-        return False
-    if not rows:
-        return False
-    return str((rows[0] or {}).get("group_type") or "") == "school"
-
-
-def get_main_keyboard(school_group: bool = False) -> ReplyKeyboardMarkup:
-    """Asosiy menyu — barcha foydalanuvchilar uchun.
-
-    Maktab guruhi o'quvchisiga "Qarzim" so'zi ham ko'rsatilmaydi.
-    """
-    grades_label = STUDENT_MENU["grades_school"] if school_group else STUDENT_MENU["grades"]
+def get_main_keyboard() -> ReplyKeyboardMarkup:
+    """Asosiy menyu — barcha foydalanuvchilar uchun."""
     return ReplyKeyboardMarkup(
         resize_keyboard=True,
         is_persistent=True,
         keyboard=[
             [KeyboardButton(text="📱 Shaxsiy Kabinetim",
                             web_app=WebAppInfo(url=config.WEBAPP_URL))],
-            [KeyboardButton(text=STUDENT_MENU["speak"]), KeyboardButton(text=grades_label)],
+            [KeyboardButton(text=STUDENT_MENU["speak"]), KeyboardButton(text=STUDENT_MENU["grades"])],
             [KeyboardButton(text=STUDENT_MENU["login"])],
         ],
     )
@@ -344,14 +303,9 @@ async def cmd_start(message: types.Message, state: FSMContext):
             if login_inline is not None:
                 await message.answer(text, reply_markup=login_inline, parse_mode="HTML")
                 await message.answer("📋 Quyidagi menyudan foydalaning:",
-                                     reply_markup=get_main_keyboard(_is_school_group((student or {}).get("group_id"))),
-                                     parse_mode="HTML")
+                                     reply_markup=get_main_keyboard(), parse_mode="HTML")
             else:
-                await message.answer(
-                    text,
-                    reply_markup=get_main_keyboard(_is_school_group((student or {}).get("group_id"))),
-                    parse_mode="HTML",
-                )
+                await message.answer(text, reply_markup=get_main_keyboard(), parse_mode="HTML")
         except Exception as kb_err:
             logging.error(f"Klaviatura xatosi: {kb_err}")
             await message.answer(text, parse_mode="HTML")
@@ -420,7 +374,7 @@ async def attempt_login(message: types.Message, login: str, password: str):
     """Login/parolni tekshirib, students.telegram_chat_id ni ulaydi."""
     try:
         # Ustoz tekshiruvi
-        if login.lower() == "m_amirov" and password == teacher_password():
+        if login.lower() == "m_amirov" and password == "123":
             await message.answer("👑 <b>Xush kelibsiz, Muzaffar Amirov!</b>\n\nUstoz hisobingiz ulandi.", reply_markup=admin_reply_keyboard(), parse_mode="HTML")
             return
         # O'quvchini bazadan qidirish
@@ -436,7 +390,13 @@ async def attempt_login(message: types.Message, login: str, password: str):
             return
         st = rows[0]
         st_pwd = str(st.get("password") if st.get("password") is not None else "").strip()
-        if st_pwd != str(password).strip():
+        entered = str(password).strip()
+        # Parol bazada SHA-256 xesh ko'rinishida saqlanadi; eski ochiq parollar ham qabul qilinadi
+        if len(st_pwd) == 64 and all(c in "0123456789abcdef" for c in st_pwd):
+            pwd_ok = hashlib.sha256(entered.encode("utf-8")).hexdigest() == st_pwd
+        else:
+            pwd_ok = st_pwd == entered
+        if not pwd_ok:
             await message.answer("❌ Kiritilgan parol noto'g'ri. Qayta urinib ko'ring.", parse_mode="HTML")
             return
         # Chat ID ulash
@@ -460,14 +420,12 @@ async def attempt_login(message: types.Message, login: str, password: str):
             logging.error(f"Inline kb error: {kb_err}")
             await message.answer(welcome_msg, parse_mode="HTML")
         try:
-            await message.answer("📋 O'quvchi menyusi:",
-                                 reply_markup=get_main_keyboard(_is_school_group(st.get("group_id"))),
-                                 parse_mode="HTML")
+            await message.answer("📋 O'quvchi menyusi:", reply_markup=get_main_keyboard(), parse_mode="HTML")
         except Exception:
             pass
     except Exception as e:
         logging.error(f"attempt_login fatal: {e}")
-        await message.answer("⚠️ Xatolik yuz berdi. Birozdan so'ng qayta urinib ko'ring.")
+        await message.answer(f"⚠️ Xatolik yuz berdi: {e}")
 
 
 async def _login_exists(login: str) -> bool:
@@ -486,7 +444,7 @@ async def _finish_login_password(message: types.Message, uid: int, login: str, p
     '''2-qadam: parolni tekshirib, hisobni ulaydi yoki qayta so'raydi.'''
     pwd = str(password).strip()
     if str(login).lower() == "m_amirov":
-        if pwd == teacher_password():
+        if pwd == "123":
             pending_logins.pop(uid, None)
             try:
                 await message.answer(
@@ -538,9 +496,7 @@ async def _finish_login_password(message: types.Message, uid: int, login: str, p
     except Exception as e:
         logging.error(f"_finish_login_password (welcome): {e}")
     try:
-        await message.answer("📋 O'quvchi menyusi:",
-                             reply_markup=get_main_keyboard(_is_school_group(st.get("group_id"))),
-                             parse_mode="HTML")
+        await message.answer("📋 O'quvchi menyusi:", reply_markup=get_main_keyboard(), parse_mode="HTML")
     except Exception:
         pass
 
@@ -632,7 +588,7 @@ async def cb_login_cancel(call: types.CallbackQuery):
         logging.error(f"cb_login_cancel: {e}")
 
 
-@dp.message(F.text.in_({STUDENT_MENU["grades"], STUDENT_MENU["grades_school"]}))
+@dp.message(F.text == STUDENT_MENU["grades"])
 async def btn_student_grades(message: types.Message):
     if message.from_user.id == config.ADMIN_ID:
         await message.answer("Bu o'quvchi menyusi — baholaringiz saytda Muzaffar Amirov panelida.")
@@ -649,13 +605,11 @@ async def btn_student_grades(message: types.Message):
         return
     debt = int(st.get("speaking_debt") or 0)
     name = html.escape(str(st.get("name") or "?"))
-    # Maktab guruhi (bepul): qarz/to'lov haqida bitta so'z ham chiqmaydi
-    debt_line = "" if _is_school_group(st.get("group_id")) else f"💰 Speaking qarzi: {debt} ta"
     if not rows:
         await message.answer(
             f"📊 <b>{name}</b> — natijalar\n\n"
             "🧮 Hozircha baho yo'q.\n"
-            + debt_line,
+            f"💰 Speaking qarzi: {debt} ta",
             parse_mode="HTML",
         )
         return
@@ -664,10 +618,9 @@ async def btn_student_grades(message: types.Message):
     lines = [
         f"📊 <b>{name}</b> — natijalar\n",
         f"🧮 <b>O'rtacha baho: {avg}/10</b> ({len(scores)} ta baho)",
+        f"💰 <b>Speaking qarzi: {debt} ta</b>\n",
+        "So'nggi baholar:",
     ]
-    if debt_line:
-        lines.append(debt_line + "\n")
-    lines.append("So'nggi baholar:")
     for r in rows[:7]:
         d = str(r.get("date") or "")[5:]
         cat = html.escape(str(r.get("category") or ""))
@@ -689,11 +642,11 @@ async def btn_student_speak(message: types.Message):
         )
         return
     debt = int(st.get("speaking_debt") or 0)
-    tail = "" if _is_school_group(st.get("group_id")) else f"\n\n💰 Joriy speaking qarzi: {debt} ta"
     await message.answer(
         "🎙 <b>Speaking topshirish</b>\n\n"
         "Shu yerga <b>vozli xabar</b> (ovozli xabar) yoki <b>dumaloq video</b> (krujok) yuboring — "
-        "men ustozga yo'llayman va baho qaytganda xabar olasiz." + tail,
+        "men ustozga yo'llayman va baho qaytganda xabar olasiz.\n\n"
+        f"💰 Joriy speaking qarzi: {debt} ta",
         parse_mode="HTML",
     )
 
@@ -731,28 +684,13 @@ def speaking_caption(student: dict, media_type: str) -> str:
     )
 
 
-def writing_caption(student: dict) -> str:
-    """Ustozga yuboriladigan WRITING (yozma ish) kaptori."""
-    name = html.escape(str(student.get("name") or "?"))
-    cls = html.escape(str(student.get("school_class") or "—"))
-    return (
-        "✍️ <b>YANGI WRITING (YOZMA ISH) TOPSHIRILDI!</b>\n\n"
-        f"👤 <b>O'quvchi:</b> {name} ({cls})\n"
-        "📝 <b>Turi:</b> Yozma ish (Rasm)\n\n"
-        "Pastdagi tugmalar bilan 1-tap baho qo'ying:"
-    )
-
-
 async def _send_media_to_teacher(file_id: str, media_type: str, student: dict, sub_id=None):
     """Mediafaylni ustozga yuboradi (baho tugmalari bilan)."""
-    caption = writing_caption(student) if media_type == "writing" else speaking_caption(student, media_type)
+    caption = speaking_caption(student, media_type)
     kb = grade_keyboard(sub_id) if sub_id is not None else InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📝 Saytda ochish", web_app=WebAppInfo(url=config.WEBAPP_URL))],
     ])
-    if media_type == "writing":
-        await bot.send_photo(chat_id=config.ADMIN_ID, photo=file_id, caption=caption,
-                             reply_markup=kb, parse_mode="HTML")
-    elif media_type == "video_note":
+    if media_type == "video_note":
         # Krujokka inline tugma ilova bo'lmaydi — matn xabari bilan yuboramiz
         await bot.send_video_note(chat_id=config.ADMIN_ID, video_note=file_id)
         await bot.send_message(chat_id=config.ADMIN_ID, text=caption, reply_markup=kb, parse_mode="HTML")
@@ -764,26 +702,11 @@ async def _send_media_to_teacher(file_id: str, media_type: str, student: dict, s
                              reply_markup=kb, parse_mode="HTML")
 
 
-@dp.message(F.voice | F.video_note | F.video | F.photo)
+@dp.message(F.voice | F.video_note | F.video)
 async def handle_speaking_submission(message: types.Message):
     user = message.from_user
-    if user.id == config.ADMIN_ID:
-        await message.answer(
-            "Bu topshiriklarni o'quvchilar yuboradi. Baholash uchun kelgan xabardagi tugmalardan foydalaning."
-        )
-        return
-    # Rasm = WRITING (yozma ish), qolganlari speaking topshiriklari
-    media_type = ("writing" if message.photo
-                  else "voice" if message.voice
-                  else "video_note" if message.video_note else "video")
-    if message.photo:
-        file_id = message.photo[-1].file_id  # eng katta o'lcham
-    elif message.voice:
-        file_id = message.voice.file_id
-    elif message.video_note:
-        file_id = message.video_note.file_id
-    else:
-        file_id = message.video.file_id
+    media_type = "voice" if message.voice else ("video_note" if message.video_note else "video")
+    file_id = message.voice.file_id if message.voice else (message.video_note.file_id if message.video_note else message.video.file_id)
 
     # 1) O'quvchi ulanganmi?
     student = student_by_chat(user.id)
@@ -797,8 +720,7 @@ async def handle_speaking_submission(message: types.Message):
         return
 
     # 2) Muzaffar Amirov ruxsat berganmi? (students.voice_allowed)
-    #    Writing (rasm) topshirish har doim ochiq.
-    if media_type != "writing" and student.get("voice_allowed") is False:
+    if student.get("voice_allowed") is False:
         await message.answer(
             "⛔ Kechirasiz! Ustoz hozircha sizga ovozli topshirishga ruxsat bermagan. Darsda topshiring."
         )
@@ -825,23 +747,10 @@ async def handle_speaking_submission(message: types.Message):
     except Exception as e:
         logging.error(f"forward to teacher: {e}")
 
-    if media_type == "writing":
-        await message.reply(
-            "✅ <b>Qabul qilindi!</b>\nWriting (yozma ish)ingiz Muzaffar Amirovga yuborildi. "
-            "Baho qo'yilishi bilan sizga xabar keladi.",
-            parse_mode="HTML",
-        )
-    elif _is_school_group(student.get("group_id")):
-        await message.reply(
-            "✅ <b>Qabul qilindi!</b>\nSpeaking vazifangiz Muzaffar Amirovga yuborildi. "
-            "U tekshirib baho qo'yishi bilan sizga xabar keladi.",
-            parse_mode="HTML",
-        )
-    else:
-        await message.reply(
-            "✅ <b>Qabul qilindi!</b>\nSpeaking vazifangiz Muzaffar Amirovga yuborildi. Muzaffar Amirov tekshirib baho qo'yishi bilan speaking qarzingiz kamayadi.",
-            parse_mode="HTML",
-        )
+    await message.reply(
+        "✅ <b>Qabul qilindi!</b>\nSpeaking vazifangiz Muzaffar Amirovga yuborildi. Muzaffar Amirov tekshirib baho qo'yishi bilan speaking qarzingiz kamayadi.",
+        parse_mode="HTML",
+    )
 
 
 # ---------------- Ustoz: 1-tap baho (Telegramda) ----------------
@@ -879,9 +788,8 @@ async def on_grade_tap(call: types.CallbackQuery):
     # O'quvchi HAR BIR tapda to'g'ridan-to'g'ri Supabase'dan o'qiladi
     # (in-memory lug'at/kesh ishlatilmaydi) — telegram_chat_id ham shu yangi qatordan.
     try:
-        studs = supabase.table("students").select(
-            "id, name, school_class, speaking_debt, telegram_chat_id, group_id"
-        ).eq("id", sub["student_id"]).limit(1).execute().data
+        studs = supabase.table("students").select("id, name, school_class, speaking_debt, telegram_chat_id").\
+            eq("id", sub["student_id"]).limit(1).execute().data
     except Exception as e:
         logging.error(f"grade load student: {e}")
         await call.answer("O'quvchi topilmadi", show_alert=True)
@@ -894,28 +802,18 @@ async def on_grade_tap(call: types.CallbackQuery):
     gdate = (str(sub.get("created_at") or "")[:10]) or datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # 1) Bahoni jurnalga yozish (sinfmodel: bitta kunda bitta baho)
-    is_writing = sub.get("media_type") == "writing"
     try:
-        if is_writing:
-            # Writing bahosi o'sha kungi speaking bahosini o'chirmaydi
-            supabase.table("grades").delete().eq("student_id", st["id"]).eq(
-                "date", gdate).eq("category", "Writing").execute()
-            supabase.table("grades").insert({
-                "student_id": st["id"], "date": gdate, "grade": score,
-                "category": "Writing", "note": "Writing (Telegram)",
-            }).execute()
-        else:
-            supabase.table("grades").delete().eq("student_id", st["id"]).eq("date", gdate).execute()
-            supabase.table("grades").insert({
-                "student_id": st["id"], "date": gdate, "grade": score,
-                "category": "Speaking", "note": "Speaking (Telegram)",
-            }).execute()
+        supabase.table("grades").delete().eq("student_id", st["id"]).eq("date", gdate).execute()
+        supabase.table("grades").insert({
+            "student_id": st["id"], "date": gdate, "grade": score,
+            "category": "Speaking", "note": "Speaking (Telegram)",
+        }).execute()
     except Exception as e:
         logging.error(f"grade insert: {e}")
 
-    # 2) Speaking qarzi −1 (faqat speaking topshirig'i uchun)
+    # 2) Speaking qarzini −1 (faqat birinchi marta)
     debt_before = int(st.get("speaking_debt") or 0)
-    debt_after = debt_before if is_writing else max(0, debt_before - 1)
+    debt_after = max(0, debt_before - 1)
     try:
         supabase.table("students").update({"speaking_debt": debt_after}).eq("id", st["id"]).execute()
     except Exception as e:
@@ -934,27 +832,20 @@ async def on_grade_tap(call: types.CallbackQuery):
     notified = False
     if chat_id:
         try:
-            if is_writing:
-                note = f"🎉 <b>Writing (yozma ish) vazifangiz baholandi: {score}/10 ball!</b>"
-            elif _is_school_group(st.get("group_id")):
-                note = f"🎉 Muzaffar Amirov sizga {score}/10 ball qo'ydi!"
-            elif debt_after < debt_before:
+            if debt_after < debt_before:
                 note = (f"🎉 Muzaffar Amirov sizga {score}/10 ball qo'ydi! "
                         "Speaking qarzingiz 1 taga kamaydi.")
             else:
                 note = (f"🎉 Muzaffar Amirov sizga {score}/10 ball qo'ydi! "
                         "Speaking qarzingiz yo'q.")
-            await bot.send_message(chat_id=int(chat_id), text=note, parse_mode="HTML")
+            await bot.send_message(chat_id=int(chat_id), text=note)
             notified = True
         except Exception as e:
             logging.error(f"notify student {chat_id}: {e}")
 
     # 5) Ustozga tasdiq (xabar yangilanadi)
     name = html.escape(str(st.get("name") or "?"))
-    if is_writing:
-        done_text = ("✅ <b>Baholandi!</b> Writing (yozma ish) jurnalga yozildi.\n"
-                     f"{name} — {score}/10")
-    elif debt_after < debt_before:
+    if debt_after < debt_before:
         done_text = ("✅ <b>Baholandi!</b> Speaking qarzi 1 taga kamaytirildi.\n"
                      f"{name} — {score}/10\n💰 Qarz: {debt_before} → {debt_after} ta")
     else:
@@ -1033,15 +924,10 @@ async def on_reject_tap(call: types.CallbackQuery):
     chat_id = st.get("telegram_chat_id")
     if chat_id:
         try:
-            if sub.get("media_type") == "writing":
-                reject_text = ("<b>WRITING BEKOR QILINDI ❌</b>\n\n"
-                               "Yozma ishingizda shubhali holat aniqlandi!")
-            else:
-                reject_text = ("<b>SPEAKING BEKOR QILINDI ❌</b>\n\n"
-                               "Speaking javobingizda shubhali holat aniqlandi!")
             await bot.send_message(
                 chat_id=int(chat_id),
-                text=reject_text,
+                text="<b>SPEAKING BEKOR QILINDI ❌</b>\n\n"
+                     "Speaking javobingizda shubhali holat aniqlandi!",
                 parse_mode="HTML",
             )
         except Exception as e:
@@ -1049,13 +935,9 @@ async def on_reject_tap(call: types.CallbackQuery):
 
     # 3) Ustozdagi xabar matni/kaptori yangilanadi
     student_name = html.escape(str(st.get("name") or "?"))
-    if sub.get("media_type") == "writing":
-        done_text = (f"❌ <b>WRITING BEKOR QILINDI</b>\n"
-                     f"👤 {student_name}")
-    else:
-        done_text = (f"❌ <b>SPEAKING BEKOR QILINDI</b>\n"
-                     f"👤 {student_name}\n"
-                     f"💰 Qarz o'zgarmadi: {debt} ta")
+    done_text = (f"❌ <b>SPEAKING BEKOR QILINDI</b>\n"
+                 f"👤 {student_name}\n"
+                 f"💰 Qarz o'zgarmadi: {debt} ta")
     try:
         if call.message is not None and call.message.caption is not None:
             await call.message.edit_caption(caption=done_text, parse_mode="HTML")
@@ -1077,9 +959,6 @@ HW_TEXT = (
     "Muddati: {due_date}"
 )
 
-# Bot og'ir media yubormaydi: video/audio faqat sayt ichida ochiladi
-HW_MEDIA_HINT = "\n\n🎬 Video/audio sayt ichida — pastdagi tugmani bosing."
-
 _last_hw_seen = None  # bot boshlanganda mavjud vazifalar "ko'rilgan" bo'ladi
 
 
@@ -1096,7 +975,7 @@ async def broadcast_homework(row: dict) -> int:
         return 0
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📱 Saytda ochish / Ko'rish", web_app=WebAppInfo(url=config.WEBAPP_URL))]
+        [InlineKeyboardButton(text="📱 Ilovani ochish", web_app=WebAppInfo(url=config.WEBAPP_URL))]
     ])
     due = row.get("due_date") or "—"
     text = HW_TEXT.format(
@@ -1105,8 +984,6 @@ async def broadcast_homework(row: dict) -> int:
         description=html.escape(str(row.get("description") or "—")),
         due_date=html.escape(str(due)),
     )
-    if row.get("media_url"):
-        text += HW_MEDIA_HINT
     sent = 0
     for st in studs:
         chat_id = st.get("telegram_chat_id")
@@ -1124,9 +1001,7 @@ async def broadcast_homework(row: dict) -> int:
 async def hw_tick():
     """Bitta kuzatuv qadamini bajaradi (test qilinadigan mantiq)."""
     global _last_hw_seen
-    rows = supabase.table("homework").select(
-        "id, group_id, title, description, due_date, media_url"
-    ).order("id").execute().data or []
+    rows = supabase.table("homework").select("id, group_id, title, description, due_date").order("id").execute().data or []
     if _last_hw_seen is None:
         # birinchi start: mavjud vazifalarni SPAM qilmaymiz
         _last_hw_seen = rows[-1]["id"] if rows else 0
@@ -1154,111 +1029,7 @@ async def homework_watcher():
                 await asyncio.sleep(60)
             else:
                 logging.warning(f"homework watcher: {e}")
-        await asyncio.sleep(15)
-
-
-# ============================================================
-# AVTOMATIK OYLIK TO'LOV: guruh narxini qarzga qo'shish
-# ============================================================
-async def monthly_fee_tick() -> int:
-    """Joriy oy uchun guruh oylik to'lovini o'quvchi qarziga bir marta qo'shadi."""
-    period = datetime.now(timezone.utc).strftime("%Y-%m")
-    try:
-        try:
-            groups = supabase.table("groups").select("id, monthly_fee, group_type").execute().data or []
-        except Exception:
-            # group_type ustuni hali qo'shilmagan — eski sxema bilan
-            groups = supabase.table("groups").select("id, monthly_fee").execute().data or []
-        # Maktab guruhi (bepul): oylik to'lov hech qachon qarzga qo'shilmaydi
-        fees = {g["id"]: int(g.get("monthly_fee") or 0) for g in groups
-                if str(g.get("group_type") or "") != "school"}
-        studs = supabase.table("students").select(
-            "id, group_id, payment_debt, fee_period"
-        ).execute().data or []
-    except Exception as e:
-        logging.warning(f"monthly fee: {e}")
-        return 0
-
-    charged = 0
-    for st in studs:
-        fee = fees.get(st.get("group_id")) or 0
-        if fee <= 0 or st.get("fee_period") == period:
-            continue
-        try:
-            supabase.table("students").update({
-                "payment_debt": int(st.get("payment_debt") or 0) + fee,
-                "fee_period": period,
-            }).eq("id", st["id"]).execute()
-            charged += 1
-        except Exception as e:
-            logging.warning(f"monthly fee student {st.get('id')}: {e}")
-    return charged
-
-
-async def monthly_fee_watcher():
-    """Oyda bir marta oylik to'lovni barcha guruh a'zolariga yozadi."""
-    await asyncio.sleep(8)
-    while True:
-        try:
-            await monthly_fee_tick()
-        except Exception as e:
-            logging.warning(f"monthly fee watcher: {e}")
-        await asyncio.sleep(3600)
-
-
-# ============================================================
-# TELEGRAM OUTBOX: sayt yozgan chek/eslatmalarni yuborish
-# ============================================================
-async def outbox_tick() -> int:
-    """telegram_outbox'dagi pending qatorlarni yuboradi (chek va eslatmalar)."""
-    try:
-        rows = supabase.table("telegram_outbox").select(
-            "id, student_id, chat_id, text"
-        ).eq("status", "pending").order("id").limit(50).execute().data or []
-    except Exception as e:
-        logging.warning(f"outbox: {e}")
-        return 0
-    if not rows:
-        return 0
-
-    chats = {}
-    try:
-        studs = supabase.table("students").select("id, telegram_chat_id").execute().data or []
-        chats = {r["id"]: r.get("telegram_chat_id") for r in studs}
-    except Exception:
-        pass
-
-    sent = 0
-    for row in rows:
-        cid = row.get("chat_id") or chats.get(row.get("student_id"))
-        ok = False
-        if cid:
-            try:
-                await bot.send_message(chat_id=int(cid), text=row.get("text") or "",
-                                       parse_mode="HTML", disable_notification=False)
-                ok = True
-                sent += 1
-            except Exception as e:
-                logging.warning(f"outbox #{row.get('id')}: {e}")
-        try:
-            supabase.table("telegram_outbox").update({
-                "status": "sent" if ok else "failed",
-                "sent_at": datetime.now(timezone.utc).isoformat(),
-            }).eq("id", row.get("id")).execute()
-        except Exception as e:
-            logging.warning(f"outbox status #{row.get('id')}: {e}")
-    return sent
-
-
-async def outbox_watcher():
-    """Sayt yozgan xabarlarni Telegramga yetkazadi (chek / qarz eslatmasi)."""
-    await asyncio.sleep(4)
-    while True:
-        try:
-            await outbox_tick()
-        except Exception as e:
-            logging.warning(f"outbox watcher: {e}")
-        await asyncio.sleep(4)
+        await asyncio.sleep(5)
 
 
 # ============================================================
@@ -1314,7 +1085,7 @@ async def voice_watcher():
             await voice_tick()
         except Exception as e:
             logging.warning(f"voice watcher: {e}")
-        await asyncio.sleep(15)
+        await asyncio.sleep(5)
 
 
 # ============================================================
@@ -1327,28 +1098,20 @@ def grade_alert_text(grade) -> str:
 
 
 def msg_alert_from_teacher(text: str) -> str:
-    return (
-        "💬 <b>Muzaffar Amirovdan yangi xabar:</b>\n\n"
-        + html.escape(text)
-        + "\n\n<i>(Javob qaytarish uchun to'g'ridan-to'g'ri botga yozishingiz mumkin)</i>"
-    )
+    return "💬 <b>Muzaffar Amirovdan yangi xabar:</b>\n\n" + html.escape(text)
 
 
-def msg_alert_from_student(name: str, text: str, school_class: str = "—") -> str:
-    return (
-        "💬 <b>O'quvchidan yangi xabar!</b>\n"
-        f"👤 <b>{html.escape(str(name or '?'))}</b> ({html.escape(str(school_class or '—'))}):\n\n"
-        f"<i>\"{html.escape(text)}\"</i>"
-    )
+def msg_alert_from_student(name: str, text: str) -> str:
+    return f"💬 <b>{html.escape(name)}: Yangi xabar keldi</b>\n\n" + html.escape(text)
 
 
-async def send_alert(chat_id, text: str, reply_markup=None) -> bool:
+async def send_alert(chat_id, text: str) -> bool:
     """Ovozli (sound) tezkor xabar yuboradi; muvaffaqiyatsiz bo'lsa False."""
     if bot is None or not chat_id:
         return False
     try:
         await bot.send_message(chat_id=int(chat_id), text=text, parse_mode="HTML",
-                               disable_notification=False, reply_markup=reply_markup)
+                               disable_notification=False)
         return True
     except Exception as e:
         logging.warning(f"alert -> {chat_id}: {e}")
@@ -1394,125 +1157,52 @@ async def grades_watcher():
             await grade_tick()
         except Exception as e:
             logging.warning(f"grades watcher: {e}")
-        await asyncio.sleep(15)
-
-
-MSG_CURSOR_KEY = "last_message_id"
-_delivered_msg_ids: set = set()  # handler orqali darhol yuborilganlar — watcher takrorlamaydi
-
-
-def _load_msg_cursor():
-    """bot_settings'dan oxirgi yetkazilgan xabar id'sini o'qiydi (restartga chidamli)."""
-    try:
-        rows = supabase.table("bot_settings").select("value").eq(
-            "key", MSG_CURSOR_KEY).limit(1).execute().data or []
-        if rows:
-            return int(str(rows[0].get("value") or "0"))
-    except Exception as e:
-        logging.warning(f"msg cursor load: {e}")
-    return None
-
-
-def _save_msg_cursor(mid) -> None:
-    """Kursorni bot_settings'ga yozadi — bot qayta ishga tushsa ham xabar yo'qolmaydi."""
-    try:
-        supabase.table("bot_settings").upsert(
-            {"key": MSG_CURSOR_KEY, "value": str(int(mid))}
-        ).execute()
-    except Exception as e:
-        logging.warning(f"msg cursor save: {e}")
-
-
-def _mark_msg_delivered(mid) -> None:
-    """Handler darhol yuborgan xabar id'sini belgilaydi (watcher dublikat yubormaydi)."""
-    try:
-        i = int(mid)
-    except (TypeError, ValueError):
-        return
-    _delivered_msg_ids.add(i)
-    if len(_delivered_msg_ids) > 300:
-        for old in sorted(_delivered_msg_ids)[:150]:
-            _delivered_msg_ids.discard(old)
+        await asyncio.sleep(5)
 
 
 async def message_tick() -> int:
-    """Yangi chat xabarini qabul qiluvchiga tezkor xabar qiladi (test qilinadigan mantiq).
-
-    - Har bir xabar alohida try-except'da: bittasi xato bo'lsa keyingilari yetkaziladi.
-    - Kursor `bot_settings.last_message_id`da saqlanadi → restartda ham yangi xabarlar
-      o'tkazib yuborilmaydi, eski tarix esa qayta yuborilmaydi.
-    """
+    """Yangi chat xabarini qabul qiluvchiga tezkor xabar qiladi (test qilinadigan mantiq)."""
     global _last_msg_seen
-    try:
-        rows = supabase.table("messages").select(
-            "id, student_id, sender, text").order("id").execute().data or []
-    except Exception as e:
-        logging.warning(f"messages watcher: {e}")
-        return 0
-
+    rows = supabase.table("messages").select("id, student_id, sender, text").order("id").execute().data or []
     if _last_msg_seen is None:
-        stored = _load_msg_cursor()
-        if stored is None:
-            # Birinchi start: mavjud tarixni SPAM qilmaymiz, kursorni saqlab qo'yamiz
-            try:
-                stored = int(rows[-1].get("id")) if rows else 0
-            except (TypeError, ValueError):
-                stored = 0
-            if rows:
-                _save_msg_cursor(stored)
-            logging.info(f"messages watcher: boshlang'ich kursor {stored} ({len(rows)} ta xabar)")
-        _last_msg_seen = stored
-
+        # birinchi start: mavjud xabarlarni SPAM qilmaymiz
+        _last_msg_seen = rows[-1]["id"] if rows else 0
+        logging.info(f"messages watcher: {len(rows)} ta mavjud xabar ko'rib chiqildi")
+        return 0
     sent = 0
-    advanced = False
     for row in rows:
-        try:
-            mid = int(row.get("id"))
-        except (TypeError, ValueError):
+        if row["id"] <= _last_msg_seen:
             continue
-        if mid <= _last_msg_seen:
-            continue
-        _last_msg_seen = mid
-        advanced = True
-        if mid in _delivered_msg_ids:
-            continue  # allaqachon to'g'ridan-to'g'ri yuborilgan
+        _last_msg_seen = row["id"]  # qayta yuborilmaydi
         sender = row.get("sender")
         text = str(row.get("text") or "")
-        try:
-            if sender == "teacher":
-                # Ustoz (saytdan) yozgan → o'quvchiga
+        if sender == "teacher":
+            # Ustoz yozgan → o'quvchiga
+            try:
                 studs = supabase.table("students").select("id, telegram_chat_id").\
-                    eq("id", row.get("student_id")).limit(1).execute().data
-                if studs and await send_alert(studs[0].get("telegram_chat_id"),
-                                              msg_alert_from_teacher(text)):
-                    sent += 1
-            elif sender == "student":
-                # O'quvchi yozgan → ustozga, [↩️ Javob yozish] tugmasi bilan
-                studs = supabase.table("students").select("id, name, school_class").\
-                    eq("id", row.get("student_id")).limit(1).execute().data
-                if not studs:
-                    logging.warning(f"messages watcher: o'quvchi topilmadi (id={row.get('student_id')})")
-                    continue
-                st = studs[0]
-                alert = msg_alert_from_student(st.get("name") or "O'quvchi", text,
-                                               st.get("school_class") or "—")
-                if await send_alert(config.ADMIN_ID, alert,
-                                    reply_student_keyboard(st.get("id"))):
-                    sent += 1
-        except Exception as e:
-            # Bitta xabar (masalan, bloklangan o'quvchi) qolganlarini to'xtatmaydi
-            logging.warning(f"messages watcher (id={mid}): {e}")
-    if advanced:
-        _save_msg_cursor(_last_msg_seen)
+                    eq("id", row["student_id"]).limit(1).execute().data
+            except Exception as e:
+                logging.warning(f"messages watcher student: {e}")
+                continue
+            if studs and await send_alert(studs[0].get("telegram_chat_id"),
+                                          msg_alert_from_teacher(text)):
+                sent += 1
+        elif sender == "student":
+            # O'quvchi yozgan → ustozga
+            try:
+                studs = supabase.table("students").select("id, name").\
+                    eq("id", row["student_id"]).limit(1).execute().data
+            except Exception as e:
+                logging.warning(f"messages watcher name: {e}")
+                continue
+            name = (studs[0].get("name") if studs else None) or "O'quvchi"
+            if await send_alert(config.ADMIN_ID, msg_alert_from_student(name, text)):
+                sent += 1
     return sent
 
 
 async def messages_watcher():
-    """messages jadvalini kuzatadi: yangi xabar → qabul qiluvchiga tezkor xabar.
-
-    Saytdan yozilgan xabar deyarli darhol (0–5 s) yetib borishi uchun
-    faqat shu watcher 5 soniyada bir marta so'raydi.
-    """
+    """messages jadvalini kuzatadi: yangi xabar → qabul qiluvchiga tezkor xabar."""
     await asyncio.sleep(3)
     while True:
         try:
@@ -1525,22 +1215,16 @@ async def messages_watcher():
 # ============================================================
 # Zaxira (backup / restore) — Supabase
 # ============================================================
-BACKUP_TABLES = ["groups", "monthly_fees", "students", "attendance", "grades", "messages", "speaking_submissions", "audio_submissions", "homework", "payments"]
+BACKUP_TABLES = ["groups", "students", "attendance", "grades", "messages", "speaking_submissions", "audio_submissions", "homework"]
 RESTORE_PLAN = [
-    ("groups", ["id", "name", "days", "time", "monthly_fee", "group_type"]),
-    ("monthly_fees", ["id", "group_id", "period", "amount", "created_at"]),
-    ("students", ["id", "name", "school_class", "group_id", "login", "password", "speaking_debt",
-                  "voice_allowed", "telegram_chat_id", "last_device", "last_seen", "payment_debt",
-                  "fee_period"]),
+    ("groups", ["id", "name", "days", "time"]),
+    ("students", ["id", "name", "school_class", "group_id", "login", "password", "speaking_debt"]),
     ("attendance", ["id", "student_id", "date", "status"]),
     ("grades", ["id", "student_id", "date", "grade", "category", "note"]),
     ("messages", ["id", "student_id", "sender", "text", "created_at"]),
-    ("speaking_submissions", ["id", "student_id", "media_type", "telegram_file_id", "status", "score",
-                              "feedback", "created_at"]),
+    ("speaking_submissions", ["id", "media_type", "telegram_file_id", "status", "created_at"]),
     ("audio_submissions", ["id", "student_id", "date", "url", "status", "score", "feedback", "created_at"]),
-    ("homework", ["id", "group_id", "title", "description", "due_date", "media_url", "media_type",
-                  "attachments", "created_at"]),
-    ("payments", ["id", "student_id", "amount", "note", "period", "created_at"]),
+    ("homework", ["id", "group_id", "title", "description", "due_date", "created_at"]),
 ]
 pending_restore_file = {}
 
@@ -1553,8 +1237,6 @@ BACKUP_LABELS = {
     "speaking_submissions": "Speaking topshiriklari",
     "audio_submissions": "Ovozli topshiriklar",
     "homework": "Uyga vazifalar",
-    "monthly_fees": "Oylik to'lov jadvali",
-    "payments": "To'lovlar",
 }
 
 
@@ -1620,7 +1302,7 @@ def prepare_restore(data: dict) -> dict:
 def restore_backup(data: dict) -> dict:
     """Zaxirani Supabase'ga qayta tiklaydi: avval O'CHIRISH (bog'liq jadvallardan),
     keyin ID saqlanib qayta YOZISH. Har jadval uchun son qaytaradi."""
-    for t in ["messages", "grades", "attendance", "speaking_submissions", "audio_submissions", "homework", "payments", "monthly_fees", "students", "groups"]:
+    for t in ["messages", "grades", "attendance", "speaking_submissions", "audio_submissions", "homework", "students", "groups"]:
         try:
             supabase.table(t).delete().gte("id", 0).execute()
         except Exception as e:
@@ -1672,135 +1354,6 @@ async def send_backup_document(chat_id: int):
         caption=caption,
         parse_mode="HTML",
     )
-
-
-# ============================================================
-# KUNLIK HISOBOT + AVTOMATIK BACKUP (har kuni 00:00, Toshkent)
-# ============================================================
-TASHKENT_TZ = timezone(timedelta(hours=5))
-_last_report_day = None
-
-
-def tashkent_now() -> datetime:
-    return datetime.now(TASHKENT_TZ)
-
-
-def seconds_until_midnight(now: datetime | None = None) -> float:
-    """Keyingi 00:00 (Toshkent) gacha qolgan soniyalar."""
-    cur = now or tashkent_now()
-    nxt = (cur + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    return max(1.0, (nxt - cur).total_seconds())
-
-
-def daily_stats() -> dict:
-    """Kunlik hisobot uchun ko'rsatkichlar (bugungi sana — Toshkent)."""
-    today = tashkent_now().strftime("%Y-%m-%d")
-    stats = {
-        "date": today, "students": 0, "groups": 0, "present": 0, "absent": 0,
-        "grades": 0, "speaking_today": 0, "speaking_pending": 0, "debtors": 0,
-    }
-
-    try:
-        studs = supabase.table("students").select("id, payment_debt").execute().data or []
-        stats["students"] = len(studs)
-        stats["debtors"] = sum(1 for s in studs if int(s.get("payment_debt") or 0) > 0)
-    except Exception as e:
-        logging.warning(f"daily stats students: {e}")
-
-    try:
-        stats["groups"] = len(supabase.table("groups").select("id").execute().data or [])
-    except Exception as e:
-        logging.warning(f"daily stats groups: {e}")
-
-    try:
-        rows = supabase.table("attendance").select("status").eq("date", today).execute().data or []
-        stats["present"] = sum(1 for r in rows if r.get("status") == "present")
-        stats["absent"] = sum(1 for r in rows if r.get("status") != "present")
-    except Exception as e:
-        logging.warning(f"daily stats attendance: {e}")
-
-    try:
-        stats["grades"] = len(
-            supabase.table("grades").select("id").eq("date", today).execute().data or []
-        )
-    except Exception as e:
-        logging.warning(f"daily stats grades: {e}")
-
-    try:
-        subs = supabase.table("speaking_submissions").select(
-            "status, created_at"
-        ).execute().data or []
-        stats["speaking_today"] = sum(
-            1 for x in subs if str(x.get("created_at") or "").startswith(today)
-        )
-        stats["speaking_pending"] = sum(
-            1 for x in subs if x.get("status") != "baholandi"
-        )
-    except Exception as e:
-        logging.warning(f"daily stats speaking: {e}")
-
-    return stats
-
-
-def daily_report_text(stats: dict) -> str:
-    return (
-        f"📊 <b>Kunlik hisobot — {stats.get('date', '')}</b>\n\n"
-        f"👥 Jami o'quvchilar: <b>{stats.get('students', 0)}</b> ta\n"
-        f"📚 Guruhlar: <b>{stats.get('groups', 0)}</b> ta\n\n"
-        f"📅 Bugungi davomat:\n"
-        f"  ✅ Qatnashgan: <b>{stats.get('present', 0)}</b> ta\n"
-        f"  ❌ Dars qoldirgan: <b>{stats.get('absent', 0)}</b> ta\n\n"
-        f"⭐ Bugun qo'yilgan baholar: <b>{stats.get('grades', 0)}</b> ta\n"
-        f"🎙 Speaking: <b>{stats.get('speaking_today', 0)}</b> ta topshirildi · "
-        f"<b>{stats.get('speaking_pending', 0)}</b> ta kutilmoqda\n\n"
-        f"💰 To'lov qarzdorligi bor o'quvchilar: <b>{stats.get('debtors', 0)}</b> ta\n\n"
-        f"💾 To'liq zaxira fayli xabar bilan birga yuborildi."
-    )
-
-
-async def send_daily_report(force: bool = False) -> bool:
-    """Adminga kunlik hisobot + to'liq JSON backup yuboradi (kuniga bir marta)."""
-    global _last_report_day
-    day = tashkent_now().strftime("%Y-%m-%d")
-    if not force and _last_report_day == day:
-        return False
-
-    sent = False
-    try:
-        await bot.send_message(config.ADMIN_ID, daily_report_text(daily_stats()),
-                               parse_mode="HTML", disable_notification=False)
-        sent = True
-    except Exception as e:
-        logging.warning(f"daily report xabar: {e}")
-
-    try:
-        await send_backup_document(config.ADMIN_ID)
-        sent = True
-    except Exception as e:
-        logging.warning(f"daily report backup: {e}")
-
-    if sent:
-        _last_report_day = day
-        logging.info(f"daily report yuborildi: {day}")
-    return sent
-
-
-async def daily_report_watcher():
-    """Har kuni 00:00 (Toshkent) da hisobot va zaxirani yuboradi."""
-    await asyncio.sleep(5)
-    while True:
-        delay = seconds_until_midnight()
-        logging.info(f"daily report: keyingi hisobot {int(delay)} soniyadan keyin (00:00 Toshkent)")
-        await asyncio.sleep(delay)
-        for _ in range(3):
-            try:
-                ok = await send_daily_report()
-                if ok or _last_report_day == tashkent_now().strftime("%Y-%m-%d"):
-                    break
-            except Exception as e:
-                logging.warning(f"daily report watcher: {e}")
-            await asyncio.sleep(300)
-        await asyncio.sleep(60)
 
 
 @dp.message(Command("backup"))
@@ -1979,183 +1532,6 @@ async def send_credentials(chat_id: int, student_name: str, login: str, password
 
 
 # ============================================================
-# O'quvchi ↔ ustoz matnli yozishmasi (Telegram ichida)
-# O'quvchi oddiy matn yozadi → messages(sender='student') + ustozga
-# tugmali xabar → ustoz javobi o'quvchiga + messages(sender='teacher')
-# ============================================================
-class ReplyStates(StatesGroup):
-    waiting_reply = State()
-
-
-def student_alert_text(student: dict, text: str) -> str:
-    name = html.escape(str(student.get("name") or "?"))
-    cls = html.escape(str(student.get("school_class") or "—"))
-    return (
-        "💬 <b>O'quvchidan yangi xabar!</b>\n\n"
-        f"👤 <b>{name}</b> ({cls}):\n\n"
-        f"<i>\"{html.escape(text)}\"</i>"
-    )
-
-
-def reply_student_keyboard(student_id) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="↩️ Javob yozish",
-                             callback_data=f"reply_student:{student_id}")
-    ]])
-
-
-def cancel_reply_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="❌ Bekor qilish", callback_data="reply_cancel")
-    ]])
-
-
-async def handle_student_text(message: types.Message, student: dict) -> None:
-    """O'quvchi erkin matnini messages'ga yozadi va ustozga tugma bilan yuboradi."""
-    text = (message.text or "").strip()
-    if not text:
-        return
-    msg_id = None
-    try:
-        res = supabase.table("messages").insert({
-            "student_id": student["id"], "sender": "student", "text": text,
-        }).select("id").execute()
-        if res.data:
-            msg_id = res.data[0].get("id")
-    except Exception as e:
-        logging.error(f"student message insert: {e}")
-
-    try:
-        await bot.send_message(
-            chat_id=config.ADMIN_ID,
-            text=student_alert_text(student, text),
-            reply_markup=reply_student_keyboard(student["id"]),
-            parse_mode="HTML",
-        )
-        _mark_msg_delivered(msg_id)
-    except Exception as e:
-        logging.error(f"student message -> teacher: {e}")
-
-    try:
-        await message.answer("✅ Xabaringiz Muzaffar Amirovga yuborildi. Tez orada javob olasiz.")
-    except Exception:
-        pass
-
-
-@dp.callback_query(F.data.startswith("reply_student:"))
-async def cb_reply_student(call: types.CallbackQuery, state: FSMContext):
-    """Ustoz [↩️ Javob yozish] bosadi → javob matni kutiladi."""
-    if call.from_user.id != config.ADMIN_ID:
-        await call.answer("Ruxsat yo'q", show_alert=True)
-        return
-    try:
-        student_id = int(call.data.split(":", 1)[1])
-    except Exception:
-        await call.answer("Noto'g'ri so'rov", show_alert=True)
-        return
-    try:
-        rows = supabase.table("students").select(
-            "id, name, telegram_chat_id").eq("id", student_id).limit(1).execute().data
-    except Exception as e:
-        logging.error(f"reply_student load: {e}")
-        await call.answer("Bazaga ulanib bo'lmadi", show_alert=True)
-        return
-    if not rows:
-        await call.answer("O'quvchi topilmadi", show_alert=True)
-        return
-    st = rows[0]
-    if not st.get("telegram_chat_id"):
-        await call.answer("Bu o'quvchi Telegramga ulanmagan", show_alert=True)
-        return
-
-    await state.set_state(ReplyStates.waiting_reply)
-    await state.update_data(student_id=student_id)
-    name = html.escape(str(st.get("name") or "?"))
-    try:
-        await call.message.answer(
-            f"✍️ <b>{name}</b>ga javobingizni yozing.\n"
-            "Bekor qilish uchun /cancel yoki pastdagi tugma.",
-            reply_markup=cancel_reply_keyboard(), parse_mode="HTML",
-        )
-    except Exception as e:
-        logging.error(f"reply_student prompt: {e}")
-    await call.answer()
-
-
-@dp.callback_query(F.data == "reply_cancel")
-async def cb_reply_cancel(call: types.CallbackQuery, state: FSMContext):
-    if call.from_user.id != config.ADMIN_ID:
-        await call.answer("Ruxsat yo'q", show_alert=True)
-        return
-    await state.clear()
-    await call.answer("Bekor qilindi", show_alert=True)
-
-
-@dp.message(Command("cancel"), StateFilter(ReplyStates.waiting_reply))
-async def cmd_cancel_reply(message: types.Message, state: FSMContext):
-    if message.from_user.id != config.ADMIN_ID:
-        return
-    await state.clear()
-    await message.answer("❌ Javob yozish bekor qilindi.")
-
-
-@dp.message(StateFilter(ReplyStates.waiting_reply), F.text)
-async def on_teacher_reply(message: types.Message, state: FSMContext):
-    """Ustoz javobini o'quvchiga yuboradi va messages'ga yozadi."""
-    if message.from_user.id != config.ADMIN_ID:
-        return
-    text = (message.text or "").strip()
-    if not text or text.startswith("/"):
-        return
-    data = await state.get_data()
-    student_id = data.get("student_id")
-    await state.clear()
-
-    chat_id = None
-    try:
-        rows = supabase.table("students").select(
-            "id, name, telegram_chat_id").eq("id", student_id).limit(1).execute().data
-        if rows:
-            chat_id = rows[0].get("telegram_chat_id")
-    except Exception as e:
-        logging.error(f"teacher reply load student: {e}")
-
-    sent = False
-    if chat_id:
-        try:
-            await bot.send_message(
-                chat_id=int(chat_id),
-                text="💬 <b>Muzaffar Amirovdan javob:</b>\n\n" + html.escape(text),
-                parse_mode="HTML",
-            )
-            sent = True
-        except Exception as e:
-            logging.error(f"teacher reply -> student {chat_id}: {e}")
-
-    msg_id = None
-    try:
-        res = supabase.table("messages").insert({
-            "student_id": student_id, "sender": "teacher", "text": text,
-        }).select("id").execute()
-        if res.data:
-            msg_id = res.data[0].get("id")
-    except Exception as e:
-        logging.error(f"teacher message insert: {e}")
-    if sent:
-        _mark_msg_delivered(msg_id)
-
-    try:
-        if sent:
-            await message.answer("✅ Javob o'quvchiga yuborildi.")
-        else:
-            await message.answer(
-                "⚠️ O'quvchi Telegramga ulanmagan — javob saqlandi, lekin yuborilmadi."
-            )
-    except Exception:
-        pass
-
-
-# ============================================================
 # Erkin matn: "🔑 Login orqali ulash" ni bosganlar uchun
 # login/parol qabuli (ro'yxatdagi barcha handlerlardan KEYIN)
 # ============================================================
@@ -2173,19 +1549,6 @@ async def on_free_text(message: types.Message):
         if step == "waiting_password":
             await _finish_login_password(message, uid, pending_logins[uid]["login"], text)
             return
-
-        # --- Ulangan o'quvchi: 2 so'zli login/parol bo'lsa hisob almashtiriladi,
-        #     aks holda erkin matn ustozga yuboriladi ---
-        if not step and uid != config.ADMIN_ID:
-            st_chat = student_by_chat(uid)
-            if st_chat:
-                if (len(parts) == 2
-                        and re.fullmatch(r"[A-Za-z0-9_.\-]+", parts[0])
-                        and await _login_exists(parts[0])):
-                    await attempt_login(message, parts[0], parts[1])
-                    return
-                await handle_student_text(message, st_chat)
-                return
 
         # --- Tezkor kirish: "jasur 123" yoki "/login jasur 123" (ikki so'z) ---
         if len(parts) == 2 and re.fullmatch(r"[A-Za-z0-9_.\-]+", parts[0]):
@@ -2213,9 +1576,7 @@ async def on_free_text(message: types.Message):
         if uid == config.ADMIN_ID:
             await message.answer("📋 Ustoz menyusi:", reply_markup=admin_reply_keyboard())
         else:
-            _st = student_by_chat(uid) or {}
-            await message.answer("📋 O'quvchi menyusi:",
-                                 reply_markup=get_main_keyboard(_is_school_group(_st.get("group_id"))))
+            await message.answer("📋 O'quvchi menyusi:", reply_markup=get_main_keyboard())
     except Exception as e:
         logging.error(f"on_free_text: {e}")
 
@@ -2242,9 +1603,6 @@ async def main():
     _bg_tasks.add(asyncio.create_task(voice_watcher()))      # voice_allowed ruxsati
     _bg_tasks.add(asyncio.create_task(grades_watcher()))     # yangi baho
     _bg_tasks.add(asyncio.create_task(messages_watcher()))   # yangi chat xabari
-    _bg_tasks.add(asyncio.create_task(outbox_watcher()))     # chek / qarz eslatmalari
-    _bg_tasks.add(asyncio.create_task(monthly_fee_watcher()))  # oylik to'lov qarzi
-    _bg_tasks.add(asyncio.create_task(daily_report_watcher()))  # 00:00 hisobot + backup
 
     # Diagnostika: qaysi bot jonli — logda username ko'rinadi
     try:
