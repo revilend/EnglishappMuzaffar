@@ -902,9 +902,30 @@ const CloudSync = (function () {
     if (del.error) throw del.error;
   }
 
-  /* --- Uyga vazifani o'chirish (homework jadvalidan qator) --- */
-  async function deleteHomework(dbId) {
-    if (!ready() || !hasHomework || dbId == null) return;
+  /* --- Uyga vazifani o'chirish: avval Storage'dagi fayl, keyin jadval qatori ---
+     media_url berilsa, fayl yo'li ajratib olinadi va ikkala bucket nomi bilan
+     o'chirishga uriniladi — og'ir video/audio xotirada axlat bo'lib qolmaydi. */
+  async function deleteHomework(dbId, mediaUrl) {
+    if (!ready()) return;
+    if (mediaUrl) {
+      const found = mediaPath(mediaUrl);
+      const rawPath = String(mediaUrl).split('?')[0];
+      const filePath = found && found.path ? found.path : rawPath.split('/').pop();
+      const buckets = found
+        ? [found.bucket].concat(MEDIA_BUCKETS.filter(function (b) { return b !== found.bucket; }))
+        : MEDIA_BUCKETS;
+      if (filePath) {
+        for (let i = 0; i < buckets.length; i++) {
+          try {
+            const rm = await client.storage.from(buckets[i]).remove([filePath]);
+            if (!rm.error) break;
+          } catch (e) {
+            console.warn('[cloud] hw media del (' + buckets[i] + '):', (e && e.message) || e);
+          }
+        }
+      }
+    }
+    if (!hasHomework || dbId == null) return;
     const res = await client.from('homework').delete().eq('id', dbId);
     if (res.error) throw res.error;
   }
@@ -2305,8 +2326,10 @@ function doDeleteHw(hid) {
   if (!h) return;
 
   store.set(K.homework, list.filter(x => String(x.id) !== norm));
-  if (h.mediaUrl) CloudSync.removeHomeworkMedia(h.mediaUrl);
-  if (h.dbId != null) CloudSync.deleteHomework(h.dbId).catch(e => console.warn('[cloud] del hw:', (e && e.message) || e));
+  if (h.mediaUrl || h.dbId != null) {
+    CloudSync.deleteHomework(h.dbId, h.mediaUrl)
+      .catch(e => console.warn('[cloud] del hw:', (e && e.message) || e));
+  }
 
   /* o'chirilgan vazifaning bajarilganlik izlarini ham tozalash */
   const map = hwDoneMap();
@@ -3019,6 +3042,8 @@ function groupsScreen() {
 function studentCard(s) {
   const g = groupById(s.groupId);
   const debt = Math.max(0, Number(s.paymentDebt) || 0);
+  /* Pul/to'lov faqat repetitorlik guruhlarida (maktab guruhi — bepul) */
+  const showMoney = !!g && !isSchoolGroup(g);
   const acc = Object.keys(accounts).map(k => accounts[k]).filter(a => a.studentId === s.id)[0];
   return `<div class="card student-card">
     <div class="st-head">
@@ -3047,10 +3072,14 @@ function studentCard(s) {
         <button type="button" class="switch${s.voiceAllowed !== false ? ' on' : ''}" data-act="voice-toggle" data-sid="${s.id}"
                 role="switch" aria-checked="${s.voiceAllowed !== false}" aria-label="${t('Ovozli ruxsat')}"></button>
       </div>
-      <div class="pay-line">
+      ${showMoney ? `<div class="pay-line">
         <span class="pay-status ${debt > 0 ? 'due' : 'ok'}">${debt > 0 ? `🔴 To'lov qarzi: ${fmtSom(debt)} so'm` : "🟢 To'langan"}</span>
-        <button type="button" class="btn btn-xs ghost pay-btn" data-act="pay-student" data-sid="${s.id}">💵 To'lov kiritish</button>
       </div>
+      <div class="pay-actions">
+        <button type="button" class="btn btn-xs ghost" data-act="debt-add" data-sid="${s.id}">➕ Qarz qo'shish</button>
+        <button type="button" class="btn btn-xs ghost pay-btn" data-act="pay-student" data-sid="${s.id}">💵 To'lov kiritish</button>
+        ${debt > 0 ? `<button type="button" class="btn btn-xs ghost" data-act="remind-student" data-sid="${s.id}">🔔 Eslatma yuborish</button>` : ''}
+      </div>` : ''}
     </div>
     <div class="st-actions">
       <button type="button" class="btn btn-xs ghost" data-act="open-chat" data-sid="${s.id}">${ico('message', 14)} ${t('Xabar yozish')}</button>
@@ -3118,11 +3147,114 @@ function studentsScreen() {
 }
 
 /* ==================== TO'LOV VA QARZ ESLATMALARI ==================== */
+/* Qarz qo'shish — Telegramga xabar YUBORILMAYDI (jimjit yangilanadi) */
+function openAddDebtModal(sid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const st = studentById(sid);
+  if (!st) return;
+  const g = groupById(st.groupId);
+  if (!g || isSchoolGroup(g)) { toast("Maktab guruhida qarz yo'q (bepul)", 'error'); return; }
+  const debt = Math.max(0, Number(st.paymentDebt) || 0);
+  openModal(`
+    <div class="modal-head">
+      <h3>Qarz qo'shish</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+    <div class="editor-info">
+      <div class="avatar">${esc(initials(st.fullName))}</div>
+      <div class="col">
+        <div class="s-name">${esc(st.fullName)}</div>
+        <div class="muted small">${esc(g.name)}</div>
+      </div>
+    </div>
+    <div class="card" style="margin:9px 0">
+      <div class="row between"><span class="muted small">Joriy qarz</span>
+        <span class="pay-status ${debt > 0 ? 'due' : 'ok'}">${debt > 0 ? fmtSom(debt) + " so'm" : "🟢 Qarz yo'q"}</span></div>
+    </div>
+    <label class="field-label" for="debt-sum">Qo'shiladigan summa (so'mda)</label>
+    <input class="input" id="debt-sum" type="number" min="0" step="1000" inputmode="numeric" placeholder="Masalan: 50000" />
+    <p class="pay-hint">🔕 Bu amalda o'quvchiga xabar yuborilmaydi. Eslatma faqat kartadagi <b>🔔 Eslatma yuborish</b> tugmasi bilan ketadi.</p>
+    <div class="field-error" id="debt-error"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
+      <button type="button" class="btn btn-primary" data-act="save-add-debt" data-sid="${esc(String(sid))}">➕ Qarzni qo'shish</button>
+    </div>
+  `);
+}
+
+function saveAddedDebt(sid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const st = studentById(sid);
+  if (!st) return;
+  const g = groupById(st.groupId);
+  if (!g || isSchoolGroup(g)) { toast("Maktab guruhida qarz yo'q (bepul)", 'error'); return; }
+  const inp = $('#debt-sum');
+  const sum = Math.round(Number(inp ? inp.value : 0) || 0);
+  const err = $('#debt-error');
+  if (!sum || sum <= 0) {
+    if (err) { err.textContent = "Summani kiriting"; err.classList.add('show'); }
+    return;
+  }
+  const before = Math.max(0, Number(st.paymentDebt) || 0);
+  const after = before + sum;
+  store.set(K.students, getStudents().map(x => String(x.id) === String(sid)
+    ? Object.assign({}, x, { paymentDebt: after }) : x));
+  CloudSync.pushStudent(sid);
+  /* ATAYLAB xabar yuborilmaydi — faqat tugma orqali eslatma ketadi */
+  closeModal();
+  render();
+  toast(`Qarz qo'shildi ✓ Jami: ${fmtSom(after)} so'm`);
+}
+
+/* Qarz eslatmasi matni (bitta o'quvchi va ommaviy uchun bir xil) */
+function debtReminderText(s) {
+  return `⚠️ <b>To'lov eslatmasi!</b>\n\nHurmatli o'quvchi / ota-ona, <b>${esc(s.fullName)}</b>ning ingliz tili darslari uchun <b>${fmtSom(s.paymentDebt)} so'm</b> to'lov qarzdorligi mavjud.\n\nIltimos, to'lovni amalga oshirishingizni so'raymiz.\n\n<i>Hurmat bilan, Muzaffar Amirov</i>`;
+}
+
+function debtRowOf(s) {
+  return {
+    student_id: s.dbId != null ? s.dbId : null,
+    chat_id: s.telegramChatId || null,
+    text: debtReminderText(s)
+  };
+}
+
+/* outbox'ga qo'yadi va holatini qisqa kuzatadi */
+function queueDebtReminders(rows, okText) {
+  if (!rows.length) { toast("O'quvchilarda Telegram ulanmagan", 'error'); return; }
+  CloudSync.queueMessages(rows).then(function (ids) {
+    if (!ids.length) { toast(okText); return; }
+    let tries = 0;
+    const timer = setInterval(function () {
+      tries += 1;
+      CloudSync.messageStatus(ids).then(function (list) {
+        const pending = (list || []).filter(x => x.status === 'pending').length;
+        if (pending === 0 || tries >= 12) { clearInterval(timer); toast(okText); }
+      }).catch(function () { if (tries >= 12) clearInterval(timer); });
+    }, 1500);
+  }).catch(function (e) {
+    toast('Eslatma yuborilmadi: ' + ((e && e.message) || 'xatolik'), 'error');
+  });
+}
+
+/* Bitta o'quvchiga eslatma — faqat ustoz tugmani bosganda */
+function remindStudent(sid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const st = studentById(sid);
+  if (!st) return;
+  const g = groupById(st.groupId);
+  if (!g || isSchoolGroup(g)) { toast("Maktab guruhida qarz yo'q (bepul)", 'error'); return; }
+  if (!(Number(st.paymentDebt) || 0)) { toast("Bu o'quvchida qarz yo'q ✓"); return; }
+  if (!st.telegramChatId) { toast("O'quvchida Telegram ulanmagan", 'error'); return; }
+  queueDebtReminders([debtRowOf(st)], `✅ ${st.fullName}ga eslatma yuborildi!`);
+}
+
 function openPayModal(sid) {
   if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
   const st = studentById(sid);
   if (!st) return;
   const g = groupById(st.groupId);
+  if (g && isSchoolGroup(g)) { toast("Maktab guruhi bepul — to'lov yo'q", 'error'); return; }
   const debt = Math.max(0, Number(st.paymentDebt) || 0);
   const fee = g ? Math.max(0, Number(g.monthlyFee) || 0) : 0;
   openModal(`
@@ -3182,7 +3314,8 @@ function savePayment(sid) {
 }
 
 function debtorsList() {
-  return getStudents().filter(s => (Number(s.paymentDebt) || 0) > 0);
+  return getStudents().filter(s => (Number(s.paymentDebt) || 0) > 0 &&
+    !isSchoolGroup(groupById(s.groupId)));
 }
 
 function openRemindDebtors() {
@@ -3213,27 +3346,9 @@ function sendDebtorsReminder() {
   if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
   const debtors = debtorsList();
   if (!debtors.length) { closeModal(); toast("Qarzdor o'quvchi yo'q ✓"); return; }
-  const rows = debtors.filter(s => s.telegramChatId).map(s => ({
-    student_id: s.dbId != null ? s.dbId : null,
-    chat_id: s.telegramChatId,
-    text: `⚠️ <b>To'lov eslatmasi!</b>\n\nHurmatli o'quvchi / ota-ona, <b>${esc(s.fullName)}</b>ning ingliz tili darslari uchun <b>${fmtSom(s.paymentDebt)} so'm</b> to'lov qarzdorligi mavjud.\n\nIltimos, to'lovni o'z vaqtida amalga oshirishingizni so'raymiz.\n\n<i>Hurmat bilan, Muzaffar Amirov</i>`
-  }));
+  const rows = debtors.filter(s => s.telegramChatId).map(debtRowOf);
   closeModal();
-  if (!rows.length) { toast("O'quvchilarda Telegram ulanmagan", 'error'); return; }
-  const okText = `✅ ${rows.length} nafar qarzdorga eslatma yuborildi!`;
-  CloudSync.queueMessages(rows).then(function (ids) {
-    if (!ids.length) { toast(okText); return; }
-    let tries = 0;
-    const timer = setInterval(function () {
-      tries += 1;
-      CloudSync.messageStatus(ids).then(function (list) {
-        const pending = (list || []).filter(x => x.status === 'pending').length;
-        if (pending === 0 || tries >= 12) { clearInterval(timer); toast(okText); }
-      }).catch(function () { if (tries >= 12) clearInterval(timer); });
-    }, 1500);
-  }).catch(function (e) {
-    toast('Eslatma yuborilmadi: ' + ((e && e.message) || 'xatolik'), 'error');
-  });
+  queueDebtReminders(rows, `✅ ${rows.length} nafar qarzdorga eslatma yuborildi!`);
 }
 
 /* ==================== PROFIL ==================== */
@@ -5336,6 +5451,9 @@ document.addEventListener('click', function (e) {
     'hw-remove-media': removeHwMedia,
     'hw-clear-file': clearHwFilePick,
     'pay-student': function () { openPayModal(btn.getAttribute('data-sid')); },
+    'debt-add': function () { openAddDebtModal(btn.getAttribute('data-sid')); },
+    'save-add-debt': function () { saveAddedDebt(btn.getAttribute('data-sid')); },
+    'remind-student': function () { remindStudent(btn.getAttribute('data-sid')); },
     'save-pay': function () { savePayment(btn.getAttribute('data-sid')); },
     'att-toggle': function () { state.attOpen = !state.attOpen; render(); },
     'remind-debtors': openRemindDebtors,

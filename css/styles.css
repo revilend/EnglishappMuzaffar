@@ -1740,6 +1740,8 @@ html[data-theme="dark"] .st-inset {
 .pay-status.ok { color: var(--ok); }
 .pay-status.due { color: var(--danger); }
 .pay-btn { white-space: nowrap; }
+.pay-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.pay-actions .btn { white-space: nowrap; }
 .st-inset .pay-line { margin-top: 9px; }
 .gc-fee { display: flex; align-items: center; gap: 7px; margin-top: 7px; font-size: 12.5px; font-weight: 700; color: var(--accent); }
 .debtors-btn { margin: 4px 0 12px; }

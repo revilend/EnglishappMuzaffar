@@ -24,12 +24,12 @@ const F_GROUPS = [
   { id: 'g2', name: 'General English (8–10-sinf)', days: 'Seshanba, Payshanba', time: '17:00', groupType: 'tutoring' }
 ];
 const F_STUDENTS = [
-  { id: 's1', fullName: 'Aziz Rahimov', schoolClass: '9-sinf', groupId: 'g2', speakingDebt: 0, audioSubmissions: [] },
-  { id: 's2', fullName: 'Nilufar Ergasheva', schoolClass: '9-sinf', groupId: 'g2', speakingDebt: 0, audioSubmissions: [] },
-  { id: 's3', fullName: 'Jasur Karimov', schoolClass: '8-sinf', groupId: 'g2', speakingDebt: 0, audioSubmissions: [] },
-  { id: 's4', fullName: 'Dilnoza Qodirova', schoolClass: '10-sinf', groupId: 'g2', speakingDebt: 0, audioSubmissions: [] },
-  { id: 's5', fullName: 'Malika Yusupova', schoolClass: '11-sinf', groupId: 'g1', speakingDebt: 0, audioSubmissions: [] },
-  { id: 's6', fullName: 'Bekzod Alimov', schoolClass: '11-sinf', groupId: 'g1', speakingDebt: 0, audioSubmissions: [] }
+  { id: 's1', fullName: 'Aziz Rahimov', schoolClass: '9-sinf', groupId: 'g2', telegramChatId: 1001, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's2', fullName: 'Nilufar Ergasheva', schoolClass: '9-sinf', groupId: 'g2', telegramChatId: 1002, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's3', fullName: 'Jasur Karimov', schoolClass: '8-sinf', groupId: 'g2', telegramChatId: 1003, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's4', fullName: 'Dilnoza Qodirova', schoolClass: '10-sinf', groupId: 'g2', telegramChatId: 1004, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's5', fullName: 'Malika Yusupova', schoolClass: '11-sinf', groupId: 'g1', telegramChatId: 1005, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's6', fullName: 'Bekzod Alimov', schoolClass: '11-sinf', groupId: 'g1', telegramChatId: 1006, speakingDebt: 0, audioSubmissions: [] }
 ];
 const F_ACCOUNTS = [
   { login: 'm_amirov', password: '123', role: 'teacher', name: 'Muzaffar Amirov' },
@@ -450,7 +450,53 @@ check(text().includes('Malika Yusupova') && studentCards() >= 1, "qidiruv: davom
 setVal('#s-search', '');
 check(studentCards() === 6, "qidiruv: tozalandi → barcha o'quvchilar qaytdi");
 
+/* ================= 4a. QARZ QO'SHISH (JIMJIT) + ESLATMA ================= */
+let debtQueueCalls = 0;
+let lastDebtRows = [];
+const realQueueMessages = win.__cloud.queueMessages;
+win.__cloud.queueMessages = function (rows) {
+  debtQueueCalls += rows.length;
+  lastDebtRows = rows;
+  return Promise.resolve([]);
+};
+click('[data-act="nav"][data-screen="students"]');
+const schoolCard4 = qa('.student-card').filter(c => c.textContent.includes('Malika Yusupova'))[0];
+check(!schoolCard4.querySelector('[data-act="debt-add"]') &&
+      !schoolCard4.querySelector('[data-act="pay-student"]') &&
+      !schoolCard4.querySelector('.pay-status') &&
+      !schoolCard4.querySelector('[data-act="remind-student"]'),
+  "maktab guruhi kartasida pul/qarz/to'lov tugmalari umuman yo'q");
+const azizCard4 = qa('.student-card').filter(c => c.textContent.includes('Aziz Rahimov'))[0];
+check(!!azizCard4.querySelector('[data-act="debt-add"]') &&
+      !!azizCard4.querySelector('[data-act="pay-student"]'),
+  "repetitor guruhida '➕ Qarz qo'shish' + '💵 To'lov kiritish' tugmalari bor");
+const addDebtTo = (name, sum) => {
+  const card = qa('.student-card').filter(c => c.textContent.includes(name))[0];
+  click(card.querySelector('[data-act="debt-add"]'));
+  setVal('#debt-sum', String(sum));
+  clickAct('save-add-debt');
+};
+addDebtTo('Aziz Rahimov', 50000);
+check(debtQueueCalls === 0,
+  "qarz qo'shish JIMJIT — o'quvchiga Telegram xabari ketmadi");
+const s1Debt = JSON.parse(win.localStorage.getItem('et_students') || '[]').filter(x => x.id === 's1')[0];
+check(s1Debt && Number(s1Debt.paymentDebt) === 50000,
+  "qarz payment_debt ga qo'shildi (50000)");
+const azizCard4b = qa('.student-card').filter(c => c.textContent.includes('Aziz Rahimov'))[0];
+check(!!azizCard4b.querySelector('[data-act="remind-student"]'),
+  "qarzi bor o'quvchi kartasida '🔔 Eslatma yuborish' tugmasi paydo bo'ldi");
+click(azizCard4b.querySelector('[data-act="remind-student"]'));
+check(debtQueueCalls === 1 && lastDebtRows.length === 1,
+  "eslatma faqat tugma bosilganda yuborildi (1 ta)");
+check(lastDebtRows[0].text.includes("⚠️ <b>To'lov eslatmasi!</b>") &&
+      lastDebtRows[0].text.includes('<b>Aziz Rahimov</b>') &&
+      lastDebtRows[0].text.includes("50 000 so'm") &&
+      lastDebtRows[0].text.includes("Iltimos, to'lovni amalga oshirishingizni so'raymiz."),
+  "eslatma matni aynan talab qilingan formatda");
+
 /* ================= 4b. QARZDORLAR EKRANI ================= */
+addDebtTo('Nilufar Ergasheva', 50000);
+check(debtQueueCalls === 1, "ikkinchi qarz ham jimjit qo'shildi");
 click('[data-act="nav"][data-screen="debtors"]');
 check(text().includes('Qarzdorlar') && qa('.debtor-card').length === 2,
   "qarzdorlar: alohida ekranda 2 ta qarzdor");
@@ -459,6 +505,13 @@ check(text().includes('50 000 so\'m') && text().includes('umumiy qarz'),
 check(qa('.debtor-meta').length === 2 && text().includes("Oxirgi to'lov"),
   "qarzdorlar: oxirgi to'lov sanasi maydoni");
 check(!!q('[data-act="remind-debtors"]'), "qarzdorlar: eslatma tugmasi ekranda");
+debtQueueCalls = 0;
+clickAct('remind-debtors');
+check(q('#modal-overlay').hidden === false && q('#modal-sheet').textContent.includes('2 nafar qarzdor'),
+  "qarzdorlar: ommaviy eslatma modali 2 nafar qarzdorni ko'rsatdi");
+clickAct('do-remind-debtors');
+check(debtQueueCalls === 2, "qarzdorlar: ommaviy eslatma 2 ta qarzdorga navbatga qo'yildi");
+win.__cloud.queueMessages = realQueueMessages;
 const firstDebtor = qa('.debtor-card')[0];
 const firstDebtorName = firstDebtor.querySelector('.s-name').textContent;
 click(firstDebtor.querySelector('[data-act="pay-student"]'));
@@ -1149,8 +1202,25 @@ const until = async (fn, ms) => {
   q('#hw-group').value = 'g55';
   setVal('#hw-desc', '10 ta gap tuzing');
   q('#hw-due').value = '2026-10-20';
+  let hwUploadedName = '';
+  win.__cloud.uploadHomeworkMedia = function (file) {
+    hwUploadedName = file.name;
+    return Promise.resolve({
+      url: 'https://demo.supabase.co/storage/v1/object/public/homework-media/hw/dars.mp4',
+      path: 'hw/dars.mp4', bucket: 'homework-media'
+    });
+  };
+  pickHw('dars.mp4', 'video/mp4');
+  check(q('#hw-media-status').textContent.includes('Video'),
+    "uyga vazifa: video fayl tanlandi (yuklashga tayyor)");
   clickAct('save-hw');
-  check(q('#modal-overlay').hidden === true, "uyga vazifa: modal yopildi");
+  check(await until(() => q('#modal-overlay').hidden === true, 2000),
+    "uyga vazifa: modal yopildi (fayl yuklandi)");
+  check(hwUploadedName === 'dars.mp4', "uyga vazifa: fayl Storage'ga yuborildi");
+  const hwMedia = JSON.parse(win.localStorage.getItem('et_homework') || '[]')[0];
+  check(hwMedia && hwMedia.mediaUrl.includes('/homework-media/hw/dars.mp4') &&
+        hwMedia.mediaType === 'video',
+    "uyga vazifa: media_url + media_type saqlandi (bucket homework-media)");
   check(text().includes('Present Perfect shakli'), "uyga vazifa: ro'yxatda ko'rinadi");
   check(text().includes('20.10.2026') || text().includes('2026-10-20'), "uyga vazifa: muddat ko'rinadi");
   const hwLocal = JSON.parse(win.localStorage.getItem('et_homework') || '[]');
@@ -1207,9 +1277,21 @@ const until = async (fn, ms) => {
   click('.confirm-actions [data-act="close-modal"]');
   check(q('#modal-overlay').hidden === true && text().includes('Present Perfect shakli'),
     "o'chirish: bekor qilindi — vazifa o'chirilmadi");
-  /* Tasdiqlash — Supabase+lokal o'chiriladi */
+  /* Tasdiqlash — Supabase+lokal o'chiriladi, Storage'dagi fayl ham */
+  let delHwArgs = null;
+  const realDeleteHw = win.__cloud.deleteHomework;
+  win.__cloud.deleteHomework = function (dbId, mediaUrl) {
+    delHwArgs = { dbId: dbId, mediaUrl: mediaUrl };
+    return Promise.resolve();
+  };
   click(q('[data-act="del-hw"]'));
   click('[data-act="do-del-hw"]');
+  check(!!delHwArgs && String(delHwArgs.mediaUrl).includes('/homework-media/hw/dars.mp4'),
+    "o'chirish: media_url Storage'dan o'chirish uchun uzatildi");
+  check(/async function deleteHomework\(dbId, mediaUrl\)/.test(appJs) &&
+        /remove\(\[filePath\]\)/.test(appJs),
+    "o'chirish: deleteHomework faylni Storage'dan ham remove qiladi");
+  win.__cloud.deleteHomework = realDeleteHw;
   check(q('#modal-overlay').hidden === true, "o'chirish: modal yopildi");
   check(!text().includes('Present Perfect shakli'), "o'chirish: karta UI'dan darhol olib tashlandi");
   check(q('#toast').textContent.includes("Uyga vazifa o'chirildi"), "o'chirish: success toast");
