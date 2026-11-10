@@ -2417,6 +2417,8 @@ function detectMediaType(file) {
   if (m.indexOf('video/') === 0) return 'video';
   if (m.indexOf('audio/') === 0) return 'audio';
   if (m === 'application/pdf' || ext === 'pdf') return 'pdf';
+  /* Hujjat fayllari — havola sifatida saqlanadi va ochiladi */
+  if (['doc', 'docx'].indexOf(ext) >= 0) return 'file';
   return '';
 }
 
@@ -2458,7 +2460,7 @@ function onHwFilePick(inp) {
       if (box) box.innerHTML = hwMediaPreviewHTML(currentHw());
       setHwStatus(tooBig
         ? "Fayl hajmi 50MB dan oshib ketdi — kichikroq fayl tanlang."
-        : "Faqat rasm, video, audio yoki PDF fayl tanlash mumkin.", 'err');
+        : "Faqat rasm, video, audio, PDF yoki hujjat (doc/docx) fayl tanlash mumkin.", 'err');
       return;
     }
   }
@@ -2546,7 +2548,7 @@ function saveHomework() {
     return;
   }
   if (file && !detectMediaType(file)) {
-    if (err) { err.textContent = "Faqat rasm, video, audio yoki PDF fayl tanlang"; err.classList.add('show'); }
+    if (err) { err.textContent = "Faqat rasm, video, audio, PDF yoki hujjat (doc/docx) fayl tanlang"; err.classList.add('show'); }
     return;
   }
   if (file && file.size > HW_MAX_BYTES) {

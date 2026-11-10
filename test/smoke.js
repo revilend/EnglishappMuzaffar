@@ -1138,6 +1138,11 @@ const until = async (fn, ms) => {
   check(q('#hw-media-status').textContent.includes('Audio'),
     "uyga vazifa: audio/mpeg → Audio");
   click('#hw-media-clear');
+  pickHw('insho.docx', '');
+  check(q('#hw-media-status').textContent.includes('tanlandi') &&
+    !q('#hw-media-status').classList.contains('err'),
+    "uyga vazifa: .docx hujjat fayli qabul qilinadi (rad etilmaydi)");
+  click('#hw-media-clear');
   clickAct('save-hw');
   check(q('#hw-error').classList.contains('show'), "uyga vazifa: bo'sh mavzu rad etildi");
   setVal('#hw-title', 'Present Perfect shakli');
