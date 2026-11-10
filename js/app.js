@@ -56,7 +56,9 @@ const K = {
   loginFails: 'et_login_fails',
   speakLog: 'et_speak_log',
   tgsubs: 'et_tg_subs',
-  sessionId: 'et_session_id'
+  sessionId: 'et_session_id',
+  cardSettings: 'et_card_settings',
+  paymentReceipts: 'et_payment_receipts'
 };
 
 /* Toza start: demo guruh/o'quvchi seedlari YO'Q — barcha ma'lumot Supabase'dan keladi.
@@ -679,7 +681,8 @@ const CloudSync = (function () {
       await fetchMessages(null);
       try { await pullSlots(null); } catch (e) { /* speaking_slots yo'q */ }
       try { await pullMonthlyFees(); } catch (e) { /* monthly_fees yo'q */ }
-      try { await pullHomework(); } catch (e) { /* homework jadvali yo'q — SQL hali ishga tushmagan */ }
+      try { await pullHomework(); } catch (e) { /* homework jadvali yo'q */ }
+      try { await pullCardSettings(); } catch (e) { /* bot_settings yo'q */ }
       try { await pullSpeaking(); } catch (e) { /* speaking_submissions yo'q */ }
       /* Ustoz paroli — bot_settings ('teacher_password') dan o'qiladi */
       let teachPw = null;
@@ -793,6 +796,8 @@ const CloudSync = (function () {
 
     try { await pullSlots(dbId); } catch (e) { /* speaking_slots yo'q */ }
     try { await pullMonthlyFees(row.group_id); } catch (e) { /* monthly_fees yo'q */ }
+    try { await pullCardSettings(); } catch (e) { /* bot_settings yo'q */ }
+    try { await pullStudentReceipts(dbId); } catch (e) { /* payment_receipts yo'q */ }
 
     /* hisoblar: faqat shu o'quvchi (ustoz paroli o'quvchi brauzeriga tushmaydi) */
     const key = String(row.login || '').toLowerCase();
@@ -1485,8 +1490,109 @@ const CloudSync = (function () {
     deleteSession: deleteSession,
     listSessions: listSessions,
     sessionExists: sessionExists,
+    pullCardSettings: pullCardSettings,
+    saveCardSettings: saveCardSettings,
+    uploadReceiptImage: uploadReceiptImage,
+    submitPaymentReceipt: submitPaymentReceipt,
+    pullStudentReceipts: pullStudentReceipts,
     url: url
   };
+
+  /* --- To'lov kartasi sozlamalari (bot_settings) --- */
+  async function pullCardSettings() {
+    if (!ready()) return store.get(K.cardSettings, { number: '', holder: '' });
+    try {
+      const res = await client.from('bot_settings').select('key, value').in('key', ['teacher_card_number', 'teacher_card_holder']);
+      if (res.error) return store.get(K.cardSettings, { number: '', holder: '' });
+      const cur = store.get(K.cardSettings, { number: '', holder: '' });
+      (res.data || []).forEach(r => {
+        if (r.key === 'teacher_card_number') cur.number = r.value || '';
+        if (r.key === 'teacher_card_holder') cur.holder = r.value || '';
+      });
+      store.set(K.cardSettings, cur);
+      return cur;
+    } catch (e) {
+      return store.get(K.cardSettings, { number: '', holder: '' });
+    }
+  }
+
+  async function saveCardSettings(number, holder) {
+    const cleanNum = String(number || '').trim();
+    const cleanHolder = String(holder || '').trim().toUpperCase();
+    const cur = { number: cleanNum, holder: cleanHolder };
+    store.set(K.cardSettings, cur);
+    if (!ready()) return true;
+    try {
+      await client.from('bot_settings').upsert([
+        { key: 'teacher_card_number', value: cleanNum },
+        { key: 'teacher_card_holder', value: cleanHolder }
+      ], { onConflict: 'key' });
+      return true;
+    } catch (e) {
+      console.warn('[cloud] saveCardSettings:', (e && e.message) || e);
+      return false;
+    }
+  }
+
+  /* --- To'lov chekini Supabase Storage'ga yuklash va bazaga yozish --- */
+  async function uploadReceiptImage(file) {
+    if (!ready()) throw new Error('Supabase sozlanmagan');
+    const ext = String((file && file.name) || '').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+    const path = 'receipts/' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+    let lastErr = null;
+    for (let i = 0; i < MEDIA_BUCKETS.length; i++) {
+      const bucket = MEDIA_BUCKETS[i];
+      try {
+        const res = await client.storage.from(bucket).upload(path, file, {
+          cacheControl: '3600', upsert: false, contentType: (file && file.type) || 'image/jpeg'
+        });
+        if (res.error) throw res.error;
+        const pub = client.storage.from(bucket).getPublicUrl(path);
+        return { url: pub.data.publicUrl, path: path, bucket: bucket };
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr || new Error('Storage bucket topilmadi');
+  }
+
+  async function submitPaymentReceipt(studentDbId, monthKey, amount, receiptUrl) {
+    if (!ready() || studentDbId == null) return null;
+    try {
+      const res = await client.from('payment_receipts').insert({
+        student_id: studentDbId,
+        month_key: monthKey,
+        amount: Number(amount) || 0,
+        receipt_url: receiptUrl,
+        status: 'kutilmoqda'
+      }).select();
+      if (res.error) throw res.error;
+      const row = res.data && res.data[0] ? res.data[0] : null;
+      if (row) {
+        const list = store.get(K.paymentReceipts, []);
+        list.unshift(row);
+        store.set(K.paymentReceipts, list);
+      }
+      return row;
+    } catch (e) {
+      console.warn('[cloud] submitPaymentReceipt:', (e && e.message) || e);
+      throw e;
+    }
+  }
+
+  async function pullStudentReceipts(studentDbId) {
+    if (!ready() || studentDbId == null) return store.get(K.paymentReceipts, []);
+    try {
+      const res = await client.from('payment_receipts').select('*')
+        .eq('student_id', studentDbId).order('created_at', { ascending: false });
+      if (res.error) return store.get(K.paymentReceipts, []);
+      store.set(K.paymentReceipts, res.data || []);
+      return res.data || [];
+    } catch (e) {
+      return store.get(K.paymentReceipts, []);
+    }
+  }
+
 })();
 
 window.__cloud = CloudSync;
@@ -2984,6 +3090,11 @@ function studentPortal() {
   const monthPaid = paidFor(st.id, per);
   const monthRemain = monthFee > 0 ? Math.max(0, monthFee - monthPaid) : payDebt;
   const payRows = studentPayments(st.id).slice(0, 6);
+  const receipts = store.get(K.paymentReceipts, []);
+  const pendingReceipt = receipts.filter(function (r) {
+    return (r.month_key === per || !r.month_key) && r.status === 'kutilmoqda';
+  })[0];
+
   const payBanner = hideMoney ? '' : `
   <section class="card pay-banner ${monthRemain > 0 ? 'due' : 'ok'}">
     <div class="pay-banner-main">
@@ -2995,6 +3106,16 @@ function studentPortal() {
       <span>Oylik: <b>${monthFee ? fmtSom(monthFee) + " so'm" : 'belgilanmagan'}</b></span>
       <span>${esc(monthLabel(per))} uchun to'langan: <b>${fmtSom(monthPaid)} so'm</b></span>
     </div>
+    ${pendingReceipt ? `
+    <div class="pay-pending-alert" style="margin:8px 0;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;color:#92400e;font-size:13px">
+      ⏳ <b>To'lov cheki ko'rib chiqilmoqda!</b> Ustoz tasdiqlashi bilan qarzingiz o'chiriladi.
+    </div>` : ''}
+    ${monthRemain > 0 && !pendingReceipt ? `
+    <div style="margin:10px 0 6px 0">
+      <button type="button" class="btn btn-primary btn-block" data-act="open-pay-receipt" data-amount="${monthRemain}" data-period="${esc(per)}">
+        💳 Karta orqali to'lash
+      </button>
+    </div>` : ''}
     <div class="pay-banner-history">
       <div class="muted small">To'lovlar tarixi</div>
       ${payRows.length ? payRows.map(function (p) {
@@ -3764,6 +3885,18 @@ function profileScreen() {
       ${CLEANUP_TABLES.map(ct => `<button type="button" class="chip-btn${(state.cleanupTable || 'grades') === ct[0] ? ' active' : ''}" data-act="cleanup-pick" data-table="${ct[0]}">${t(ct[1])}</button>`).join('')}
     </div>
     <button type="button" class="btn btn-danger btn-block" data-act="cleanup-go">${ico('brush', 16)} ${t('Tanlangan jadvalni tozalash')}</button>
+  </div>` : ''}
+
+  
+  ${isTeacher() ? `
+  <div class="section-title">💳 To\'lov kartasi sozlamalari</div>
+  <div class="card card-settings-block">
+    <div class="muted small" style="margin-bottom:8px">O\'quvchilar repetitorlik to\'lovini o\'tkazishi uchun karta raqamingiz va ism-familiyangizni kiriting:</div>
+    <label class="field-label" for="teacher-card-num">Karta raqami (16 ta raqam)</label>
+    <input class="input" id="teacher-card-num" inputmode="numeric" maxlength="24" placeholder="8600 0000 0000 0000" value="${esc((store.get(K.cardSettings) || {}).number || '')}" />
+    <label class="field-label" for="teacher-card-holder" style="margin-top:6px">Karta egasining ism-familiyasi</label>
+    <input class="input" id="teacher-card-holder" autocapitalize="characters" placeholder="MUZAFFAR AMIROV" value="${esc((store.get(K.cardSettings) || {}).holder || '')}" />
+    <button type="button" class="btn btn-primary btn-block" data-act="save-card-settings" style="margin-top:10px">💾 Kartani saqlash</button>
   </div>` : ''}
 
   ${sessionsSectionHTML()}
@@ -5620,6 +5753,102 @@ function rejectTgSub(tid) {
   toast("Topshirik bekor qilindi ✓ (qarz o'zgarmadi)");
 }
 
+
+/* ==================== TO'LOV CHEKI VA KARTA FUNKSIYALARI ==================== */
+function openPayReceiptModal(amount, period) {
+  const card = store.get(K.cardSettings, { number: '8600 0000 0000 0000', holder: 'MUZAFFAR AMIROV' });
+  const rawNum = String(card.number || '8600 0000 0000 0000').replace(/\s+/g, '');
+  const fmtCard = rawNum.replace(/(\d{4})/g, '$1 ').trim();
+  const cardHolder = card.holder || 'MUZAFFAR AMIROV';
+  const sum = Number(amount) || 0;
+  const per = period || currentPeriod();
+
+  openModal(`
+    <div class="modal-head">
+      <h3>💳 Karta orqali to'lov</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+
+    <div class="bank-card-box" style="background:linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);color:#fff;border-radius:14px;padding:16px;margin:8px 0 12px 0;box-shadow:0 6px 18px rgba(37,99,235,0.25)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span style="font-size:12px;letter-spacing:1px;font-weight:700;opacity:0.9">UZCARD / HUMO</span>
+        <span style="font-size:18px">💳</span>
+      </div>
+      <div style="font-family:monospace;font-size:18px;letter-spacing:2px;font-weight:700;margin-bottom:12px">${esc(fmtCard)}</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end">
+        <div>
+          <div style="font-size:10px;opacity:0.75;text-transform:uppercase">Karta egasi</div>
+          <div style="font-size:13px;font-weight:600;letter-spacing:0.5px">${esc(cardHolder)}</div>
+        </div>
+        <button type="button" class="btn btn-xs" data-act="copy-card" data-card="${esc(rawNum)}" style="background:#fff;color:#1e3a8a;font-weight:600;border:none;border-radius:6px;padding:4px 10px">📋 Nusxalash</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:10px;padding:10px">
+      <div class="row between"><span class="muted small">Oy:</span><b>${esc(monthLabel(per))}</b></div>
+      <div class="row between" style="margin-top:4px"><span class="muted small">To'lanadigan summa:</span><b style="color:var(--primary,#2563eb);font-size:16px">${fmtSom(sum)} so'm</b></div>
+    </div>
+
+    <div class="receipt-upload" style="margin-bottom:12px">
+      <label class="field-label" for="receipt-file">📎 To'lov chekini yuklash (Rasm):</label>
+      <input type="file" id="receipt-file" accept="image/*" class="input" style="padding:6px" />
+      <div id="receipt-preview-wrap" style="display:none;margin-top:8px;text-align:center">
+        <img id="receipt-preview-img" src="" alt="Chek rasmi" style="max-height:160px;max-width:100%;border-radius:8px;border:1px solid #e2e8f0" />
+      </div>
+      <div class="field-error" id="receipt-error"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
+      <button type="button" class="btn btn-primary" data-act="do-submit-receipt" data-amount="${sum}" data-period="${esc(per)}">📤 Chekni yuborish</button>
+    </div>
+  `);
+
+  const fi = $('#receipt-file');
+  if (fi) {
+    fi.addEventListener('change', function () {
+      const file = fi.files && fi.files[0];
+      const wrap = $('#receipt-preview-wrap');
+      const img = $('#receipt-preview-img');
+      if (file && wrap && img && window.URL) {
+        img.src = URL.createObjectURL(file);
+        wrap.style.display = 'block';
+      }
+    });
+  }
+}
+
+async function doSubmitPaymentReceipt() {
+  const fi = $('#receipt-file');
+  const file = fi && fi.files && fi.files[0];
+  const err = $('#receipt-error');
+  if (!file) {
+    if (err) { err.textContent = "Iltimos, to'lov cheki rasmini tanlang"; err.classList.add('show'); }
+    return;
+  }
+  const btn = $('[data-act="do-submit-receipt"]');
+  const amount = Number(btn ? btn.getAttribute('data-amount') : 0) || 0;
+  const period = btn ? btn.getAttribute('data-period') : currentPeriod();
+  const st = linkedStudent();
+  if (!st || st.dbId == null) {
+    toast("O'quvchi ma'lumoti topilmadi", 'error');
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Yuklanmoqda...'; }
+  try {
+    const uploadRes = await CloudSync.uploadReceiptImage(file);
+    await CloudSync.submitPaymentReceipt(st.dbId, period, amount, uploadRes.url);
+    closeModal();
+    render();
+    toast("⏳ Chekingiz qabul qilindi! Ustoz tasdiqlashi bilan qarzingiz o'chiriladi.");
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '📤 Chekni yuborish'; }
+    if (err) { err.textContent = "Yuklashda xatolik: " + ((e && e.message) || 'xatolik'); err.classList.add('show'); }
+  }
+}
+
+
 document.addEventListener('click', function (e) {
   const btn = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
   if (!btn) return;
@@ -5844,6 +6073,29 @@ document.addEventListener('click', function (e) {
     'save-add-debt': function () { saveAddedDebt(btn.getAttribute('data-sid')); },
     'remind-student': function () { remindStudent(btn.getAttribute('data-sid')); },
     'save-pay': function () { savePayment(btn.getAttribute('data-sid')); },
+    'save-card-settings': function () {
+      if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+      const num = ($('#teacher-card-num') ? $('#teacher-card-num').value : '').trim();
+      const holder = ($('#teacher-card-holder') ? $('#teacher-card-holder').value : '').trim();
+      CloudSync.saveCardSettings(num, holder);
+      toast("Karta sozlamalari saqlandi ✓");
+    },
+    'open-pay-receipt': function () {
+      openPayReceiptModal(btn.getAttribute('data-amount'), btn.getAttribute('data-period'));
+    },
+    'copy-card': function () {
+      const card = btn.getAttribute('data-card') || '';
+      if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(card).then(function () {
+          toast("Karta raqami nusxalandi! ✓");
+        }).catch(function () {
+          toast("Karta: " + card);
+        });
+      } else {
+        toast("Karta: " + card);
+      }
+    },
+    'do-submit-receipt': doSubmitPaymentReceipt,
     'att-toggle': function () { state.attOpen = !state.attOpen; render(); },
     'remind-debtors': openRemindDebtors,
     'do-remind-debtors': sendDebtorsReminder,
