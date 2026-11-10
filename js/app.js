@@ -2359,7 +2359,7 @@ function openHwModal(hid) {
           <span class="hw-upload-ico" aria-hidden="true">📁</span>
           <span>Fayl tanlash</span>
         </label>
-        <input type="file" id="hw-media-input" class="hw-file-input" accept=".jpg,.jpeg,.png,.mp4,.mov,.webm,.mp3,.wav,.m4a,.aac,.pdf" />
+        <input type="file" id="hw-media-input" class="hw-file-input" accept="image/*,video/*,audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.mp4,.mov,.pdf,.doc,.docx" />
         <button type="button" id="hw-media-clear" class="hw-upload-clear" data-act="hw-clear-file" aria-label="Tanlangan faylni bekor qilish" hidden>✕</button>
       </div>
       <p id="hw-media-status" class="hw-upload-status">Maksimal hajm: 50MB (Rasm, mp4 video yoki mp3 audio)</p>
@@ -2408,13 +2408,14 @@ function revokeHwPreview() {
 
 function detectMediaType(file) {
   const m = String((file && file.type) || '').toLowerCase();
+  const ext = String((file && file.name) || '').split('.').pop().toLowerCase();
+  /* Avval aniq kengaytmalar — ba'zi telefonlar mime-type'ni bo'sh yuboradi */
+  if (['mp3', 'wav', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'weba', 'flac'].indexOf(ext) >= 0) return 'audio';
+  if (['mp4', 'mov', 'avi', 'webm', 'm4v', 'mkv', '3gp'].indexOf(ext) >= 0) return 'video';
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'heic', 'heif'].indexOf(ext) >= 0) return 'image';
   if (m.indexOf('image/') === 0) return 'image';
   if (m.indexOf('video/') === 0) return 'video';
   if (m.indexOf('audio/') === 0) return 'audio';
-  const ext = String((file && file.name) || '').split('.').pop().toLowerCase();
-  if (['png', 'jpg', 'jpeg', 'webp', 'gif'].indexOf(ext) >= 0) return 'image';
-  if (['mp4', 'webm', 'mov', 'm4v'].indexOf(ext) >= 0) return 'video';
-  if (['mp3', 'm4a', 'ogg', 'wav', 'aac'].indexOf(ext) >= 0) return 'audio';
   if (m === 'application/pdf' || ext === 'pdf') return 'pdf';
   return '';
 }
@@ -2457,7 +2458,7 @@ function onHwFilePick(inp) {
       if (box) box.innerHTML = hwMediaPreviewHTML(currentHw());
       setHwStatus(tooBig
         ? "Fayl hajmi 50MB dan oshib ketdi — kichikroq fayl tanlang."
-        : "Faqat rasm, video yoki audio fayl tanlash mumkin.", 'err');
+        : "Faqat rasm, video, audio yoki PDF fayl tanlash mumkin.", 'err');
       return;
     }
   }
@@ -2545,7 +2546,7 @@ function saveHomework() {
     return;
   }
   if (file && !detectMediaType(file)) {
-    if (err) { err.textContent = "Faqat rasm, video yoki audio fayl tanlang"; err.classList.add('show'); }
+    if (err) { err.textContent = "Faqat rasm, video, audio yoki PDF fayl tanlang"; err.classList.add('show'); }
     return;
   }
   if (file && file.size > HW_MAX_BYTES) {
@@ -2611,7 +2612,8 @@ function applyMonthlyFees() {
   let changed = 0;
   const list = getStudents().map(function (s) {
     const g = groupById(s.groupId);
-    const fee = g ? Math.max(0, Number(g.monthlyFee) || 0) : 0;
+    /* Maktab guruhi — bepul: oylik to'lov qarzga qo'shilmaydi */
+    const fee = (g && !isSchoolGroup(g)) ? Math.max(0, Number(g.monthlyFee) || 0) : 0;
     if (!fee || s.feePeriod === period) return s;
     changed += 1;
     return Object.assign({}, s, {
@@ -2924,7 +2926,9 @@ function groupCard(g, students) {
         : `<div class="meta-row">${ico('calendar', 15)} <span>${esc(g.days)}</span></div>
            <div class="meta-row">${ico('clock', 15)} <span>${esc(g.time)}</span></div>`}
     </div>
-    <div class="gc-fee">💵 Oylik to'lov: ${fee > 0 ? `<b>${fmtSom(fee)} so'm</b>` : `<span class="muted">belgilanmagan</span>`}</div>
+    <div class="gc-fee">${tutoring
+      ? `💵 Oylik to'lov: ${fee > 0 ? `<b>${fmtSom(fee)} so'm</b>` : `<span class="muted">belgilanmagan</span>`}`
+      : `🎁 <b>Bepul</b> <span class="muted">(maktab guruhi)</span>`}</div>
     <div class="muted small" style="margin-top:7px">Bosib, guruh o'quvchilarini ko'rish</div>
     <div class="gc-actions">
       <button type="button" class="btn btn-ghost btn-sm" data-act="grade-group-go" data-group="${g.id}">${ico('grades', 15)} Baholar</button>
@@ -3332,11 +3336,14 @@ function openAddGroup() {
     </div>
     <p class="muted small" style="margin-top:6px">Guruh turi faqat sizga ko'rinadi — o'quvchilarga hech qachon ko'rsatilmaydi.</p>
 
-    <label class="field-label" for="f-gfee">Oylik to'lov summasi (so'mda)</label>
-    <input class="input" id="f-gfee" type="number" min="0" step="1000" inputmode="numeric" placeholder="Masalan: 300000" />
+    <div id="f-gfee-wrap">
+      <label class="field-label" for="f-gfee">Oylik to'lov summasi (so'mda)</label>
+      <input class="input" id="f-gfee" type="number" min="0" step="1000" inputmode="numeric" placeholder="Masalan: 300000" />
+    </div>
 
     <button type="button" class="btn btn-primary btn-block" data-act="save-group">Saqlash</button>
   `);
+  syncGroupFeeField();
 }
 
 /* Tanlangan kunlar uchun dinamik vaqt tanlagichlari (yagona vaqt inputi YO'Q) */
@@ -3357,6 +3364,17 @@ function renderDayTimes() {
         <span class="dt-day">${esc(d)}</span>
         <input class="input dt-time" type="time" data-day="${esc(d)}" value="${esc(prev[d] || '')}" aria-label="${esc(d)} dars vaqti" />
       </div>`).join('')}`;
+}
+
+/* Guruh turi 'school' bo'lsa — oylik to'lov maydoni butunlay yashiriladi (bepul) */
+function syncGroupFeeField() {
+  const wrap = $('#f-gfee-wrap');
+  if (!wrap) return;
+  const typeBtn = $$('input[name="f-gtype"]').filter(i => i.checked)[0];
+  const isSchool = !typeBtn || typeBtn.value === 'school';
+  wrap.hidden = isSchool;
+  const feeInput = $('#f-gfee');
+  if (isSchool && feeInput) feeInput.value = '';
 }
 
 function openAddStudent() {
@@ -3414,9 +3432,11 @@ function saveGroup() {
   const encoded = days.map(d => (times[d] ? d + ' ' + times[d] : d)).join(', ');
   const firstTime = days.map(d => times[d] || '').filter(Boolean)[0] || '';
 
-  const fee = Math.max(0, Math.round(Number(($('#f-gfee') ? $('#f-gfee').value : 0)) || 0));
   const typeBtn = $$('input[name="f-gtype"]').filter(i => i.checked)[0];
   const groupType = typeBtn && typeBtn.value === 'tutoring' ? 'tutoring' : 'school';
+  /* Maktab guruhi — bepul: to'lov maydoni yashirin va summa 0 */
+  const fee = groupType === 'school' ? 0
+    : Math.max(0, Math.round(Number(($('#f-gfee') ? $('#f-gfee').value : 0)) || 0));
   const groups = getGroups();
   groups.push({ id: 'g' + Date.now(), name, days: encoded, time: firstTime, monthlyFee: fee, groupType: groupType });
   store.set(K.groups, groups);
@@ -3476,8 +3496,10 @@ function openEditGroup(gid) {
     </div>
     <p class="muted small" style="margin-top:6px">Guruh turi faqat sizga ko'rinadi — o'quvchilarga hech qachon ko'rsatilmaydi.</p>
 
-    <label class="field-label" for="f-gfee">Oylik to'lov summasi (so'mda)</label>
-    <input class="input" id="f-gfee" type="number" min="0" step="1000" inputmode="numeric" value="${g && g.monthlyFee ? String(g.monthlyFee) : ''}" placeholder="Masalan: 300000" />
+    <div id="f-gfee-wrap">
+      <label class="field-label" for="f-gfee">Oylik to'lov summasi (so'mda)</label>
+      <input class="input" id="f-gfee" type="number" min="0" step="1000" inputmode="numeric" value="${g && g.monthlyFee ? String(g.monthlyFee) : ''}" placeholder="Masalan: 300000" />
+    </div>
 
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
@@ -3489,6 +3511,7 @@ function openEditGroup(gid) {
     const d = inp.getAttribute('data-day');
     if (d && preset[d]) inp.value = preset[d];
   });
+  syncGroupFeeField();
 }
 
 function saveEditGroup(gid) {
@@ -3508,9 +3531,10 @@ function saveEditGroup(gid) {
   const encoded = days.map(d => (times[d] ? d + ' ' + times[d] : d)).join(', ');
   const firstTime = days.map(d => times[d] || '').filter(Boolean)[0] || '';
 
-  const fee = Math.max(0, Math.round(Number(($('#f-gfee') ? $('#f-gfee').value : 0)) || 0));
   const typeBtn = $$('input[name="f-gtype"]').filter(i => i.checked)[0];
   const groupType = typeBtn && typeBtn.value === 'tutoring' ? 'tutoring' : 'school';
+  const fee = groupType === 'school' ? 0
+    : Math.max(0, Math.round(Number(($('#f-gfee') ? $('#f-gfee').value : 0)) || 0));
   const list = getGroups().map(x => String(x.id) === String(gid)
     ? Object.assign({}, x, { name: name, days: encoded, time: firstTime, monthlyFee: fee, groupType: groupType })
     : x);
@@ -5408,6 +5432,8 @@ document.addEventListener('change', function (e) {
   if (t.id === 'sp-date' && t.value) { state.speakDate = t.value; render(); }
   /* Guruh modali: yangi kun belgilandi → o'sha kun uchun vaqt picker chiqadi */
   if (t.closest && t.closest('#f-days')) { renderDayTimes(); }
+  /* Guruh turi o'zgardi → maktab guruhida oylik to'lov maydoni yashiriladi */
+  if (t.name === 'f-gtype') { syncGroupFeeField(); }
   if (t.id === 'backup-file' && t.files && t.files[0]) {
     readBackupFile(t.files[0]);
     t.value = '';

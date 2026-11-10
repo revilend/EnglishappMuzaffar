@@ -1164,8 +1164,14 @@ async def monthly_fee_tick() -> int:
     """Joriy oy uchun guruh oylik to'lovini o'quvchi qarziga bir marta qo'shadi."""
     period = datetime.now(timezone.utc).strftime("%Y-%m")
     try:
-        groups = supabase.table("groups").select("id, monthly_fee").execute().data or []
-        fees = {g["id"]: int(g.get("monthly_fee") or 0) for g in groups}
+        try:
+            groups = supabase.table("groups").select("id, monthly_fee, group_type").execute().data or []
+        except Exception:
+            # group_type ustuni hali qo'shilmagan — eski sxema bilan
+            groups = supabase.table("groups").select("id, monthly_fee").execute().data or []
+        # Maktab guruhi (bepul): oylik to'lov hech qachon qarzga qo'shilmaydi
+        fees = {g["id"]: int(g.get("monthly_fee") or 0) for g in groups
+                if str(g.get("group_type") or "") != "school"}
         studs = supabase.table("students").select(
             "id, group_id, payment_debt, fee_period"
         ).execute().data or []

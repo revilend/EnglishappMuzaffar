@@ -814,7 +814,25 @@ async def main():
           and "9/10" in notes_school[-1],
           "guruh turi: baho xabarida ham 'qarz' yo'q (faqat ball)")
 
+    # maktab guruhiga oylik to'lov yozilmaydi (haqiqatan bepul)
+    [x for x in FAKE_ROWS["groups"] if x["id"] == 1][0]["monthly_fee"] = 50000
+    [x for x in FAKE_ROWS["students"] if x["id"] == 1][0]["fee_period"] = ""
+    [x for x in FAKE_ROWS["students"] if x["id"] == 4][0]["fee_period"] = ""
+    charged = await B.monthly_fee_tick()
+    check(charged >= 1, "moliya: repetitorlik guruhiga oylik to'lov yozildi")
+    tutor_st = [x for x in FAKE_ROWS["students"] if x["id"] == 1][0]
+    check(int(tutor_st.get("payment_debt") or 0) == 50000,
+          "moliya: repetitorlik o'quvchisiga oylik qarz qo'shildi")
+    school_st = [x for x in FAKE_ROWS["students"] if x["id"] == 4][0]
+    check(int(school_st.get("payment_debt") or 0) == 0,
+          "moliya: maktab guruhi o'quvchisiga oylik qarz qo'shilmadi (bepul)")
+
     # keyingi bo'limlar uchun vaqtinchalik qatorlarni olib tashlaymiz
+    [x for x in FAKE_ROWS["groups"] if x["id"] == 1][0]["monthly_fee"] = 0
+    for _sid in (1, 2, 3):
+        _st = [x for x in FAKE_ROWS["students"] if x["id"] == _sid][0]
+        _st.pop("payment_debt", None)
+        _st.pop("fee_period", None)
     FAKE_ROWS["students"] = [x for x in FAKE_ROWS["students"] if x["id"] != 4]
     FAKE_ROWS["groups"] = [x for x in FAKE_ROWS["groups"] if x["id"] != 2]
     FAKE_ROWS["grades"] = [x for x in FAKE_ROWS["grades"] if x.get("student_id") != 4]

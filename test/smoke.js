@@ -271,6 +271,19 @@ check(qa('#f-gtype input[type="radio"]').length === 2,
 check(qa('#f-gtype input').filter(i => i.checked).length === 1 &&
       qa('#f-gtype input').filter(i => i.checked)[0].value === 'school',
   "guruh turi: standart qiymat — 'school' (Maktab guruhi)");
+check(q('#f-gfee-wrap') && q('#f-gfee-wrap').hidden === true,
+  "maktab guruhi: oylik to'lov maydoni yashirin (bepul)");
+const gtypePick = val => {
+  const r = qa('#f-gtype input').filter(i => i.value === val)[0];
+  r.checked = true;
+  r.dispatchEvent(new win.Event('change', { bubbles: true }));
+};
+gtypePick('tutoring');
+check(q('#f-gfee-wrap').hidden === false,
+  "repetitor guruhi: oylik to'lov maydoni ko'rinadi");
+gtypePick('school');
+check(q('#f-gfee-wrap').hidden === true,
+  "maktab guruhi: tur qayta tanlanganda maydon yana yashirildi");
 check(qa('#f-times .dt-time').length === 0, "vaqt: kun tanlanmaguncha picker yo'q");
 setVal('#f-gname', 'Vaqtli Guruh');
 const pickDay = name => {
@@ -304,6 +317,7 @@ const newGrp = JSON.parse(win.localStorage.getItem('et_groups')).filter(g => g.n
 check(!!newGrp && newGrp.days === 'Dushanba 09:15, Shanba 11:00', "vaqt: 'kun + vaqt' har bir kun uchun saqlandi");
 check(newGrp.time === '09:15', "vaqt: legacy time maydoni birinchi tanlangan vaqt bilan to'ldirildi");
 check(newGrp.groupType === 'school', "guruh turi: yangi guruh 'school' bo'lib saqlandi (tanlanmagan → standart)");
+check(Number(newGrp.monthlyFee) === 0, "maktab guruhi: oylik to'lov 0 (haqiqatan bepul)");
 check(groupCards() === 3, "guruh: yangi guruh karta bo'ldi (3 ta)");
 check(text().includes('Dushanba 09:15') && text().includes('Shanba 11:00') && text().includes(' • '),
   "vaqt: karta formati 'Dushanba 09:15 • Shanba 11:00'");
@@ -364,6 +378,11 @@ check(!JSON.parse(win.localStorage.getItem('et_groups')).some(g => g.name === 'V
 /* --- Avtomatik oylik to'lov: guruh narxi qarzga oyiga bir marta qo'shiladi --- */
 win.localStorage.setItem('et_students', JSON.stringify(JSON.parse(win.localStorage.getItem('et_students') || '[]').map(s => Object.assign({}, s, { paymentDebt: 0, feePeriod: '' }))));
 click(qa('.group-card').filter(c => c.textContent.includes('IELTS Band 7.0'))[0].querySelector('[data-act="edit-group"]'));
+check(q('#f-gfee-wrap').hidden === true,
+  "moliya: maktab guruhini tahrirlashda to'lov maydoni yashirin");
+gtypePick('tutoring');
+check(q('#f-gfee-wrap').hidden === false,
+  "moliya: repetitorlikka o'tkazilganda to'lov maydoni paydo bo'ldi");
 setVal('#f-gfee', '50000');
 clickAct('save-edit-group');
 click('[data-act="nav"][data-screen="home"]');
@@ -374,6 +393,22 @@ click('[data-act="nav"][data-screen="home"]');
 const feeSt2 = JSON.parse(win.localStorage.getItem('et_students') || '[]').filter(s => s.groupId === 'g1');
 check(JSON.stringify(feeSt2.map(s => [s.id, s.paymentDebt, s.feePeriod])) === JSON.stringify(feeSt1.map(s => [s.id, s.paymentDebt, s.feePeriod])),
   "moliya: oylik qarz oy ichida takror qo'shilmaydi");
+click('[data-act="nav"][data-screen="groups"]');
+/* IELTS qaytadan maktab guruhiga o'tkaziladi — to'lov maydoni yashirin, summa 0 */
+click(qa('.group-card').filter(c => c.textContent.includes('IELTS Band 7.0'))[0].querySelector('[data-act="edit-group"]'));
+gtypePick('school');
+check(q('#f-gfee-wrap').hidden === true,
+  "moliya: maktab guruhiga qaytarilganda to'lov maydoni yashirin");
+clickAct('save-edit-group');
+const schoolGrp = JSON.parse(win.localStorage.getItem('et_groups') || '[]').filter(g => g.id === 'g1')[0];
+check(schoolGrp.groupType === 'school' && Number(schoolGrp.monthlyFee) === 0,
+  "moliya: maktab guruhi bepul — oylik to'lov 0 ga tushirildi");
+check(text().includes('Bepul'),
+  "moliya: maktab guruh kartasida '🎁 Bepul' ko'rinadi");
+click('[data-act="nav"][data-screen="home"]');
+const feeSt3 = JSON.parse(win.localStorage.getItem('et_students') || '[]').filter(s => s.groupId === 'g1');
+check(feeSt3.every(s => Number(s.paymentDebt) === 50000),
+  "moliya: maktab guruhida yangi oylik qarz qo'shilmaydi");
 click('[data-act="nav"][data-screen="groups"]');
 
 /* --- Guruh kartasini bosish → faqat shu guruh o'quvchilari --- */
@@ -1068,8 +1103,8 @@ const until = async (fn, ms) => {
     q('#hw-media-status').textContent.includes('50MB'),
     "uyga vazifa: ✕ tanlangan faylni bekor qiladi");
   check(q('#hw-media-input').getAttribute('accept') ===
-    '.jpg,.jpeg,.png,.mp4,.mov,.webm,.mp3,.wav,.m4a,.aac,.pdf',
-    "uyga vazifa: accept aniq kengaytmalar (kamera emas, fayllar/galereya)");
+    'image/*,video/*,audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.mp4,.mov,.pdf,.doc,.docx',
+    "uyga vazifa: accept audio/musiqa + video + rasm + pdf/doc fayllarni qabul qiladi");
   check(!q('#hw-media-input').hasAttribute('capture'),
     "uyga vazifa: capture atributi yo'q — telefon kamerani avtomatik ochmaydi");
   /* PDF ham qabul qilinadi va havola sifatida ko'rsatiladi */
@@ -1079,6 +1114,29 @@ const until = async (fn, ms) => {
   check(q('#hw-media-status').textContent.includes('insho.pdf') &&
     q('#hw-media-status').textContent.includes('PDF'),
     "uyga vazifa: PDF fayl qabul qilinadi (📄 PDF)");
+  click('#hw-media-clear');
+  /* Audio/musiqa: mime-type bo'sh bo'lsa ham kengaytma bo'yicha aniqlanadi */
+  const pickHw = (name, type) => {
+    const f = new win.File([new Uint8Array([1])], name, { type: type });
+    Object.defineProperty(fInput, 'files', { configurable: true, value: [f] });
+    fInput.dispatchEvent(new win.Event('change'));
+  };
+  pickHw('musiqa.opus', '');
+  check(q('#hw-media-status').textContent.includes('Audio') &&
+    q('#hw-file-box').textContent.includes('musiqa.opus'),
+    "uyga vazifa: .opus (mime bo'sh) → 🎧 Audio deb aniqlandi");
+  click('#hw-media-clear');
+  pickHw('trek.m4a', '');
+  check(q('#hw-media-status').textContent.includes('Audio'),
+    "uyga vazifa: .m4a → Audio");
+  click('#hw-media-clear');
+  pickHw('klip.avi', '');
+  check(q('#hw-media-status').textContent.includes('Video'),
+    "uyga vazifa: .avi → Video");
+  click('#hw-media-clear');
+  pickHw('ovoz.mp3', 'audio/mpeg');
+  check(q('#hw-media-status').textContent.includes('Audio'),
+    "uyga vazifa: audio/mpeg → Audio");
   click('#hw-media-clear');
   clickAct('save-hw');
   check(q('#hw-error').classList.contains('show'), "uyga vazifa: bo'sh mavzu rad etildi");
