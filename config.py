@@ -7,3 +7,5 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))  # Teacher Telegram ID
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://teachermuzaffar.uz/")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://mvjoeqyqaylfccqcnwwe.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_publishable_PHMC_kfQfu5BLFgDOzHsjw_B0VO2xDI")
+
+PAYMENTS_CHANNEL_ID = os.getenv("PAYMENTS_CHANNEL_ID", "")

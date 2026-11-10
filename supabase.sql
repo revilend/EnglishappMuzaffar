@@ -268,3 +268,15 @@ alter table public.payment_receipts enable row level security;
 drop policy if exists "demo payment_receipts all" on public.payment_receipts;
 create policy "demo payment_receipts all" on public.payment_receipts
   for all using (true) with check (true);
+
+-- Ikki tomonlama to'lov xabarnomalari (kanal + ustoz lichkasi) va rad sabablari uchun
+alter table public.payment_receipts add column if not exists note text;
+alter table public.payment_receipts add column if not exists admin_message_id bigint;
+alter table public.payment_receipts add column if not exists admin_chat_id text;
+alter table public.payment_receipts add column if not exists channel_message_id bigint;
+alter table public.payment_receipts add column if not exists channel_chat_id text;
+
+-- payments_channel_id sozlamasi
+insert into public.bot_settings (key, value) values
+  ('payments_channel_id', '')
+on conflict (key) do nothing;

@@ -1583,7 +1583,8 @@ async def on_free_text(message: types.Message):
 
 
 # ============================================================
-# Karta to'lov cheklari (payment_receipts) — Kuzatuvchi va Tasdiqlash
+# Karta to'lov cheklari (payment_receipts) — Ikki tomonlama (Kanal + Lichka)
+# va Rad etishda sabab so'rash tizimi
 # ============================================================
 MONTHS_UZ_MAP = {
     "01": "Yanvar", "02": "Fevral", "03": "Mart", "04": "Aprel",
@@ -1601,6 +1602,48 @@ def format_month_key(key: str) -> str:
         return f"{m_name} {year}"
     return str(key)
 
+REJECTION_REASONS = {
+    "not_received": "Pul hisobga kelib tushmadi",
+    "blurry": "Chek rasmi xira yoki noaniq (ma'lumotlar o'qilmadi)",
+    "short": "To'lov summasi to'liq emas",
+}
+
+def get_payments_channel_id():
+    ch = getattr(config, "PAYMENTS_CHANNEL_ID", None) or os.getenv("PAYMENTS_CHANNEL_ID")
+    if ch:
+        return ch
+    try:
+        res = supabase.table("bot_settings").select("value").eq("key", "payments_channel_id").limit(1).execute().data
+        if res and res[0].get("value"):
+            val = str(res[0]["value"]).strip()
+            if val:
+                try:
+                    return int(val)
+                except ValueError:
+                    return val
+    except Exception as e:
+        logging.warning(f"get_payments_channel_id error: {e}")
+    return None
+
+def receipt_main_keyboard(r_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"pay_ok:{r_id}"),
+            InlineKeyboardButton(text="❌ Rad etish", callback_data=f"pay_reject:{r_id}")
+        ]
+    ])
+
+def receipt_reject_reasons_keyboard(r_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💳 Pul hisobga tushmadi", callback_data=f"rej_res:{r_id}:not_received")],
+        [InlineKeyboardButton(text="📸 Chek xira / noaniq", callback_data=f"rej_res:{r_id}:blurry")],
+        [InlineKeyboardButton(text="💰 Summa to'liq emas", callback_data=f"rej_res:{r_id}:short")],
+        [InlineKeyboardButton(text="✏️ Boshqa sabab yozish", callback_data=f"rej_res:{r_id}:custom")],
+        [InlineKeyboardButton(text="↩️ Bekor qilish", callback_data=f"pay_cancel:{r_id}")]
+    ])
+
+# Custom izoh yozish kutayotgan adminlar: admin_id -> {"receipt_id": ..., "chat_id": ..., "message_id": ...}
+pending_custom_rejections = {}
 
 _last_receipt_seen = None
 
@@ -1634,41 +1677,69 @@ async def broadcast_receipt_to_admin(receipt: dict):
         "To'lov tushganini tekshirib, tasdiqlang:"
     ).replace(",", " ")
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"pay_ok:{r_id}"),
-            InlineKeyboardButton(text="❌ Rad etish", callback_data=f"pay_no:{r_id}")
-        ]
-    ])
+    kb = receipt_main_keyboard(r_id)
+    admin_msg_id = None
+    channel_msg_id = None
+    channel_chat_id = get_payments_channel_id()
 
+    # 1. Muzaffar Amirov lichkasiga yuborish
     try:
         if receipt_url:
-            await bot.send_photo(
+            m = await bot.send_photo(
                 chat_id=config.ADMIN_ID,
                 photo=receipt_url,
                 caption=caption,
                 reply_markup=kb,
                 parse_mode="HTML"
             )
+            admin_msg_id = m.message_id
         else:
-            await bot.send_message(
+            m = await bot.send_message(
                 chat_id=config.ADMIN_ID,
                 text=caption,
                 reply_markup=kb,
                 parse_mode="HTML"
             )
+            admin_msg_id = m.message_id
     except Exception as e:
         logging.error(f"send receipt to admin: {e}")
+
+    # 2. Yopiq to'lovlar kanaliga yuborish (agar payments_channel_id sozlangan bo'lsa)
+    if channel_chat_id:
         try:
-            fallback_text = caption + f"\n\n📎 <b>Chek havolasi:</b> {receipt_url}"
-            await bot.send_message(
-                chat_id=config.ADMIN_ID,
-                text=fallback_text,
-                reply_markup=kb,
-                parse_mode="HTML"
-            )
-        except Exception as e2:
-            logging.error(f"fallback send receipt to admin: {e2}")
+            if receipt_url:
+                cm = await bot.send_photo(
+                    chat_id=channel_chat_id,
+                    photo=receipt_url,
+                    caption=caption,
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
+                channel_msg_id = cm.message_id
+            else:
+                cm = await bot.send_message(
+                    chat_id=channel_chat_id,
+                    text=caption,
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
+                channel_msg_id = cm.message_id
+        except Exception as e_ch:
+            logging.error(f"send receipt to channel ({channel_chat_id}): {e_ch}")
+
+    # 3. Message ID larni saqlash (sinxron tahrirlash uchun)
+    try:
+        update_data = {}
+        if admin_msg_id:
+            update_data["admin_message_id"] = admin_msg_id
+            update_data["admin_chat_id"] = str(config.ADMIN_ID)
+        if channel_msg_id:
+            update_data["channel_message_id"] = channel_msg_id
+            update_data["channel_chat_id"] = str(channel_chat_id)
+        if update_data:
+            supabase.table("payment_receipts").update(update_data).eq("id", r_id).execute()
+    except Exception as e_up:
+        logging.warning(f"save receipt message ids: {e_up}")
 
 async def receipt_tick() -> int:
     global _last_receipt_seen
@@ -1704,12 +1775,37 @@ async def receipt_watcher():
             logging.warning(f"receipt watcher loop: {e}")
         await asyncio.sleep(6)
 
+async def _sync_receipt_messages(receipt: dict, new_text: str):
+    targets = [
+        (receipt.get("admin_chat_id") or config.ADMIN_ID, receipt.get("admin_message_id")),
+        (receipt.get("channel_chat_id"), receipt.get("channel_message_id"))
+    ]
+    for chat_id, msg_id in targets:
+        if not chat_id or not msg_id:
+            continue
+        try:
+            await bot.edit_message_caption(
+                chat_id=int(chat_id) if str(chat_id).lstrip("-").isdigit() else str(chat_id),
+                message_id=int(msg_id),
+                caption=new_text,
+                reply_markup=None,
+                parse_mode="HTML"
+            )
+        except Exception:
+            try:
+                await bot.edit_message_text(
+                    chat_id=int(chat_id) if str(chat_id).lstrip("-").isdigit() else str(chat_id),
+                    message_id=int(msg_id),
+                    text=new_text,
+                    reply_markup=None,
+                    parse_mode="HTML"
+                )
+            except Exception as e_txt:
+                logging.warning(f"sync msg {chat_id}/{msg_id}: {e_txt}")
 
+# ---------------- [ ✅ Tasdiqlash ] handler ----------------
 @dp.callback_query(F.data.startswith("pay_ok:"))
 async def on_pay_ok(call: types.CallbackQuery):
-    if call.from_user.id != config.ADMIN_ID:
-        await call.answer("Ruxsat yo'q", show_alert=True)
-        return
     try:
         r_id = int(call.data.split(":", 1)[1])
     except Exception:
@@ -1734,12 +1830,13 @@ async def on_pay_ok(call: types.CallbackQuery):
         await call.answer("Bu chek allaqachon rad etilgan", show_alert=True)
         return
 
+    admin_username = call.from_user.username or call.from_user.full_name or "Muzaffar Amirov"
     student_id = receipt["student_id"]
     amount = int(receipt.get("amount") or 0)
     month_key = receipt.get("month_key") or ""
     month_name = format_month_key(month_key)
 
-    # 1. payment_receipts.status = 'tasdiqlandi'
+    # 1. status = 'tasdiqlandi'
     try:
         supabase.table("payment_receipts").update({"status": "tasdiqlandi"}).eq("id", r_id).execute()
     except Exception as e:
@@ -1759,7 +1856,6 @@ async def on_pay_ok(call: types.CallbackQuery):
             new_debt = max(0, old_debt - amount)
             supabase.table("students").update({"payment_debt": new_debt}).eq("id", student_id).execute()
             
-            # student_payments va payments ga yozish
             try:
                 supabase.table("student_payments").insert({
                     "student_id": student_id,
@@ -1769,7 +1865,7 @@ async def on_pay_ok(call: types.CallbackQuery):
                     "amount_paid": amount,
                     "is_paid": True,
                     "paid_at": datetime.now(timezone.utc).isoformat(),
-                    "note": f"{month_name} oyi uchun to'lov (karta cheki tasdiqlandi)"
+                    "note": f"{month_name} oyi uchun to'lov (tasdiqladi: @{admin_username})"
                 }).execute()
             except Exception as e_sp:
                 logging.warning(f"insert student_payments: {e_sp}")
@@ -1778,7 +1874,7 @@ async def on_pay_ok(call: types.CallbackQuery):
                     "student_id": student_id,
                     "amount": amount,
                     "period": month_key,
-                    "note": f"{month_name} oyi uchun to'lov (karta cheki)"
+                    "note": f"{month_name} oyi uchun to'lov"
                 }).execute()
             except Exception as e_p:
                 logging.warning(f"insert payments: {e_p}")
@@ -1796,60 +1892,103 @@ async def on_pay_ok(call: types.CallbackQuery):
         except Exception as e:
             logging.error(f"pay_ok notify student {chat_id}: {e}")
 
-    # 4. Ustoz xabarini yangilash
+    # 4. Ham kanalda, ham lichkada xabarni sinxron yangilash
     done_text = (
-        "✅ <b>TO'LOV TASDIQLANDI!</b>\n\n"
+        f"✅ <b>TO'LOV TASDIQLANDI!</b> (Admin: @{admin_username})\n\n"
         f"👤 <b>O'quvchi:</b> {html.escape(st_name)}\n"
         f"📅 <b>Oy:</b> {html.escape(month_name)}\n"
         f"💰 <b>Qabul qilingan summa:</b> {amount:,} so'm\n"
         f"📉 <b>Qolgan qarz:</b> {new_debt:,} so'm"
     ).replace(",", " ")
 
-    try:
-        if call.message.caption is not None:
-            await call.message.edit_caption(caption=done_text, parse_mode="HTML")
-        else:
-            await call.message.edit_text(done_text, parse_mode="HTML")
-    except Exception:
-        pass
+    await _sync_receipt_messages(receipt, done_text)
     await call.answer("To'lov tasdiqlandi! ✓")
 
-
-@dp.callback_query(F.data.startswith("pay_no:"))
-async def on_pay_no(call: types.CallbackQuery):
-    if call.from_user.id != config.ADMIN_ID:
-        await call.answer("Ruxsat yo'q", show_alert=True)
-        return
+# ---------------- [ ❌ Rad etish ] bosilganda sabablar menyusi ----------------
+@dp.callback_query(F.data.startswith("pay_reject:"))
+async def on_pay_reject_menu(call: types.CallbackQuery):
     try:
         r_id = int(call.data.split(":", 1)[1])
     except Exception:
         await call.answer("Noto'g'ri so'rov", show_alert=True)
         return
+    kb = receipt_reject_reasons_keyboard(r_id)
+    try:
+        await call.message.edit_reply_markup(reply_markup=kb)
+        await call.answer("Rad etish sababini tanlang:")
+    except Exception:
+        pass
 
+# ---------------- [ ↩️ Bekor qilish ] bosilganda asosiy menyuni qaytarish ----------------
+@dp.callback_query(F.data.startswith("pay_cancel:"))
+async def on_pay_cancel(call: types.CallbackQuery):
+    try:
+        r_id = int(call.data.split(":", 1)[1])
+    except Exception:
+        await call.answer("Noto'g'ri so'rov", show_alert=True)
+        return
+    kb = receipt_main_keyboard(r_id)
+    try:
+        await call.message.edit_reply_markup(reply_markup=kb)
+        await call.answer("Bekor qilindi")
+    except Exception:
+        pass
+
+# ---------------- Sabab tanlanganda bajarish ----------------
+@dp.callback_query(F.data.startswith("rej_res:"))
+async def on_rejection_reason_chosen(call: types.CallbackQuery):
+    parts = call.data.split(":")
+    if len(parts) < 3:
+        await call.answer("Xatolik", show_alert=True)
+        return
+    r_id = int(parts[1])
+    reason_code = parts[2]
+
+    if reason_code == "custom":
+        pending_custom_rejections[call.from_user.id] = {
+            "receipt_id": r_id,
+            "chat_id": call.message.chat.id,
+            "message_id": call.message.message_id
+        }
+        await call.answer()
+        await bot.send_message(
+            chat_id=call.from_user.id,
+            text="✏️ <b>O'quvchiga yuboriladigan rad etish sababini yozing:</b>\n\n"
+                 "(Masalan: <i>Chek sanasi eski yoki to'lov boshqa hisobga tushgan</i>)",
+            parse_mode="HTML"
+        )
+        return
+
+    reason_text = REJECTION_REASONS.get(reason_code, "To'lov cheki qabul qilinmadi")
+    await execute_rejection(r_id, reason_text, call.from_user)
+    await call.answer("Chek rad etildi")
+
+async def execute_rejection(r_id: int, reason_text: str, admin_user: types.User):
     try:
         res = supabase.table("payment_receipts").select("*").eq("id", r_id).limit(1).execute().data
     except Exception as e:
-        logging.error(f"pay_no load receipt: {e}")
-        await call.answer("Bazaga ulanib bo'lmadi", show_alert=True)
+        logging.error(f"execute_rejection load: {e}")
         return
 
     if not res:
-        await call.answer("Chek topilmadi", show_alert=True)
         return
     receipt = res[0]
     if receipt.get("status") in ("tasdiqlandi", "rad_etildi"):
-        await call.answer(f"Bu chek allaqachon ko'rib chiqilgan ({receipt.get('status')})", show_alert=True)
         return
 
+    admin_username = admin_user.username or admin_user.full_name or "Muzaffar Amirov"
     student_id = receipt["student_id"]
     amount = int(receipt.get("amount") or 0)
     month_name = format_month_key(receipt.get("month_key") or "")
 
-    # 1. payment_receipts.status = 'rad_etildi'
+    # 1. status='rad_etildi', note=reason_text
     try:
-        supabase.table("payment_receipts").update({"status": "rad_etildi"}).eq("id", r_id).execute()
+        supabase.table("payment_receipts").update({
+            "status": "rad_etildi",
+            "note": reason_text
+        }).eq("id", r_id).execute()
     except Exception as e:
-        logging.error(f"pay_no update receipt: {e}")
+        logging.error(f"update receipt rejection: {e}")
 
     # 2. O'quvchiga xabar
     st_name = "O'quvchi"
@@ -1859,27 +1998,23 @@ async def on_pay_no(call: types.CallbackQuery):
             st_name = st_rows[0].get("name") or "O'quvchi"
             chat_id = st_rows[0].get("telegram_chat_id")
             if chat_id:
-                msg = "❌ Yuborgan to'lov chekingiz rad etildi. Iltimos, ustoz bilan bog'laning."
+                msg = (
+                    "❌ <b>To'lov chekingiz rad etildi!</b>\n\n"
+                    f"📌 <b>Sababi:</b> {html.escape(reason_text)}\n\n"
+                    "Iltimos, qaytadan to'g'ri chekni yuklang yoki ustoz bilan bog'laning."
+                )
                 await bot.send_message(chat_id=int(chat_id), text=msg, parse_mode="HTML")
     except Exception as e:
-        logging.error(f"pay_no notify student: {e}")
+        logging.error(f"rejection notify student: {e}")
 
-    # 3. Ustoz xabarini yangilash
+    # 3. Ham kanalda, ham lichkada xabarni sinxron yangilash
     done_text = (
-        "❌ <b>TO'LOV CHEKI RAD ETILDI</b>\n\n"
+        "❌ <b>TO'LOV RAD ETILDI</b>\n\n"
         f"👤 <b>O'quvchi:</b> {html.escape(st_name)}\n"
-        f"📅 <b>Oy:</b> {html.escape(month_name)}\n"
-        f"💰 <b>Summa:</b> {amount:,} so'm"
-    ).replace(",", " ")
-
-    try:
-        if call.message.caption is not None:
-            await call.message.edit_caption(caption=done_text, parse_mode="HTML")
-        else:
-            await call.message.edit_text(done_text, parse_mode="HTML")
-    except Exception:
-        pass
-    await call.answer("Chek rad etildi")
+        f"📌 <b>Sabab:</b> {html.escape(reason_text)}\n"
+        f"<b>Rad etdi:</b> @{admin_username}"
+    )
+    await _sync_receipt_messages(receipt, done_text)
 
 
 # Asosiy ishga tushirish
