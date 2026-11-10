@@ -40,6 +40,10 @@ function warnStorageFull() {
   setTimeout(function () { el.className = 'toast'; }, 6000);
 }
 
+const TEACHER_LOGIN = 'm_amirov';
+const TEACHER_PASSWORD = '123';
+const TEACHER_NAME = 'Muzaffar Amirov';
+
 const K = {
   accounts: 'et_accounts',
   session: 'et_session',
@@ -314,9 +318,7 @@ function totalOf(nums) { return nums.reduce((a, b) => a + b, 0); }
 function fmtAvg(v) { return v == null ? '—' : v.toFixed(1); }
 
 /* ==================== CLOUD SYNC (Supabase — real jadvallar) ==================== */
-const TEACHER_LOGIN = 'm_amirov';
-const TEACHER_PASSWORD = '123';
-const TEACHER_NAME = 'Muzaffar Amirov';
+/* TEACHER_LOGIN, TEACHER_PASSWORD, TEACHER_NAME yuqoriga ko'chirildi */
 
 const CloudSync = (function () {
   const url = window.SUPABASE_URL || 'https://mvjoeqyqaylfccqcnwwe.supabase.co';
