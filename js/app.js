@@ -517,7 +517,7 @@ const CloudSync = (function () {
       });
 
       const groups = gRes.data.map(function (r) {
-        return { id: 'g' + r.id, dbId: r.id, name: r.name, days: r.days, time: r.time, monthlyFee: Number(r.monthly_fee) || 0 };
+        return { id: 'g' + r.id, dbId: r.id, name: r.name, days: r.days, time: r.time, monthlyFee: Number(r.monthly_fee) || 0, groupType: r.group_type === 'school' ? 'school' : 'tutoring' };
       });
       const students = sRes.data.map(function (r) {
         return {
@@ -626,7 +626,7 @@ const CloudSync = (function () {
       const gRes = await client.from('groups').select('*').eq('id', row.group_id).limit(1);
       if (!gRes.error && gRes.data && gRes.data[0]) {
         const g = gRes.data[0];
-        groups.push({ id: 'g' + g.id, dbId: g.id, name: g.name, days: g.days, time: g.time, monthlyFee: Number(g.monthly_fee) || 0 });
+        groups.push({ id: 'g' + g.id, dbId: g.id, name: g.name, days: g.days, time: g.time, monthlyFee: Number(g.monthly_fee) || 0, groupType: g.group_type === 'school' ? 'school' : 'tutoring' });
       }
     }
 
@@ -732,15 +732,18 @@ const CloudSync = (function () {
   async function pushGroup(g) {
     if (!ready()) return;
     try {
-      const gPayload = { name: g.name, days: g.days, time: g.time, monthly_fee: Number(g.monthlyFee) || 0 };
-      if (g.dbId == null) {
-        const res = await client.from('groups').insert(gPayload).select();
-        if (res.error) throw res.error;
-        g.dbId = res.data[0].id;
-      } else {
-        const res = await client.from('groups').update(gPayload).eq('id', g.dbId);
-        if (res.error) throw res.error;
+      const base = { name: g.name, days: g.days, time: g.time, monthly_fee: Number(g.monthlyFee) || 0 };
+      const withType = Object.assign({ group_type: groupTypeOf(g) }, base);
+      const run = async (p) => (g.dbId == null)
+        ? client.from('groups').insert(p).select()
+        : client.from('groups').update(p).eq('id', g.dbId);
+      let res = await run(withType);
+      /* group_type ustuni hali qo'shilmagan bo'lsa — eski sxema bilan yozamiz */
+      if (res.error && /group_type|schema cache|does not exist|column/i.test(String(res.error.message || ''))) {
+        res = await run(base);
       }
+      if (res.error) throw res.error;
+      if (g.dbId == null) g.dbId = res.data[0].id;
       const list = getGroups();
       const t = list.filter(function (x) { return x.id === g.id; })[0];
       if (t) { t.dbId = g.dbId; store.set(K.groups, list); }
@@ -2747,6 +2750,8 @@ function studentPortal() {
   const attMissed = (cnt.absent || 0) + (cnt.excused || 0);
   const payDebt = Math.max(0, Number(st.paymentDebt) || 0);
   const gFee = g ? Math.max(0, Number(g.monthlyFee) || 0) : 0;
+  /* Maktab guruhi (bepul): o'quvchi pul/to'lov/qarz haqida HECH NARSA ko'rmaydi */
+  const hideMoney = !isTeacher() && isSchoolGroup(g);
 
   /* --- Speaking vaqti --- */
   const mineSlots = getSpeaking()
@@ -2825,7 +2830,7 @@ function studentPortal() {
     <button type="button" class="btn btn-xs ghost btn-block" data-act="att-toggle">▾ Barchasini ko'rish</button>`}
   </div>
 
-  <div class="section-title">💵 To'lovlar</div>
+  ${hideMoney ? '' : `<div class="section-title">💵 To'lovlar</div>
   <div class="card">
     <div class="row between">
       <span class="pay-status ${payDebt > 0 ? 'due' : 'ok'}">${payDebt > 0 ? `🔴 To'lov qarzi: ${fmtSom(payDebt)} so'm` : "🟢 To'langan"}</span>
@@ -2833,13 +2838,13 @@ function studentPortal() {
     </div>
     <div class="muted small" style="margin-top:5px">To'lovlar tarixi</div>
     ${payHistoryHTML(st)}
-  </div>
+  </div>`}
 
   <div class="section-title">Speaking vaqtim</div>
   <div class="card">
-    ${Number(st.speakingDebt) > 0
+    ${hideMoney ? '' : (Number(st.speakingDebt) > 0
       ? `<div class="debt-badge" style="margin-bottom:8px">${ico('alert', 15)} Speaking qarzingiz: ${Number(st.speakingDebt)} ta</div>`
-      : `<div class="att-pill" style="margin-bottom:8px">${ico('checkCircle', 15)} Speaking qarzingiz yo'q</div>`}
+      : `<div class="att-pill" style="margin-bottom:8px">${ico('checkCircle', 15)} Speaking qarzingiz yo'q</div>`)}
     <button type="button" class="btn btn-primary btn-block speak-cta" data-act="speak-cta">${ico('mic', 20)} Speaking topshirish</button>
     ${slotRows}
   </div>
@@ -2891,15 +2896,28 @@ function groupScheduleText(g) {
   return null;
 }
 
+/* Guruh turi: 'school' (maktab, bepul) yoki 'tutoring' (repetitorlik).
+   FAQAT ustoz panelida ko'rsatiladi — o'quvchiga hech qachon chiqmaydi. */
+function groupTypeOf(g) {
+  /* Yangi guruhlar modalda 'school' bo'lib saqlanadi; eski (maydonsiz)
+     guruhlar esa repetitorlik hisoblanadi — to'lovlari yashirilib qolmasin. */
+  return (g && g.groupType === 'school') ? 'school' : 'tutoring';
+}
+function isSchoolGroup(g) {
+  return groupTypeOf(g) === 'school';
+}
+
 function groupCard(g, students) {
   const cnt = students.filter(s => s.groupId === g.id).length;
   const sched = groupScheduleText(g);
   const fee = Math.max(0, Number(g.monthlyFee) || 0);
+  const tutoring = groupTypeOf(g) === 'tutoring';
   return `<div class="card group-card" data-act="filter-group" data-gid="${g.id}" style="cursor:pointer" role="button" title="O'quvchilarni ko'rsatish">
     <div class="row between">
       <h3 class="card-h">${esc(g.name)}</h3>
       <span class="pill">${cnt} o'quvchi</span>
     </div>
+    <div class="gc-type ${tutoring ? 'is-tutoring' : 'is-school'}">${tutoring ? '🎓 Repetitor guruhi' : '🏫 Maktab guruhi'}</div>
     <div class="meta-rows">
       ${sched
         ? `<div class="meta-row">${ico('calendar', 15)} <span>${esc(sched)}</span></div>`
@@ -3301,6 +3319,19 @@ function openAddGroup() {
     <div id="f-times" class="day-times" aria-live="polite"></div>
     <p class="muted small" style="margin-top:8px">Kunni tanlang — har bir kun uchun alohida vaqtni belgilang (masalan Dushanba 09:15, Shanba 11:00).</p>
 
+    <div class="field-label">Guruh turi</div>
+    <div class="gtype-grid" id="f-gtype">
+      <label class="gtype-opt">
+        <input type="radio" name="f-gtype" value="school" checked />
+        <span>🏫 Maktab guruhi (bepul)</span>
+      </label>
+      <label class="gtype-opt">
+        <input type="radio" name="f-gtype" value="tutoring" />
+        <span>🎓 Repetitorlik guruhi</span>
+      </label>
+    </div>
+    <p class="muted small" style="margin-top:6px">Guruh turi faqat sizga ko'rinadi — o'quvchilarga hech qachon ko'rsatilmaydi.</p>
+
     <label class="field-label" for="f-gfee">Oylik to'lov summasi (so'mda)</label>
     <input class="input" id="f-gfee" type="number" min="0" step="1000" inputmode="numeric" placeholder="Masalan: 300000" />
 
@@ -3384,8 +3415,10 @@ function saveGroup() {
   const firstTime = days.map(d => times[d] || '').filter(Boolean)[0] || '';
 
   const fee = Math.max(0, Math.round(Number(($('#f-gfee') ? $('#f-gfee').value : 0)) || 0));
+  const typeBtn = $$('input[name="f-gtype"]').filter(i => i.checked)[0];
+  const groupType = typeBtn && typeBtn.value === 'tutoring' ? 'tutoring' : 'school';
   const groups = getGroups();
-  groups.push({ id: 'g' + Date.now(), name, days: encoded, time: firstTime, monthlyFee: fee });
+  groups.push({ id: 'g' + Date.now(), name, days: encoded, time: firstTime, monthlyFee: fee, groupType: groupType });
   store.set(K.groups, groups);
   CloudSync.pushGroup(groups[groups.length - 1]);
   closeModal();
@@ -3430,11 +3463,24 @@ function openEditGroup(gid) {
     <div id="f-times" class="day-times" aria-live="polite"></div>
     <p class="muted small" style="margin-top:8px">Har bir tanlangan kun uchun alohida dars vaqtini belgilang.</p>
 
-    <div class="modal-actions">
-      <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
+    <div class="field-label">Guruh turi</div>
+    <div class="gtype-grid" id="f-gtype">
+      <label class="gtype-opt">
+        <input type="radio" name="f-gtype" value="school" ${groupTypeOf(g) === 'school' ? 'checked' : ''} />
+        <span>🏫 Maktab guruhi (bepul)</span>
+      </label>
+      <label class="gtype-opt">
+        <input type="radio" name="f-gtype" value="tutoring" ${groupTypeOf(g) === 'tutoring' ? 'checked' : ''} />
+        <span>🎓 Repetitorlik guruhi</span>
+      </label>
+    </div>
+    <p class="muted small" style="margin-top:6px">Guruh turi faqat sizga ko'rinadi — o'quvchilarga hech qachon ko'rsatilmaydi.</p>
+
     <label class="field-label" for="f-gfee">Oylik to'lov summasi (so'mda)</label>
     <input class="input" id="f-gfee" type="number" min="0" step="1000" inputmode="numeric" value="${g && g.monthlyFee ? String(g.monthlyFee) : ''}" placeholder="Masalan: 300000" />
 
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
       <button type="button" class="btn btn-primary" data-act="save-edit-group" data-gid="${esc(String(gid))}">Saqlash</button>
     </div>
   `);
@@ -3463,8 +3509,10 @@ function saveEditGroup(gid) {
   const firstTime = days.map(d => times[d] || '').filter(Boolean)[0] || '';
 
   const fee = Math.max(0, Math.round(Number(($('#f-gfee') ? $('#f-gfee').value : 0)) || 0));
+  const typeBtn = $$('input[name="f-gtype"]').filter(i => i.checked)[0];
+  const groupType = typeBtn && typeBtn.value === 'tutoring' ? 'tutoring' : 'school';
   const list = getGroups().map(x => String(x.id) === String(gid)
-    ? Object.assign({}, x, { name: name, days: encoded, time: firstTime, monthlyFee: fee })
+    ? Object.assign({}, x, { name: name, days: encoded, time: firstTime, monthlyFee: fee, groupType: groupType })
     : x);
   store.set(K.groups, list);
   const updated = list.filter(x => String(x.id) === String(gid))[0];
@@ -3932,7 +3980,7 @@ function restoreLocal(data) {
   const groups = (data.groups || []).map(g => {
     const n = toNumId(g.id);
     if (n == null) return null;
-    return { id: 'g' + n, dbId: n, name: g.name || '', days: g.days || '', time: g.time || '', monthlyFee: Number(g.monthly_fee) || 0 };
+    return { id: 'g' + n, dbId: n, name: g.name || '', days: g.days || '', time: g.time || '', monthlyFee: Number(g.monthly_fee) || 0, groupType: g.group_type === 'school' ? 'school' : 'tutoring' };
   }).filter(Boolean);
 
   /* ovozli topshiriklar (audio_submissions) — o'quvchiga bog'lab tiklaymiz */

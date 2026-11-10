@@ -230,3 +230,16 @@ create index if not exists payments_student_idx on payments (student_id, created
 alter table payments enable row level security;
 drop policy if exists "payments_all" on payments;
 create policy "payments_all" on payments for all using (true) with check (true);
+
+-- ============================================================
+-- GURUH TURI: 'school' (maktab, bepul) | 'tutoring' (repetitorlik)
+-- Faqat ustoz panelida ko'rinadi — o'quvchilarga KO'RSATILMAYDI.
+-- Maktab guruhi o'quvchilariga pul/to'lov/qarz haqidagi hech narsa chiqmaydi.
+-- ============================================================
+-- Mavjud guruhlar repetitorlik bo'lib qoladi (to'lovlari yashirilmaydi).
+-- Yangi guruh qo'shishda ustoz panelida standart 'school' tanlanadi.
+alter table groups add column if not exists group_type text not null default 'tutoring';
+do $$ begin
+  alter table groups add constraint groups_group_type_chk
+    check (group_type in ('school', 'tutoring'));
+exception when duplicate_object then null; end $$;

@@ -20,8 +20,8 @@ const appJs = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
 /* ============ TEST FIXTURE (faqat test uchun — ilovada demo seed YO'Q) ============ */
 const F_DAYS = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'];
 const F_GROUPS = [
-  { id: 'g1', name: 'IELTS Band 7.0', days: 'Dushanba, Chorshanba, Juma', time: '18:00' },
-  { id: 'g2', name: 'General English (8–10-sinf)', days: 'Seshanba, Payshanba', time: '17:00' }
+  { id: 'g1', name: 'IELTS Band 7.0', days: 'Dushanba, Chorshanba, Juma', time: '18:00', groupType: 'school' },
+  { id: 'g2', name: 'General English (8–10-sinf)', days: 'Seshanba, Payshanba', time: '17:00', groupType: 'tutoring' }
 ];
 const F_STUDENTS = [
   { id: 's1', fullName: 'Aziz Rahimov', schoolClass: '9-sinf', groupId: 'g2', speakingDebt: 0, audioSubmissions: [] },
@@ -253,6 +253,10 @@ check(!!q('[data-act="pay-student"]'), "moliya: '💵 To'lov kiritish' tugmasi b
 click('[data-act="nav"][data-screen="groups"]');
 check(text().includes('Guruhlar'), 'guruhlar: ekran');
 check(groupCards() === 2, 'guruhlar: 2 ta guruh');
+check(text().includes('🏫 Maktab guruhi') && text().includes('🎓 Repetitor guruhi'),
+  "guruh turi: ustoz kartalarida '🏫 Maktab guruhi' (ko'k) + '🎓 Repetitor guruhi' (binafsha) nishoni");
+check(qa('.gc-type.is-school').length === 1 && qa('.gc-type.is-tutoring').length === 1,
+  'guruh turi: har guruh turiga mos .gc-type klassi');
 check(text().includes('IELTS Band 7.0') && text().includes('18:00'), 'guruhlar: nom + dars vaqti');
 check(text().includes('Oylik to\'lov'), "moliya: guruh kartasida oylik to'lov ko'rinadi");
 
@@ -262,6 +266,11 @@ check(q('#modal-overlay').hidden === false && qa('#f-days input').length === 7,
   "guruh: modalda haftaning 7 ta kuni (Dushanba–Yakshanba)");
 check(!q('#f-gtime'), "vaqt: eski yagona #f-gtime hardcode input olib tashlandi");
   check(!!q('#f-gfee'), "guruh: oylik to'lov summasi maydoni bor");
+check(qa('#f-gtype input[type="radio"]').length === 2,
+  "guruh turi: modalda 2 ta tanlov (Maktab / Repetitorlik)");
+check(qa('#f-gtype input').filter(i => i.checked).length === 1 &&
+      qa('#f-gtype input').filter(i => i.checked)[0].value === 'school',
+  "guruh turi: standart qiymat — 'school' (Maktab guruhi)");
 check(qa('#f-times .dt-time').length === 0, "vaqt: kun tanlanmaguncha picker yo'q");
 setVal('#f-gname', 'Vaqtli Guruh');
 const pickDay = name => {
@@ -294,6 +303,7 @@ check(q('#modal-overlay').hidden === true, "guruh: modal saqlanib yopildi");
 const newGrp = JSON.parse(win.localStorage.getItem('et_groups')).filter(g => g.name === 'Vaqtli Guruh')[0];
 check(!!newGrp && newGrp.days === 'Dushanba 09:15, Shanba 11:00', "vaqt: 'kun + vaqt' har bir kun uchun saqlandi");
 check(newGrp.time === '09:15', "vaqt: legacy time maydoni birinchi tanlangan vaqt bilan to'ldirildi");
+check(newGrp.groupType === 'school', "guruh turi: yangi guruh 'school' bo'lib saqlandi (tanlanmagan → standart)");
 check(groupCards() === 3, "guruh: yangi guruh karta bo'ldi (3 ta)");
 check(text().includes('Dushanba 09:15') && text().includes('Shanba 11:00') && text().includes(' • '),
   "vaqt: karta formati 'Dushanba 09:15 • Shanba 11:00'");
@@ -307,6 +317,10 @@ click(qa('.group-card').filter(c => c.textContent.includes('Vaqtli Guruh'))[0].q
 check(q('#modal-overlay').hidden === false && sheet().includes('Guruhni tahrirlash'), "tahrirlash: modali ochildi");
 check(!!q('#f-gname') && q('#f-gname').value === 'Vaqtli Guruh', "tahrirlash: guruh nomi prefilled");
 check(isChk('Dushanba') && isChk('Shanba') && !isChk('Juma'), "tahrirlash: kunlar prefilled (Dushanba, Shanba)");
+check(qa('#f-gtype input').filter(i => i.checked)[0].value === 'school',
+  "tahrirlash: guruh turi prefilled ('school')");
+const tutorRadio = qa('#f-gtype input').filter(i => i.value === 'tutoring')[0];
+tutorRadio.checked = true;
 check(qa('#f-times .dt-time').length === 2, "tahrirlash: tanlangan kunlar sonida vaqt picker");
 check(timeFor('Dushanba').value === '09:15' && timeFor('Shanba').value === '11:00',
   "tahrirlash: vaqtlar prefilled (09:15 / 11:00)");
@@ -323,6 +337,9 @@ const edGrp = JSON.parse(win.localStorage.getItem('et_groups')).filter(g => g.na
 check(!!edGrp && edGrp.days === 'Chorshanba 10:00, Shanba 14:30',
   "tahrirlash: 'kun + vaqt' formatida saqlandi (hafta tartibida: Chorshanba 10:00, Shanba 14:30)");
 check(edGrp.time === '10:00', "tahrirlash: legacy time = haftaning birinchi kunning vaqti (10:00)");
+check(edGrp.groupType === 'tutoring', "tahrirlash: guruh turi 'tutoring' ga o'zgartirilib saqlandi");
+check(text().includes('🎓 Repetitor guruhi'),
+  "tahrirlash: karta nishoni '🎓 Repetitor guruhi' ga yangilandi");
 check(text().includes('Shanba 14:30') && text().includes('Chorshanba 10:00') && text().includes(' • '),
   "tahrirlash: karta 'Shanba 14:30 • Chorshanba 10:00' ko'rinishida");
 check(q('#toast').textContent.includes('Guruh yangilandi'), "tahrirlash: success toast");
@@ -609,6 +626,30 @@ check(qa('.att-btn').length === 0, 'guard: o\'quvchi davomatga kira olmaydi');
 forceNav('speaking');
 check(qa('.speak-row').length === 0, 'guard: o\'quvchi speaking boshqaruvida yo\'q');
 check(text().includes('Jasur Karimov'), 'guard: o\'quvchi o\'z kabinetida qoladi');
+
+/* --- Guruh turi o'quvchidan 100% yashirin: maktab guruhi (g1) o'quvchisi malika --- */
+logout();
+loginAs('malika', '123');
+check(text().includes('Malika Yusupova') && text().includes('IELTS Band 7.0'),
+  "maktab guruhi o'quvchisi: kabinet ochildi, faqat guruh nomi ko'rinadi");
+check(!text().includes('Maktab guruhi') && !text().includes('Repetitor') && !text().includes('group_type'),
+  "maktab guruhi o'quvchisi: guruh TURI umuman ko'rinmaydi");
+check(!text().includes("To'lov") && !text().includes('qarz') && !text().includes("so'm") &&
+      !text().includes('Oylik') && !q('.pay-status') && !q('.pay-history'),
+  "maktab guruhi o'quvchisi: pul / to'lov / qarz haqida bitta ham so'z yoki belgi yo'q");
+check(text().includes('Speaking topshirish') && !text().includes('Speaking qarzingiz'),
+  "maktab guruhi o'quvchisi: speaking topshirish qoladi, 'qarz' badge yo'q");
+
+/* --- Repetitorlik guruhi (g2) o'quvchisi: to'lov bo'limi ko'rinadi --- */
+logout();
+loginAs('aziz', '123');
+check(text().includes("To'lovlar") && !!q('.pay-status'),
+  "repetitorlik guruhi o'quvchisi: to'lov bo'limi ko'rinadi (yashirilmaydi)");
+
+/* Section 11 davomi uchun Jasur qayta kiradi */
+logout();
+loginAs('jasur', '123');
+check(text().includes('Jasur Karimov'), "guruh turi: Jasur qayta kirdi (keyingi testlar uchun)");
 
 /* ================= 11. O'QUVCHI: PAROLNI O'ZGARTIRISH ================= */
 click('[data-act="nav"][data-screen="profile"]');

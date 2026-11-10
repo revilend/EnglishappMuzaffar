@@ -765,6 +765,61 @@ async def main():
     check("Joriy speaking qarzi: 4 ta" in t, "speaking: joriy qarz ko'rsatildi")
 
     # =========================================================
+    # 8b) GURUH TURI: maktab guruhi (school) — qarz/to'lov YASHIRIN
+    # =========================================================
+    FAKE_ROWS["groups"].append({"id": 2, "name": "9-A", "days": "Dushanba", "time": "09:00",
+                                "group_type": "school"})
+    FAKE_ROWS["students"].append({"id": 4, "name": "Maktab O'quvchisi", "school_class": "9-sinf",
+                                  "group_id": 2, "login": "maktab", "password": "123",
+                                  "speaking_debt": 3, "voice_allowed": True,
+                                  "telegram_chat_id": 4444})
+    FAKE_ROWS["grades"].append({"id": 40, "student_id": 4, "date": "2026-10-03", "grade": 9,
+                                "category": "Darsdagi javob", "note": ""})
+    check(B._is_school_group(2) is True, "guruh turi: group_type='school' aniqlandi")
+    check(B._is_school_group(1) is False, "guruh turi: eski guruh (ustunsiz) = tutoring")
+
+    labels_school = [b.text for row in get_main_keyboard(True).keyboard for b in row]
+    check("📊 Baholarim" in labels_school and "📊 Baholarim va Qarzim" not in labels_school,
+          "guruh turi: maktab o'quvchisi menyusida 'Qarzim' so'zi yo'q")
+    labels_tutor = [b.text for row in get_main_keyboard(False).keyboard for b in row]
+    check("📊 Baholarim va Qarzim" in labels_tutor,
+          "guruh turi: repetitorlik menyusi o'zgarmagan")
+
+    m = Msg(4444, B.STUDENT_MENU["grades_school"])
+    await B.btn_student_grades(m)
+    t = m.answers[0]["text"]
+    check("O'rtacha baho:" in t and "9/10" in t,
+          "guruh turi: maktab o'quvchisi baholarini ko'radi")
+    check("qarz" not in t.lower() and "to'lov" not in t.lower() and "so'm" not in t.lower(),
+          "guruh turi: maktab o'quvchisiga qarz/to'lov/pul so'zi CHIQMAYDI")
+
+    m = Msg(4444, B.STUDENT_MENU["speak"])
+    await B.btn_student_speak(m)
+    t = m.answers[0]["text"]
+    check("vozli xabar" in t and "qarz" not in t.lower(),
+          "guruh turi: speaking yo'riqnomada ham 'qarz' yo'q")
+
+    fb.sent.clear()
+    v = Msg(4444, voice=Media("V-SCHOOL"))
+    await B.handle_speaking_submission(v)
+    check(bool(v.replies) and "qarz" not in (v.replies[0]["text"] or "").lower(),
+          "guruh turi: topshirish tasdiqida 'qarz' so'zi yo'q")
+
+    sub_school = FAKE_ROWS["speaking_submissions"][-1]
+    call_school = Call(ADMIN, f"g:{sub_school['id']}:9", msg=CallMsg(caption="c"))
+    await B.on_grade_tap(call_school)
+    notes_school = [x["text"] for x in fb.sent
+                    if x["kind"] == "message" and x["chat_id"] == 4444]
+    check(bool(notes_school) and "qarz" not in notes_school[-1].lower()
+          and "9/10" in notes_school[-1],
+          "guruh turi: baho xabarida ham 'qarz' yo'q (faqat ball)")
+
+    # keyingi bo'limlar uchun vaqtinchalik qatorlarni olib tashlaymiz
+    FAKE_ROWS["students"] = [x for x in FAKE_ROWS["students"] if x["id"] != 4]
+    FAKE_ROWS["groups"] = [x for x in FAKE_ROWS["groups"] if x["id"] != 2]
+    FAKE_ROWS["grades"] = [x for x in FAKE_ROWS["grades"] if x.get("student_id") != 4]
+
+    # =========================================================
     # 9) VOICE / VIDEO / KRUJOK + 1-TAP BAHO
     # =========================================================
     # ulanmagan -> login taklifi
