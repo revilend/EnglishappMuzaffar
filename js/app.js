@@ -373,6 +373,8 @@ const CloudSync = (function () {
       speaking_debt: Number(s.speakingDebt) || 0,
       payment_debt: Number(s.paymentDebt) || 0,
       fee_period: s.feePeriod || null,
+      last_payment_info: s.lastPaymentInfo || null,
+      last_paid_month: s.lastPaidMonth || null,
       voice_allowed: s.voiceAllowed !== false
     };
   }
@@ -615,6 +617,8 @@ const CloudSync = (function () {
           voiceAllowed: r.voice_allowed !== false,
           lastDevice: r.last_device || '',
           lastSeen: r.last_seen || null,
+          lastPaymentInfo: r.last_payment_info || '',
+          lastPaidMonth: r.last_paid_month || '',
           audioSubmissions: (audioByOld[oldIdByDb[r.id]] || []).slice()
         };
       });
@@ -1495,8 +1499,27 @@ const CloudSync = (function () {
     uploadReceiptImage: uploadReceiptImage,
     submitPaymentReceipt: submitPaymentReceipt,
     pullStudentReceipts: pullStudentReceipts,
+    addStudentPaymentRecord: addStudentPaymentRecord,
     url: url
   };
+  async function addStudentPaymentRecord(studentDbId, groupDbId, monthKey, monthName, amount) {
+    if (!ready() || studentDbId == null) return;
+    try {
+      await client.from('student_payments').insert({
+        student_id: studentDbId,
+        group_id: groupDbId,
+        month_key: monthKey,
+        month_name: monthName,
+        amount_paid: Number(amount) || 0,
+        is_paid: true,
+        paid_at: new Date().toISOString(),
+        note: monthName + " uchun to'lov"
+      });
+    } catch (e) {
+      console.warn('[cloud] student_payments insert:', (e && e.message) || e);
+    }
+  }
+
 
   /* --- To'lov kartasi sozlamalari (bot_settings) --- */
   async function pullCardSettings() {
@@ -3085,11 +3108,9 @@ function studentPortal() {
 
   /* --- To'lov banneri (faqat repetitorlik guruhlarida, eng yuqorida) --- */
   const per = currentPeriod();
-  const payDebt = Math.max(0, Number(st.paymentDebt) || 0);
-  const monthFee = g ? feeForGroup(g.id, per) : 0;
-  const monthPaid = paidFor(st.id, per);
-  const monthRemain = monthFee > 0 ? Math.max(0, monthFee - monthPaid) : payDebt;
-  const payRows = studentPayments(st.id).slice(0, 6);
+  const currentDebt = Math.max(0, Number(st.paymentDebt) || 0);
+  const hasDebt = currentDebt > 0;
+  const payRows = studentPayments(st.id);
   const receipts = store.get(K.paymentReceipts, []);
   const pendingReceipt = receipts.filter(function (r) {
     return (r.month_key === per || !r.month_key) && r.status === 'kutilmoqda';
@@ -3098,16 +3119,27 @@ function studentPortal() {
     return (r.month_key === per || !r.month_key) && r.status === 'rad_etildi';
   })[0] : null;
 
+  /* Faqatgina so'nggi to'lov qatori */
+  let lastPayHTML = '<div class="pay-last-line muted small" style="margin-top:8px">Hozircha to\'lovlar mavjud emas</div>';
+  if (st.lastPaymentInfo) {
+    lastPayHTML = `<div class="pay-last-line" style="margin-top:8px;font-size:13px;color:var(--text,#1e293b)">
+      🗓 <b>So'nggi to'lov:</b> ${esc(st.lastPaymentInfo)} qabul qilindi
+    </div>`;
+  } else if (payRows.length > 0) {
+    const lp = payRows[0];
+    const lpDate = lp.createdAt ? fmtDMY(lp.createdAt.slice(0, 10)) : fmtDMY(todayKey());
+    const lpMonth = lp.note ? lp.note.replace(" uchun to'lov", "") : monthLabel(paymentPeriod(lp));
+    lastPayHTML = `<div class="pay-last-line" style="margin-top:8px;font-size:13px;color:var(--text,#1e293b)">
+      🗓 <b>So'nggi to'lov:</b> ${lpDate} da ${fmtSom(lp.amount)} so'm (${esc(lpMonth)} uchun qabul qilindi)
+    </div>`;
+  }
+
   const payBanner = hideMoney ? '' : `
-  <section class="card pay-banner ${monthRemain > 0 ? 'due' : 'ok'}">
+  <section class="card pay-banner ${hasDebt ? 'due' : 'ok'}">
     <div class="pay-banner-main">
-      ${monthRemain > 0
-        ? `🔴 <b>Diqqat:</b> ${esc(monthLabel(per))} oyi uchun <b>${fmtSom(monthRemain)} so'm</b> to'lov qarzdorligi mavjud!`
+      ${hasDebt
+        ? `🔴 <b>Diqqat:</b> Sizda <b>${fmtSom(currentDebt)} so'm</b> to'lov qarzdorligi mavjud!`
         : `🟢 <b>To'langan</b> <span class="muted">(Qarzdorlik mavjud emas)</span>`}
-    </div>
-    <div class="pay-banner-meta">
-      <span>Oylik: <b>${monthFee ? fmtSom(monthFee) + " so'm" : 'belgilanmagan'}</b></span>
-      <span>${esc(monthLabel(per))} uchun to'langan: <b>${fmtSom(monthPaid)} so'm</b></span>
     </div>
     ${pendingReceipt ? `
     <div class="pay-pending-alert" style="margin:8px 0;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;color:#92400e;font-size:13px">
@@ -3117,21 +3149,13 @@ function studentPortal() {
     <div class="pay-rejected-alert" style="margin:8px 0;padding:8px 12px;background:#fee2e2;border:1px solid #ef4444;border-radius:8px;color:#991b1b;font-size:13px">
       ❌ <b>Chekingiz rad etildi:</b> ${esc(rejectedReceipt.note || "Noto'g'ri chek")}. Iltimos, qaytadan to'g'ri chekni yuklang:
     </div>` : ''}
-    ${monthRemain > 0 && !pendingReceipt ? `
+    ${hasDebt && !pendingReceipt ? `
     <div style="margin:10px 0 6px 0">
-      <button type="button" class="btn btn-primary btn-block" data-act="open-pay-receipt" data-amount="${monthRemain}" data-period="${esc(per)}">
+      <button type="button" class="btn btn-primary btn-block" data-act="open-pay-receipt" data-amount="${currentDebt}" data-period="${esc(per)}">
         💳 Karta orqali to'lash
       </button>
     </div>` : ''}
-    <div class="pay-banner-history">
-      <div class="muted small">To'lovlar tarixi</div>
-      ${payRows.length ? payRows.map(function (p) {
-        return `<div class="att-line">
-          <span class="gr-date">${esc(monthLabel(paymentPeriod(p)))}</span>
-          <span class="col"><strong>${fmtSom(p.amount)} so'm</strong>${p.note ? `<span class="gr-note">${esc(p.note)}</span>` : ''}</span>
-        </div>`;
-      }).join('') : `<div class="muted small" style="margin-top:4px">Hozircha to'lov yo'q</div>`}
-    </div>
+    ${lastPayHTML}
   </section>`;
 
   /* --- Davomat --- */
@@ -3720,16 +3744,8 @@ function debtRowOf(s) {
 /* outbox'ga qo'yadi va holatini qisqa kuzatadi */
 function queueDebtReminders(rows, okText) {
   if (!rows.length) { toast("O'quvchilarda Telegram ulanmagan", 'error'); return; }
-  CloudSync.queueMessages(rows).then(function (ids) {
-    if (!ids.length) { toast(okText); return; }
-    let tries = 0;
-    const timer = setInterval(function () {
-      tries += 1;
-      CloudSync.messageStatus(ids).then(function (list) {
-        const pending = (list || []).filter(x => x.status === 'pending').length;
-        if (pending === 0 || tries >= 12) { clearInterval(timer); toast(okText); }
-      }).catch(function () { if (tries >= 12) clearInterval(timer); });
-    }, 1500);
+  CloudSync.queueMessages(rows).then(function () {
+    toast(okText);
   }).catch(function (e) {
     toast('Eslatma yuborilmadi: ' + ((e && e.message) || 'xatolik'), 'error');
   });
@@ -3756,6 +3772,8 @@ function openPayModal(sid, period) {
   const per = /^\d{4}-\d{2}$/.test(period || '') ? period : currentPeriod();
   const debt = Math.max(0, Number(st.paymentDebt) || 0);
   const fee = feeForGroup(st.groupId, per);
+  const defaultMonthName = monthLabel(per);
+
   openModal(`
     <div class="modal-head">
       <h3>To'lov kiritish</h3>
@@ -3765,16 +3783,20 @@ function openPayModal(sid, period) {
       <div class="avatar">${esc(initials(st.fullName))}</div>
       <div class="col">
         <div class="s-name">${esc(st.fullName)}</div>
-        <div class="muted small">${g ? esc(g.name) : 'Guruh taylanmagan'}${fee ? ' • ' + monthLabel(per) + ': ' + fmtSom(fee) + " so'm" : ''}</div>
+        <div class="muted small">${g ? esc(g.name) : 'Guruh taylanmagan'}${fee ? ' • Oylik: ' + fmtSom(fee) + " so'm" : ''}</div>
       </div>
     </div>
     <div class="card" style="margin:9px 0">
       <div class="row between"><span class="muted small">Joriy qarz</span>
-        <span class="pay-balance">${debt > 0 ? fmtSom(debt) + " so'm" : "🟢 To'langan"}</span></div>
+        <span class="pay-balance">${debt > 0 ? fmtSom(debt) + " so'm" : "🟢 Qarz yo'q"}</span></div>
     </div>
     <label class="field-label" for="pay-sum">To'lov summasi (so'mda)</label>
     <input class="input" id="pay-sum" type="number" min="0" step="1000" inputmode="numeric" value="${debt > 0 ? debt : (fee || '')}" />
-    <p class="pay-hint">Kiritilgan summa qarzdan ayiriladi. O'quvchining Telegramiga chek-xabarnoma yuboriladi.</p>
+    
+    <label class="field-label" for="pay-month-name" style="margin-top:8px">Qaysi oy uchun to'lov</label>
+    <input class="input" id="pay-month-name" type="text" placeholder="Masalan: Noyabr 2026 yoki Oktyabr 2026" value="${esc(defaultMonthName)}" />
+    
+    <p class="pay-hint">Kiritilgan summa qarzdan ayiriladi va o'quvchi kabinetida so'nggi to'lov sifatida ko'rinadi.</p>
     <div class="field-error" id="pay-error"></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
@@ -3787,8 +3809,8 @@ function savePayment(sid) {
   if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
   const st = studentById(sid);
   if (!st) return;
-  const inp = $('#pay-sum');
-  const sum = Math.round(Number(inp ? inp.value : 0) || 0);
+  const sumInp = $('#pay-sum');
+  const sum = Math.round(Number(sumInp ? sumInp.value : 0) || 0);
   const err = $('#pay-error');
   if (!sum || sum <= 0) {
     if (err) { err.textContent = "To'lov summasini kiriting"; err.classList.add('show'); }
@@ -3799,19 +3821,38 @@ function savePayment(sid) {
     const v = el ? el.getAttribute('data-period') : '';
     return /^\d{4}-\d{2}$/.test(v || '') ? v : currentPeriod();
   })();
+
+  const monthNameInp = $('#pay-month-name');
+  const monthName = (monthNameInp && monthNameInp.value.trim()) || monthLabel(per);
   const before = Math.max(0, Number(st.paymentDebt) || 0);
   const after = Math.max(0, before - sum);
-  const paid = Math.min(sum, before) || sum;
+  const todayStr = fmtDMY(todayKey());
+  const lastPayInfo = todayStr + " da " + fmtSom(sum) + " so'm (" + monthName + " uchun)";
+
   const list = getStudents().map(x => String(x.id) === String(sid)
-    ? Object.assign({}, x, { paymentDebt: after }) : x);
+    ? Object.assign({}, x, { paymentDebt: after, lastPaymentInfo: lastPayInfo, lastPaidMonth: monthName }) : x);
   store.set(K.students, list);
   CloudSync.pushStudent(sid);
-  CloudSync.addPayment(sid, st.dbId, paid, monthLabel(per) + " uchun to'lov", per);
-  CloudSync.queueMessages([{
-    student_id: st.dbId != null ? st.dbId : null,
-    chat_id: st.telegramChatId || null,
-    text: `💵 <b>To'lov qabul qilindi!</b>\n\n<b>${esc(st.fullName)}</b>, ${monthLabel(per)} oyi uchun <b>${fmtSom(paid)} so'm</b> to'lov qabul qilindi.\n${after > 0 ? `Qolgan qarz: <b>${fmtSom(after)} so'm</b>` : "Qarzingiz yo'q — rahmat! 🟢"}\n\n<i>Hurmat bilan, Muzaffar Amirov</i>`
-  }]).catch(function (e) { console.warn('[outbox]', (e && e.message) || e); });
+  CloudSync.addPayment(sid, st.dbId, sum, monthName + " uchun to'lov", per);
+
+  /* student_payments jadvaliga saqlash */
+  if (CloudSync.ready() && st.dbId != null) {
+    const g = groupById(st.groupId);
+    window.__cloud && window.__cloud.addStudentPaymentRecord && window.__cloud.addStudentPaymentRecord(
+      st.dbId, g ? g.dbId : null, per, monthName, sum
+    );
+  }
+
+  /* telegram_outbox ga xabar qo'yish */
+  if (st.telegramChatId) {
+    CloudSync.queueMessages([{
+      student_id: st.dbId != null ? st.dbId : null,
+      chat_id: String(st.telegramChatId),
+      text: `💵 <b>To'lov qabul qilindi!</b>\n\n<b>${esc(st.fullName)}</b>, ${esc(monthName)} uchun <b>${fmtSom(sum)} so'm</b> to'lov qabul qilindi.\n${after > 0 ? `Qolgan qarz: <b>${fmtSom(after)} so'm</b>` : "Qarzingiz yo'q — rahmat! 🟢"}\n\n<i>Hurmat bilan, Muzaffar Amirov</i>`,
+      status: 'pending'
+    }]).catch(function (e) { console.warn('[outbox]', (e && e.message) || e); });
+  }
+
   closeModal();
   render();
   toast(`To'lov kiritildi ✓${after > 0 ? ' Qarz: ' + fmtSom(after) + " so'm" : ''}`);
