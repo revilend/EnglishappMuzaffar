@@ -2017,6 +2017,62 @@ async def execute_rejection(r_id: int, reason_text: str, admin_user: types.User)
     await _sync_receipt_messages(receipt, done_text)
 
 
+
+# ============================================================
+# Telegram Outbox (Saytdan yuborilgan eslatma va to'lov xabarlari)
+# ============================================================
+async def outbox_tick() -> int:
+    try:
+        rows = supabase.table("telegram_outbox").select("id, chat_id, text, status")\
+            .eq("status", "pending").order("id").limit(20).execute().data or []
+    except Exception as e:
+        msg = str(e)
+        if "PGRST205" in msg or "telegram_outbox" in msg:
+            return 0
+        logging.warning(f"outbox_tick: {e}")
+        return 0
+
+    sent_count = 0
+    for r in rows:
+        row_id = r["id"]
+        chat_id = r.get("chat_id")
+        text = r.get("text") or ""
+        if not chat_id:
+            try:
+                supabase.table("telegram_outbox").update({"status": "failed"}).eq("id", row_id).execute()
+            except Exception:
+                pass
+            continue
+
+        try:
+            target_id = int(chat_id) if str(chat_id).lstrip("-").isdigit() else str(chat_id)
+            await bot.send_message(
+                chat_id=target_id,
+                text=text,
+                parse_mode="HTML",
+                disable_notification=False
+            )
+            supabase.table("telegram_outbox").update({"status": "sent"}).eq("id", row_id).execute()
+            sent_count += 1
+            logging.info(f"Outbox sent message #{row_id} to {chat_id}")
+        except Exception as e:
+            logging.error(f"outbox send error row {row_id} to {chat_id}: {e}")
+            try:
+                supabase.table("telegram_outbox").update({"status": "failed"}).eq("id", row_id).execute()
+            except Exception:
+                pass
+    return sent_count
+
+async def outbox_watcher():
+    await asyncio.sleep(2)
+    while True:
+        try:
+            await outbox_tick()
+        except Exception as e:
+            logging.warning(f"outbox watcher loop error: {e}")
+        await asyncio.sleep(3)
+
+
 # Asosiy ishga tushirish
 _bg_tasks: set = set()  # fon vazifalari GC'dan himoya uchun shu yerda saqlanadi
 
@@ -2040,6 +2096,7 @@ async def main():
     _bg_tasks.add(asyncio.create_task(grades_watcher()))     # yangi baho
     _bg_tasks.add(asyncio.create_task(messages_watcher()))   # yangi chat xabari
     _bg_tasks.add(asyncio.create_task(receipt_watcher()))    # to'lov cheklari
+    _bg_tasks.add(asyncio.create_task(outbox_watcher()))     # telegram_outbox eslatmalari
 
     # Diagnostika: qaysi bot jonli — logda username ko'rinadi
     try:
