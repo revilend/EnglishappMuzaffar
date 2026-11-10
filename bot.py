@@ -1525,9 +1525,10 @@ async def messages_watcher():
 # ============================================================
 # Zaxira (backup / restore) — Supabase
 # ============================================================
-BACKUP_TABLES = ["groups", "students", "attendance", "grades", "messages", "speaking_submissions", "audio_submissions", "homework", "payments"]
+BACKUP_TABLES = ["groups", "monthly_fees", "students", "attendance", "grades", "messages", "speaking_submissions", "audio_submissions", "homework", "payments"]
 RESTORE_PLAN = [
     ("groups", ["id", "name", "days", "time", "monthly_fee", "group_type"]),
+    ("monthly_fees", ["id", "group_id", "period", "amount", "created_at"]),
     ("students", ["id", "name", "school_class", "group_id", "login", "password", "speaking_debt",
                   "voice_allowed", "telegram_chat_id", "last_device", "last_seen", "payment_debt",
                   "fee_period"]),
@@ -1537,8 +1538,9 @@ RESTORE_PLAN = [
     ("speaking_submissions", ["id", "student_id", "media_type", "telegram_file_id", "status", "score",
                               "feedback", "created_at"]),
     ("audio_submissions", ["id", "student_id", "date", "url", "status", "score", "feedback", "created_at"]),
-    ("homework", ["id", "group_id", "title", "description", "due_date", "media_url", "media_type", "created_at"]),
-    ("payments", ["id", "student_id", "amount", "note", "created_at"]),
+    ("homework", ["id", "group_id", "title", "description", "due_date", "media_url", "media_type",
+                  "attachments", "created_at"]),
+    ("payments", ["id", "student_id", "amount", "note", "period", "created_at"]),
 ]
 pending_restore_file = {}
 
@@ -1551,6 +1553,8 @@ BACKUP_LABELS = {
     "speaking_submissions": "Speaking topshiriklari",
     "audio_submissions": "Ovozli topshiriklar",
     "homework": "Uyga vazifalar",
+    "monthly_fees": "Oylik to'lov jadvali",
+    "payments": "To'lovlar",
 }
 
 
@@ -1616,7 +1620,7 @@ def prepare_restore(data: dict) -> dict:
 def restore_backup(data: dict) -> dict:
     """Zaxirani Supabase'ga qayta tiklaydi: avval O'CHIRISH (bog'liq jadvallardan),
     keyin ID saqlanib qayta YOZISH. Har jadval uchun son qaytaradi."""
-    for t in ["messages", "grades", "attendance", "speaking_submissions", "audio_submissions", "homework", "payments", "students", "groups"]:
+    for t in ["messages", "grades", "attendance", "speaking_submissions", "audio_submissions", "homework", "payments", "monthly_fees", "students", "groups"]:
         try:
             supabase.table(t).delete().gte("id", 0).execute()
         except Exception as e:

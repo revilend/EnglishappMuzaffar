@@ -243,3 +243,30 @@ do $$ begin
   alter table groups add constraint groups_group_type_chk
     check (group_type in ('school', 'tutoring'));
 exception when duplicate_object then null; end $$;
+
+-- ============================================================
+-- KO'P FAYLLI UYGA VAZIFA BIRIKTIRMALARI
+-- attachments: [{url, type, name, size}, ...]
+-- ============================================================
+alter table homework add column if not exists attachments jsonb not null default '[]'::jsonb;
+
+-- ============================================================
+-- OYLIK TO'LOV JADVALI (repetitorlik guruhlari uchun)
+-- Har bir guruh + oy uchun alohida summa: 2026-11 → 100000
+-- ============================================================
+create table if not exists public.monthly_fees (
+  id         bigint generated always as identity primary key,
+  group_id   bigint not null references public.groups (id) on delete cascade,
+  period     text not null,                -- 'YYYY-MM'
+  amount     bigint not null default 0,
+  created_at timestamptz not null default now(),
+  unique (group_id, period)
+);
+create index if not exists monthly_fees_group_idx on public.monthly_fees (group_id, period);
+alter table public.monthly_fees enable row level security;
+drop policy if exists "monthly_fees_all" on public.monthly_fees;
+create policy "monthly_fees_all" on public.monthly_fees for all using (true) with check (true);
+
+-- To'lov qaysi oy uchun qilinganini saqlash
+alter table payments add column if not exists period text;
+create index if not exists payments_period_idx on payments (student_id, period);
