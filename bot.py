@@ -1,3 +1,12 @@
+def check_password_match(entered: str, stored_hash_or_plain: str) -> bool:
+    if not stored_hash_or_plain or not entered:
+        return False
+    stored = str(stored_hash_or_plain).strip()
+    ent = str(entered).strip()
+    if len(stored) == 64 and all(c in "0123456789abcdefABCDEF" for c in stored):
+        return hashlib.sha256(ent.encode("utf-8")).hexdigest().lower() == stored.lower()
+    return stored == ent
+
 import asyncio
 import hashlib
 import html
@@ -389,14 +398,9 @@ async def attempt_login(message: types.Message, login: str, password: str):
             await message.answer(f"❌ <b>'{html.escape(login)}'</b> nomli login topilmadi! Iltimos, to'g'ri login kiriting.", parse_mode="HTML")
             return
         st = rows[0]
-        st_pwd = str(st.get("password") if st.get("password") is not None else "").strip()
+        st_pwd = str(st.get("password_hash") or st.get("password") or "").strip()
         entered = str(password).strip()
-        # Parol bazada SHA-256 xesh ko'rinishida saqlanadi; eski ochiq parollar ham qabul qilinadi
-        if len(st_pwd) == 64 and all(c in "0123456789abcdef" for c in st_pwd):
-            pwd_ok = hashlib.sha256(entered.encode("utf-8")).hexdigest() == st_pwd
-        else:
-            pwd_ok = st_pwd == entered
-        if not pwd_ok:
+        if not check_password_match(entered, st_pwd):
             await message.answer("❌ Kiritilgan parol noto'g'ri. Qayta urinib ko'ring.", parse_mode="HTML")
             return
         # Chat ID ulash
@@ -474,8 +478,8 @@ async def _finish_login_password(message: types.Message, uid: int, login: str, p
         )
         return
     st = rows[0]
-    st_pwd = str(st.get("password") if st.get("password") is not None else "").strip()
-    if st_pwd != pwd:
+    st_pwd = str(st.get("password_hash") or st.get("password") or "").strip()
+    if not check_password_match(pwd, st_pwd):
         await message.answer(
             "❌ <b>Parol noto'g'ri!</b>\nIltimos, parolni qaytadan kiriting:",
             reply_markup=login_inline_kb(include_restart=True), parse_mode="HTML",
