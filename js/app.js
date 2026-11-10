@@ -64,21 +64,16 @@ const K = {
 /* Toza start: demo guruh/o'quvchi seedlari YO'Q — barcha ma'lumot Supabase'dan keladi.
    Kalitlar bo'sh bo'lsa getterlar [] bilan ishlaydi (getGroups/getStudents/...). */
 
-/* Kirish hisoblari (login → ma'lumot): faqat ustoz; o'quvchilar pullAll'dan quriladi */
-let accounts = store.get(K.accounts, null);
-if (!accounts || !Object.keys(accounts).length) {
+/* XAVFSIZLIK: Parollar va hisoblar ro'yxati localStorage'da ASLO saqlanmaydi */
+store.del('et_accounts');
+store.del('et_users');
+let accounts = {};
+function initAccountsMemory() {
   accounts = {};
-  APP_DATA.accounts.forEach(a => {
-    accounts[a.login] = { login: a.login, password: a.password, role: a.role, name: a.name, studentId: a.studentId || null };
-  });
-  store.set(K.accounts, accounts);
+  accounts[TEACHER_LOGIN] = { login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, studentId: null };
 }
-/* Eski demo ustoz hisobi (admin) butunlay olib tashlanadi — yagona ustoz logini: m_amirov */
-if (accounts['admin'] && accounts['admin'].role === 'teacher') {
-  delete accounts['admin'];
-  store.set(K.accounts, accounts);
-}
-function persistAccounts() { store.set(K.accounts, accounts); }
+initAccountsMemory();
+function persistAccounts() { store.del(K.accounts); store.del('et_accounts'); }
 
 /* ==================== XAVFSIZLIK: SHA-256 PAROL XESHLASH ==================== */
 /* Brauzerning standart Web Crypto API'si bilan xeshlash (async) */
@@ -198,6 +193,8 @@ function normalizeStudents(list){
   const arr = Array.isArray(list)? list:[];
   return arr.map(st=>{
     const out={...st};
+    delete out.password;
+    delete out.password_hash;
     if(out.speakingDebt==null) out.speakingDebt=0;
     if(out.paymentDebt==null) out.paymentDebt=0;
     if(!Array.isArray(out.audioSubmissions)) out.audioSubmissions=[];
@@ -609,7 +606,6 @@ const CloudSync = (function () {
           schoolClass: r.school_class,
           groupId: r.group_id != null ? 'g' + r.group_id : null,
           login: r.login || '',
-          password: r.password || '',
           speakingDebt: Number(r.speaking_debt) || 0,
           paymentDebt: Number(r.payment_debt) || 0,
           feePeriod: r.fee_period || '',
@@ -673,14 +669,14 @@ const CloudSync = (function () {
       });
       if (slotChanged) store.set(K.speaking, slots);
 
-      /* hisoblar: ustoz (m_amirov) + jadvaldagi login/parollar */
+      /* Xavfsizlik: hisoblar ro'yxati localStorage'ga yozilmaydi */
+      store.del('et_accounts');
       const next = {};
-      next[TEACHER_LOGIN] = { login: TEACHER_LOGIN, password: TEACHER_PASSWORD, role: 'teacher', name: TEACHER_NAME, studentId: null };
+      next[TEACHER_LOGIN] = { login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, studentId: null };
       students.forEach(function (st) {
-        if (st.login) next[st.login] = { login: st.login, password: st.password || '', role: 'student', studentId: st.id, name: st.fullName };
+        if (st.login) next[st.login] = { login: st.login, role: 'student', studentId: st.id, name: st.fullName };
       });
       accounts = next;
-      persistAccounts();
 
       await fetchMessages(null);
       try { await pullSlots(null); } catch (e) { /* speaking_slots yo'q */ }
@@ -729,7 +725,6 @@ const CloudSync = (function () {
       schoolClass: row.school_class,
       groupId: row.group_id != null ? 'g' + row.group_id : null,
       login: row.login || '',
-      password: row.password || '',
       speakingDebt: Number(row.speaking_debt) || 0,
       paymentDebt: Number(row.payment_debt) || 0,
       feePeriod: row.fee_period || '',
@@ -803,12 +798,12 @@ const CloudSync = (function () {
     try { await pullCardSettings(); } catch (e) { /* bot_settings yo'q */ }
     try { await pullStudentReceipts(dbId); } catch (e) { /* payment_receipts yo'q */ }
 
-    /* hisoblar: faqat shu o'quvchi (ustoz paroli o'quvchi brauzeriga tushmaydi) */
+    /* Xavfsizlik: parollar localStorage'ga saqlanmaydi */
+    store.del('et_accounts');
     const key = String(row.login || '').toLowerCase();
     const next = {};
-    if (key) next[key] = { login: key, password: row.password || '', role: 'student', studentId: 's' + dbId, name: row.name };
+    if (key) next[key] = { login: key, role: 'student', studentId: 's' + dbId, name: row.name };
     accounts = next;
-    persistAccounts();
     return true;
   }
 
@@ -1877,7 +1872,9 @@ function analyticsConsent() {
 function getSession() { return store.get(K.session, null); }
 function currentUser() {
   const s = getSession();
-  return s && accounts[s.login] ? accounts[s.login] : null;
+  if (!s || !s.login) return null;
+  if (accounts[s.login]) return Object.assign({}, accounts[s.login], s);
+  return s;
 }
 function isTeacher() {
   const u = currentUser();
@@ -1888,8 +1885,15 @@ function linkedStudent() {
   if (!u || !u.studentId) return null;
   return studentById(u.studentId);
 }
-function startSession(login) {
-  store.set(K.session, { login: login, role: accounts[login].role });
+function startSession(userObj) {
+  const sess = typeof userObj === 'object' ? userObj : {
+    login: userObj,
+    role: (accounts[userObj] && accounts[userObj].role) || (userObj === TEACHER_LOGIN ? 'teacher' : 'student'),
+    name: (accounts[userObj] && accounts[userObj].name) || '',
+    studentId: (accounts[userObj] && accounts[userObj].studentId) || null
+  };
+  store.set(K.session, sess);
+  accounts[sess.login] = sess;
   state.screen = 'home';
   render();
   /* Boshqa qurilmadan kirgan bo'lsak — bulutdan ma'lumotni tiklandi (doLogin) */
@@ -3573,7 +3577,7 @@ function studentCard(s) {
   const debt = Math.max(0, Number(s.paymentDebt) || 0);
   /* Pul/to'lov faqat repetitorlik guruhlarida (maktab guruhi — bepul) */
   const showMoney = !!g && !isSchoolGroup(g);
-  const acc = Object.keys(accounts).map(k => accounts[k]).filter(a => a.studentId === s.id)[0];
+  const sLogin = s.login || "";
   return `<div class="card student-card">
     <div class="st-head">
       <div class="avatar st-avatar">${esc(initials(s.fullName))}</div>
@@ -3582,7 +3586,7 @@ function studentCard(s) {
         <div class="s-group">${g ? esc(g.name) : t("Guruh taylanmagan")}</div>
         ${presenceHTML(s)}
         <div class="s-contacts">
-          <span class="s-contact"><span class="lbl">Login</span><span class="login-val">${acc ? esc(acc.login) : '—'}</span></span>
+          <span class="s-contact"><span class="lbl">Login</span><span class="login-val">${sLogin ? esc(sLogin) : '—'}</span></span>
         </div>
       </div>
       <span class="chip-class">${esc(tClass(s.schoolClass))}</span>
@@ -4265,7 +4269,7 @@ function openResetPwd(sid) {
   if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
   const st = studentById(sid);
   if (!st) return;
-  const acc = Object.keys(accounts).map(k => accounts[k]).filter(a => a.studentId === sid)[0];
+  const sLogin = st.login || "";
   openModal(`
     <div class="modal-head">
       <h3>Parolni yangilash</h3>
@@ -4275,10 +4279,10 @@ function openResetPwd(sid) {
       <div class="avatar">${esc(initials(st.fullName))}</div>
       <div class="col">
         <div class="s-name">${esc(st.fullName)}</div>
-        <div class="muted small">${esc(st.schoolClass)} • Login: <span class="login-val">${acc ? esc(acc.login) : '—'}</span></div>
+        <div class="muted small">${esc(st.schoolClass)} • Login: <span class="login-val">${sLogin ? esc(sLogin) : '—'}</span></div>
       </div>
     </div>
-    ${acc ? '' : `<label class="field-label" for="rp-login">Login</label>
+    ${sLogin ? '' : `<label class="field-label" for="rp-login">Login</label>
       <input class="input" id="rp-login" autocapitalize="none" value="${esc(suggestLogin(st.fullName))}" />`}
     <label class="field-label" for="rp-pass">Yangi parol</label>
     <div class="pw-wrap">
@@ -5532,39 +5536,80 @@ function doLogin() {
   if (!login || !pass) { fail("Login va parolni kiriting"); return; }
   if (err) { err.textContent = ''; err.classList.remove('show'); }
 
-  const validate = () => {
-    const acc = accounts[login];
-    if (!acc || !passwordMatches(pass, acc.password)) {
-      const r = registerLoginFail();
-      if (r && r.until) {
-        fail(loginLockText(r));
-        syncLoginLock();
-      } else {
-        fail("Login yoki parol noto'g'ri");
-      }
-      passEl.value = '';
-      passEl.focus();
-      return;
+  const onFail = () => {
+    const r = registerLoginFail();
+    if (r && r.until) {
+      fail(loginLockText(r));
+      syncLoginLock();
+    } else {
+      fail("Login yoki parol noto'g'ri");
     }
+    passEl.value = '';
+    passEl.focus();
+  };
+
+  const onSuccess = (userObj) => {
     store.del(K.loginFails);
-    /* Eski ochiq parol mos keldi — darhol SHA-256 xeshga yangilaymiz */
-    if (acc.role === 'student' && acc.studentId && !isSha256Hex(acc.password) && CloudSync.ready()) {
-      accounts[login].password = hashPasswordSync(pass);
-      persistAccounts();
-      CloudSync.pushStudent(acc.studentId);
-    }
-    startSession(login);
+    startSession(userObj);
     toast('Xush kelibsiz!');
   };
 
-  /* Boshqa qurilmadan kirish: avval bulutdan hisoblarni tekshiramiz */
+  /* 1. Ustoz kirishi (m_amirov) */
+  if (login === TEACHER_LOGIN) {
+    if (CloudSync.ready()) {
+      loginEl.disabled = true;
+      CloudSync.pullAll(login).then(async () => {
+        loginEl.disabled = false;
+        let teachPw = await CloudSync.pullTeacherPassword();
+        if (!teachPw) teachPw = TEACHER_PASSWORD;
+        if (!passwordMatches(pass, teachPw)) { onFail(); return; }
+        onSuccess({ login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, studentId: null });
+      }).catch(() => { loginEl.disabled = false; onFail(); });
+    } else {
+      if (!passwordMatches(pass, TEACHER_PASSWORD)) { onFail(); return; }
+      onSuccess({ login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, studentId: null });
+    }
+    return;
+  }
+
+  /* 2. O'quvchi kirishi: to'g'ridan-to'g'ri Supabase'dan tekshiriladi */
   if (CloudSync.ready()) {
-    if (loginEl.disabled) return;
     loginEl.disabled = true;
-    const done = () => { loginEl.disabled = false; validate(); };
-    CloudSync.pullAll(login).then(done, done);
+    (async () => {
+      try {
+        const client = window.__cloudClient || (window.supabase && window.supabase.createClient && window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY));
+        let studentRow = null;
+        if (client) {
+          const res = await client.from('students').select('*').ilike('login', login).limit(1);
+          if (res.data && res.data.length) studentRow = res.data[0];
+        }
+        if (!studentRow) { loginEl.disabled = false; onFail(); return; }
+
+        const storedHash = studentRow.password_hash || studentRow.password || '';
+        if (!passwordMatches(pass, storedHash)) { loginEl.disabled = false; onFail(); return; }
+
+        /* Avtomatik migratsiya: agar parol hali ochiq matn bo'lsa xeshga o'tkazish */
+        if (!isSha256Hex(storedHash) && client) {
+          const hashed = hashPasswordSync(pass);
+          await client.from('students').update({ password_hash: hashed, password: hashed }).eq('id', studentRow.id);
+        }
+
+        /* O'quvchi ma'lumotlarini yuklash */
+        await CloudSync.pullAll(login);
+        loginEl.disabled = false;
+        onSuccess({
+          login: studentRow.login,
+          role: 'student',
+          name: studentRow.name,
+          studentId: 's' + studentRow.id
+        });
+      } catch (err) {
+        loginEl.disabled = false;
+        onFail();
+      }
+    })();
   } else {
-    validate();
+    onFail();
   }
 }
 
@@ -6277,7 +6322,8 @@ $('#modal-overlay').addEventListener('click', function (e) {
 
 /* ==================== Ishga tushirish ==================== */
 (function init() {
-  /* Eski (Step 1–2) kalitlarni tozalash */
+  /* XAVFSIZLIK: Eski parollar va hisoblar keshini tozalash */
+  store.del('et_accounts');
   store.del('et_users');
   const s = getSession();
   if (!s || !accounts[s.login]) store.del(K.session);
