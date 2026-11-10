@@ -1,12 +1,3 @@
-def check_password_match(entered: str, stored_hash_or_plain: str) -> bool:
-    if not stored_hash_or_plain or not entered:
-        return False
-    stored = str(stored_hash_or_plain).strip()
-    ent = str(entered).strip()
-    if len(stored) == 64 and all(c in "0123456789abcdefABCDEF" for c in stored):
-        return hashlib.sha256(ent.encode("utf-8")).hexdigest().lower() == stored.lower()
-    return stored == ent
-
 import asyncio
 import hashlib
 import html
@@ -33,6 +24,15 @@ from aiogram.types import (
 from supabase import create_client, Client
 import config
 config.WEBAPP_URL = "https://teachermuzaffar.uz/"
+
+def check_password_match(entered: str, stored_hash_or_plain: str) -> bool:
+    if not stored_hash_or_plain or not entered:
+        return False
+    stored = str(stored_hash_or_plain).strip()
+    ent = str(entered).strip()
+    if len(stored) == 64 and all(c in "0123456789abcdefABCDEF" for c in stored):
+        return hashlib.sha256(ent.encode("utf-8")).hexdigest().lower() == stored.lower()
+    return stored == ent
 
 
 logging.basicConfig(level=logging.INFO)
@@ -271,7 +271,7 @@ async def btn_admin_new_speakings(message: types.Message):
 
 
 # /start command
-@dp.message(CommandStart(), StateFilter("*"))
+@dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     pending_logins.pop(message.from_user.id, None)
