@@ -3094,6 +3094,9 @@ function studentPortal() {
   const pendingReceipt = receipts.filter(function (r) {
     return (r.month_key === per || !r.month_key) && r.status === 'kutilmoqda';
   })[0];
+  const rejectedReceipt = !pendingReceipt ? receipts.filter(function (r) {
+    return (r.month_key === per || !r.month_key) && r.status === 'rad_etildi';
+  })[0] : null;
 
   const payBanner = hideMoney ? '' : `
   <section class="card pay-banner ${monthRemain > 0 ? 'due' : 'ok'}">
@@ -3109,6 +3112,10 @@ function studentPortal() {
     ${pendingReceipt ? `
     <div class="pay-pending-alert" style="margin:8px 0;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;color:#92400e;font-size:13px">
       ⏳ <b>To'lov cheki ko'rib chiqilmoqda!</b> Ustoz tasdiqlashi bilan qarzingiz o'chiriladi.
+    </div>` : ''}
+    ${rejectedReceipt ? `
+    <div class="pay-rejected-alert" style="margin:8px 0;padding:8px 12px;background:#fee2e2;border:1px solid #ef4444;border-radius:8px;color:#991b1b;font-size:13px">
+      ❌ <b>Chekingiz rad etildi:</b> ${esc(rejectedReceipt.note || "Noto'g'ri chek")}. Iltimos, qaytadan to'g'ri chekni yuklang:
     </div>` : ''}
     ${monthRemain > 0 && !pendingReceipt ? `
     <div style="margin:10px 0 6px 0">
