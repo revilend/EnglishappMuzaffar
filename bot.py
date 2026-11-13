@@ -2252,11 +2252,45 @@ def get_admin_email() -> str:
 async def send_gmail(to_email: str, subject: str, body_html: str) -> bool:
     """HTML xat yuboradi.
 
-    1) GMAIL_WEBHOOK_URL berilgan bo'lsa — xat o'sha manzilga JSON
-       ({"to", "subject", "html"}) ko'rinishida POST qilinadi.
-       200 OK → True, aks holda xato (qator 'failed' bo'lib qoladi).
-    2) Aks holda — eski Gmail SMTP (SSL, 465) usuli ishlaydi.
+    1) BREVO_API_KEY berilgan bo'lsa — Brevo transactional API
+       (https://api.brevo.com/v3/smtp/email) orqali yuboriladi.
+       200/201/202 → True; aks holda javob matni logga yozilib False.
+    2) GMAIL_WEBHOOK_URL berilgan bo'lsa — xat o'sha manzilga JSON
+       ({"to", "subject", "html"}) ko'rinishida POST qilinadi (200 → True).
+    3) Aks holda — eski Gmail SMTP (SSL, 465) usuli ishlaydi.
     """
+    brevo_key = (os.getenv("BREVO_API_KEY") or "").strip()
+    if brevo_key:
+        payload = {
+            "sender": {
+                "name": "English Teacher",
+                "email": (getattr(config, "GMAIL_USER", "") or "").strip()
+                         or "teachermuzaffar.noreply@gmail.com",
+            },
+            "to": [{"email": str(to_email).strip()}],
+            "subject": subject or "Bildirishnoma",
+            "htmlContent": body_html or "",
+        }
+        headers = {
+            "api-key": brevo_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        timeout = aiohttp.ClientTimeout(total=30)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post("https://api.brevo.com/v3/smtp/email",
+                                        json=payload, headers=headers) as resp:
+                    if resp.status in (200, 201, 202):
+                        logging.info(f"Brevo OK -> {payload['to'][0]['email']}")
+                        return True
+                    text = (await resp.text())[:500]
+                    logging.error(f"Brevo error {resp.status} -> {payload['to'][0]['email']}: {text}")
+                    return False
+        except Exception as e:
+            logging.error(f"Brevo request error -> {to_email}: {e}")
+            return False
+
     webhook_url = (os.getenv("GMAIL_WEBHOOK_URL") or "").strip()
     if webhook_url:
         payload = {
@@ -2320,7 +2354,9 @@ async def email_outbox_tick() -> int:
         try:
             if not target or "@" not in target:
                 raise ValueError(f"noto'g'ri manzil: {target!r}")
-            await send_gmail(target, r.get("subject") or "Bildirishnoma", r.get("body_html") or "")
+            delivered = await send_gmail(target, r.get("subject") or "Bildirishnoma", r.get("body_html") or "")
+            if not delivered:
+                raise RuntimeError("provayder xat yuborilmaganini qaytardi")
             supabase.table("email_outbox").update({"status": "sent"}).eq("id", row_id).execute()
             sent += 1
             logging.info(f"Email outbox sent #{row_id} -> {target}")
