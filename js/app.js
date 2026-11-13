@@ -1482,6 +1482,7 @@ const CloudSync = (function () {
     pullSlots: pullSlots,
     pushSlot: pushSlot,
     deleteSlot: deleteSlot,
+    pullTeacherPassword: pullTeacherPassword,
     pushTeacherPassword: pushTeacherPassword,
     sendMessage: sendMessage,
     subscribe: subscribe,
@@ -5562,7 +5563,16 @@ function doLogin() {
       loginEl.disabled = true;
       CloudSync.pullAll(login).then(async () => {
         loginEl.disabled = false;
-        let teachPw = await CloudSync.pullTeacherPassword();
+        /* bot_settings'da teacher_password bo'lmasa (yoki o'qib bo'lmasa) -
+           standart TEACHER_PASSWORD bilan kirish kafolatlanadi */
+        let teachPw = null;
+        try {
+          if (typeof CloudSync.pullTeacherPassword === 'function') {
+            teachPw = await CloudSync.pullTeacherPassword();
+          }
+        } catch (e) {
+          teachPw = null;
+        }
         if (!teachPw) teachPw = TEACHER_PASSWORD;
         if (!passwordMatches(pass, teachPw)) { onFail(); return; }
         onSuccess({ login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, studentId: null });
