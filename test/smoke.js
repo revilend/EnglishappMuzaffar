@@ -1241,7 +1241,8 @@ await (async () => {
   click('[data-act="nav"][data-screen="profile"]');
   clickAct('logout');
   await loginAs('restore1', '1111');
-  check(q('#login-error').classList.contains('show'), "zaxira: noto'g'ri parol rad etildi");
+  check(await until(() => q('#login-error') && q('#login-error').classList.contains('show'), 2000),
+    "zaxira: noto'g'ri parol rad etildi");
   await loginAs('restore1', '9876');
   check(text().includes('Restored Student'), "zaxira: restore1/9876 bilan kirish ishlaydi");
 
@@ -2381,6 +2382,30 @@ await (async () => {
   check(await until(() => q('#screen').textContent.includes('Tasdiqlangan'), 2000),
     'profil: Gmail yonida ✅ Tasdiqlangan holati ko‘rinadi');
 
+  /* (d2) saqlangan, lekin tasdiqlanmagan Gmailni qayta tasdiqlash */
+  const localList = JSON.parse(win.localStorage.getItem('et_students') || '[]');
+  localList.forEach(x => { if (String(x.email || '') === 'yangi.mail@gmail.com') x.emailVerified = false; });
+  win.localStorage.setItem('et_students', JSON.stringify(localList));
+  resetRow.email_verified = false;
+  forceNav('home');
+  forceNav('profile');
+  check(!!q('[data-act="resend-verify-existing"]'),
+    'profil: tasdiqlanmagan Gmail uchun “Kod yuborish” tugmasi ko‘rinadi');
+  clickAct('resend-verify-existing');
+  check(await until(() => !!q('#ev-code'), 3000), 'profil: qayta tasdiqlash kodi yuborildi (modal)');
+  const evc2 = (cloudStub.db.auth_codes || []).filter(r => r.purpose === 'verify_email').pop();
+  check(!!evc2 && String(evc2.contact) === 'yangi.mail@gmail.com',
+    'profil: kod saqlangan manzilga (contact) yozildi');
+  check((cloudStub.db.email_outbox || []).some(r => String(r.to_email) === 'yangi.mail@gmail.com' &&
+      String(r.body_html || '').includes(String(evc2.code))),
+    'profil: kod email_outbox orqali qayta yuborildi');
+  setVal('#ev-code', String(evc2.code));
+  clickAct('do-verify-email');
+  check(await until(() => (cloudStub.db.students || []).filter(r => r.id === resetRow.id)[0].email_verified === true, 3000),
+    'profil: qayta tasdiqlash email_verified = true qildi');
+  check(await until(() => !q('[data-act="resend-verify-existing"]'), 2500),
+    'profil: tasdiqlangach “Kod yuborish” tugmasi yo‘qoladi');
+
   /* (e) ustoz (m_amirov) uchun OTP → bot_settings.teacher_password */
   logout();
   clickAct('open-forgot');
@@ -2429,6 +2454,25 @@ await (async () => {
   }, 3000), 'profil: tasdiqlangach bot_settings.admin_email + admin_email_verified = true');
   check(await until(() => ((cloudStub.db.bot_settings || []).filter(r => r.key === 'admin_phone')[0] || {}).value === '+998901112233', 2500),
     'profil: ustoz telefoni bot_settings.admin_phone ga saqlandi');
+
+  /* (f2) ustozning saqlangan tasdiqlanmagan Gmailini qayta tasdiqlash */
+  const vfRow = (cloudStub.db.bot_settings || []).filter(r => r.key === 'admin_email_verified')[0];
+  vfRow.value = 'false';
+  forceNav('home');
+  forceNav('profile');
+  check(await until(() => !!q('[data-act="resend-verify-existing"]'), 3000),
+    'profil: ustoz uchun ham “Kod yuborish” tugmasi ko‘rinadi');
+  clickAct('resend-verify-existing');
+  check(await until(() => !!q('#ev-code'), 3000), 'profil: ustoz uchun kod qayta yuborildi (modal)');
+  const tev2 = (cloudStub.db.auth_codes || []).filter(r => r.purpose === 'verify_email').pop();
+  check(!!tev2 && String(tev2.contact) === 'ustoz.2fa@gmail.com',
+    'profil: ustoz kodi mavjud manzilga yozildi');
+  setVal('#ev-code', String(tev2.code));
+  clickAct('do-verify-email');
+  check(await until(() => {
+    const v = (cloudStub.db.bot_settings || []).filter(r => r.key === 'admin_email_verified')[0];
+    return !!v && String(v.value) === 'true';
+  }, 3000), 'profil: ustoz Gmaili qayta tasdiqlandi (admin_email_verified = true)');
 
   /* (g) tanilgan qurilma: 2FA o'tkazib yuboriladi */
   check(!!win.localStorage.getItem('et_teacher_trusted_device'),

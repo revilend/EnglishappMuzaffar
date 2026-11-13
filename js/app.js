@@ -4226,6 +4226,7 @@ function profileScreen() {
     <label class="field-label" for="st-email" style="margin-top:6px">${t('Gmail manzili')}</label>
     <input class="input" id="st-email" type="email" autocomplete="email" placeholder="ism@gmail.com" value="${esc(st.email || '')}" />
     <div class="muted small" style="margin-top:4px">${st.email ? (st.emailVerified ? '✅ ' + t('Tasdiqlangan') : '⚠️ ' + t('Tasdiqlanmagan')) : ''}</div>
+    ${(st.email && !st.emailVerified) ? `<button type="button" class="btn btn-ghost btn-block" data-act="resend-verify-existing" style="margin-top:6px">✉️ ${t('Kod yuborish')}</button>` : ''}
     <div class="muted small" style="margin-top:6px">${t("Parolni tiklash kodi shu telefon (Telegram) yoki Gmail manzilga yuboriladi.")}</div>
     <button type="button" class="btn btn-primary btn-block" data-act="save-student-contact" style="margin-top:8px">💾 ${t('Saqlash')}</button>
   </div>` : ''}
@@ -4237,6 +4238,7 @@ function profileScreen() {
     <label class="field-label" for="tc-email">${t('Ustoz Gmail manzili')}</label>
     <input class="input" id="tc-email" type="email" autocomplete="email" placeholder="ustoz@gmail.com" value="${esc(adminContacts.email || '')}" />
     <div class="muted small" style="margin-top:4px">${adminContacts.email ? (adminContacts.verified ? '✅ ' + t('Tasdiqlangan') : '⚠️ ' + t('Tasdiqlanmagan')) : ''}</div>
+    ${(adminContacts.email && !adminContacts.verified) ? `<button type="button" class="btn btn-ghost btn-block" data-act="resend-verify-existing" style="margin-top:6px">✉️ ${t('Kod yuborish')}</button>` : ''}
     <label class="field-label" for="tc-phone" style="margin-top:6px">${t('Telefon raqam')}</label>
     <input class="input" id="tc-phone" type="tel" inputmode="tel" maxlength="20" placeholder="+998 90 123 45 67" value="${esc(adminContacts.phone || '')}" />
     <button type="button" class="btn btn-primary btn-block" data-act="save-teacher-contact" style="margin-top:10px">💾 ${t('Saqlash')}</button>
@@ -6375,7 +6377,7 @@ async function submitEmailVerify() {
 }
 
 /* ==================== ALOQA MA'LUMOTLARI (o'quvchi / ustoz) ==================== */
-let adminContacts = { email: '', phone: '', loaded: false, verified: false };
+let adminContacts = { email: '', phone: '', loaded: false, verified: false, busy: false };
 let adminTrusted = { list: [], loaded: false };
 
 /* Telefonni +998XXXXXXXXX ko'rinishida normallashtiradi */
@@ -6426,20 +6428,36 @@ function saveStudentContact() {
   sendEmailVerifyCode(email, 'student');
 }
 
+/* Saqlangan, lekin hali TASDIQLANMAGAN manzilga qayta kod yuborish */
+function sendVerifyExisting() {
+  const email = isTeacher()
+    ? String(adminContacts.email || '').trim()
+    : String((linkedStudent() || {}).email || '').trim();
+  if (!email || !validEmail(email)) { toast('Avval Gmail manzilni kiriting', 'error'); return; }
+  sendEmailVerifyCode(email, isTeacher() ? 'teacher' : 'student');
+}
+
 /* Ustoz: bot_settings.admin_email / admin_phone (2FA va tiklash kanallari) */
 async function ensureAdminContacts() {
-  if (!isTeacher() || adminContacts.loaded) return;
-  adminContacts.loaded = true;
-  const email = await CloudSync.getSetting('admin_email');
-  const phone = await CloudSync.getSetting('admin_phone');
-  adminContacts.email = email || '';
-  adminContacts.phone = phone || '';
+  if (!isTeacher() || adminContacts.busy) return;
+  adminContacts.busy = true;
+  if (!adminContacts.loaded) {
+    const email = await CloudSync.getSetting('admin_email');
+    const phone = await CloudSync.getSetting('admin_phone');
+    adminContacts.email = email || '';
+    adminContacts.phone = phone || '';
+    adminContacts.loaded = true;
+  }
   const verRaw = await CloudSync.getSetting('admin_email_verified');
-  adminContacts.verified = String(verRaw || '').trim().toLowerCase() === 'true';
   const trustedRaw = await CloudSync.getSetting('trusted_devices');
-  adminTrusted.list = parseTrustedList(trustedRaw);
+  const verified = String(verRaw || '').trim().toLowerCase() === 'true';
+  const list = parseTrustedList(trustedRaw);
+  const changed = (verified !== adminContacts.verified) || (list.length !== adminTrusted.list.length);
+  adminContacts.verified = verified;
+  adminTrusted.list = list;
   adminTrusted.loaded = true;
-  if (state.screen === 'profile') render();
+  adminContacts.busy = false;
+  if (changed && state.screen === 'profile') render();
 }
 
 function saveTeacherContact() {
@@ -6822,6 +6840,7 @@ document.addEventListener('click', function (e) {
     'save-student-contact': saveStudentContact,
     'save-teacher-contact': saveTeacherContact,
     'clear-trusted': function () { forgetTrustedDevices(); },
+    'resend-verify-existing': sendVerifyExisting,
     'do-verify-email': submitEmailVerify,
     'resend-verify-email': function () {
       const c = state.verifyEmail;
