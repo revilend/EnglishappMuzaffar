@@ -722,6 +722,7 @@ img.auth-logo {
 }
 .s-group { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 .s-presence { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.s-presence svg, .session-name svg { vertical-align: -2px; margin-right: 4px; }
 .s-presence.is-on { color: #16a34a; font-weight: 600; }
 .s-contacts { margin-top: 7px; display: flex; flex-direction: column; gap: 4px; }
 .s-contact {

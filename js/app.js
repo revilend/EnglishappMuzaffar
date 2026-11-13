@@ -1824,7 +1824,73 @@ const CloudSync = (function () {
 window.__cloud = CloudSync;
 
 /* ==================== QURILMA VA FAOL QURILMALAR (xavfsizlik nazorati) ==================== */
-/* Brauzer qurilmasini aniqlaydi: 'Android (Chrome)', 'iPhone (Safari)', 'Windows PC' ... */
+/* Brauzer nomi: 'Chrome', 'Safari', 'Edge' ... */
+function detectBrowserName(ua) {
+  if (/Edg\//.test(ua)) return 'Edge';
+  if (/OPR\//.test(ua) || /Opera/.test(ua)) return 'Opera';
+  if (/Firefox\//.test(ua)) return 'Firefox';
+  if (/Chrome\//.test(ua)) return 'Chrome';
+  if (/Safari\//.test(ua)) return 'Safari';
+  return 'Brauzer';
+}
+
+/* Aniq qurilma modeli (SM-A546B, Redmi Note 12, Pixel 8) — bir marta aniqlanadi
+   va sessionStorage'da kesh qilinadi, keyin detectDevice() darhol qaytaradi. */
+let _resolvedDevice = '';
+const DEVICE_MODEL_KEY = 'et_device_model';
+
+function cachedDeviceModel() {
+  if (_resolvedDevice) return _resolvedDevice;
+  try {
+    const v = window.sessionStorage && window.sessionStorage.getItem(DEVICE_MODEL_KEY);
+    if (v) _resolvedDevice = v;
+  } catch (e) {}
+  return _resolvedDevice;
+}
+
+function setDeviceModel(model) {
+  _resolvedDevice = model ? String(model) : '';
+  try {
+    if (!window.sessionStorage) return;
+    if (_resolvedDevice) window.sessionStorage.setItem(DEVICE_MODEL_KEY, _resolvedDevice);
+    else window.sessionStorage.removeItem(DEVICE_MODEL_KEY);
+  } catch (e) {}
+}
+
+/* Modelni aniqlaydi: 1) userAgentData (high entropy) 2) UA ichidagi '... Build/'
+   Topilmasa bo'sh satr — detectDevice() iPhone/Mac/Windows kabi umumiy nom qoldiradi. */
+async function resolveDeviceModel() {
+  const known = cachedDeviceModel();
+  if (known) return known;
+  const ua = (navigator && navigator.userAgent) || '';
+  let model = '';
+  try {
+    const uad = navigator.userAgentData;
+    if (uad && typeof uad.getHighEntropyValues === 'function') {
+      const hv = await uad.getHighEntropyValues(['model', 'platform', 'platformVersion']);
+      if (hv && hv.model) model = String(hv.model).trim();
+    }
+  } catch (e) {}
+  if (!model) {
+    const m = ua.match(/;\s*([^;)]+?)\s+Build\//);
+    if (m) {
+      const cand = m[1].trim();
+      if (cand && !/^Android$/i.test(cand)) model = cand;
+    }
+  }
+  if (model) setDeviceModel(model);
+  return model;
+}
+
+/* Aniq modelni ko'rsatish uchun: 'SM-A546B (Chrome)' -> 'SM-A546B \u2022 Chrome' */
+function deviceShortLabel(name) {
+  const raw = String(name || '').trim();
+  if (!raw) return '';
+  const m = raw.match(/^(.*?)\s*\(([^()]*)\)\s*$/);
+  return m ? (m[1].trim() + ' \u2022 ' + m[2].trim()) : raw;
+}
+
+/* Qurilma nomi: model topilsa 'SM-A546B \u2022 Chrome', aks holda 'Android \u2022 Chrome' */
 function detectDevice() {
   const ua = (navigator && navigator.userAgent) || '';
   let os = 'Boshqa qurilma';
@@ -1834,13 +1900,10 @@ function detectDevice() {
   else if (/Windows/.test(ua)) os = 'Windows PC';
   else if (/Macintosh|Mac OS X/.test(ua)) os = 'Mac';
   else if (/Linux/.test(ua)) os = 'Linux';
-  let br = 'Brauzer';
-  if (/Edg\//.test(ua)) br = 'Edge';
-  else if (/OPR\//.test(ua) || /Opera/.test(ua)) br = 'Opera';
-  else if (/Firefox\//.test(ua)) br = 'Firefox';
-  else if (/Chrome\//.test(ua)) br = 'Chrome';
-  else if (/Safari\//.test(ua)) br = 'Safari';
-  return { os: os, br: br, name: os + ' (' + br + ')', short: os + ' \u2022 ' + br };
+  const br = detectBrowserName(ua);
+  const model = cachedDeviceModel();
+  const label = model || os;
+  return { os: os, br: br, model: model, name: label + ' (' + br + ')', short: label + ' \u2022 ' + br };
 }
 
 /* Takrorlanmas session_id (UUID v4) — har bir qurilma uchun bir marta saqlanadi */
@@ -1875,22 +1938,28 @@ function timeAgoText(iso) {
   return en ? (d + ' days ago') : (d + ' kun oldin');
 }
 
-/* O'quvchi kartasi satri: 5 daqiqa ichida -> 'Onlayn (iPhone)',
-   aks holda -> 'Android \u2022 20 daqiqa oldin' */
+/* O'quvchi kartasi satri: 5 daqiqa ichida -> 'Onlayn: SM-A546B \u2022 Chrome',
+   aks holda -> '20 daqiqa oldin \u2022 SM-A546B'. Model to'liq, kesilmaydi. */
+function presenceIsOnline(s) {
+  if (!s || !s.lastSeen) return false;
+  const ts = new Date(s.lastSeen).getTime();
+  if (!ts || isNaN(ts)) return false;
+  return (Date.now() - ts) / 60000 < 5;
+}
 function presenceText(s) {
   if (!s || !s.lastSeen) return '';
   const ts = new Date(s.lastSeen).getTime();
   if (!ts || isNaN(ts)) return '';
-  const os = s.lastDevice ? String(s.lastDevice).split(' (')[0] : t('qurilma');
-  const mins = (Date.now() - ts) / 60000;
-  if (mins < 5) return '\ud83d\udfe2 ' + t('Onlayn') + ' (' + os + ')';
-  return '\ud83d\udcf1 ' + os + ' \u2022 ' + timeAgoText(s.lastSeen);
+  const full = deviceShortLabel(s.lastDevice) || t('qurilma');
+  const model = full.split(' \u2022 ')[0];
+  const icon = ico('smartphone', 14);
+  if (presenceIsOnline(s)) return icon + ' ' + t('Onlayn') + ': ' + esc(full);
+  return icon + ' ' + esc(timeAgoText(s.lastSeen) + ' \u2022 ' + model);
 }
 function presenceHTML(s) {
-  const t = presenceText(s);
-  if (!t) return '';
-  const on = t.indexOf('\ud83d\udfe2') === 0;
-  return '<div class="s-presence' + (on ? ' is-on' : '') + '">' + esc(t) + '</div>';
+  const txt = presenceText(s);
+  if (!txt) return '';
+  return '<div class="s-presence' + (presenceIsOnline(s) ? ' is-on' : '') + '">' + txt + '</div>';
 }
 
 /* Lokal (localStorage) ga oxirgi qurilma/vaqt — kartalar offline ham ko'radi */
@@ -1913,6 +1982,7 @@ const Sessions = {
   onLogin: async function () {
     const u = currentUser();
     if (!u) return;
+    await resolveDeviceModel();
     const dev = detectDevice();
     updateLocalPresence(dev.name);
     if (!this.enabled()) return;
@@ -1935,6 +2005,7 @@ const Sessions = {
   touch: async function () {
     const u = currentUser();
     if (!u) return;
+    await resolveDeviceModel();
     const dev = detectDevice();
     updateLocalPresence(dev.name);
     if (!this.enabled()) return;
@@ -2024,7 +2095,7 @@ function sessionsSectionHTML() {
   <div class="card list-card" id="sessions-card">
     <div class="list-row session-row is-current">
       <span class="session-info">
-        <span class="session-name"><span class="sess-dot"></span>${t('Bu qurilma')} (${esc(dev.short)})</span>
+        <span class="session-name"><span class="sess-dot"></span>${ico('smartphone', 14)}${t('Bu qurilma')} (${esc(dev.short)})</span>
         <span class="muted small">${t('joriy sessiya')}</span>
       </span>
     </div>
@@ -2032,7 +2103,7 @@ function sessionsSectionHTML() {
       return `
     <div class="list-row session-row">
       <span class="session-info">
-        <span class="session-name">${esc(s.device_name || t("Noma'lum qurilma"))}</span>
+        <span class="session-name">${ico('smartphone', 14)}${esc(s.device_name || t("Noma'lum qurilma"))}</span>
         <span class="muted small">${esc(timeAgoText(s.last_active))}</span>
       </span>
       <button type="button" class="btn btn-xs danger" data-act="session-logout" data-sess="${esc(s.id)}">${t('Chiqarib yuborish')}</button>
@@ -2046,6 +2117,8 @@ function sessionsSectionHTML() {
 
 window.__sessions = {
   detectDevice: detectDevice,
+  resolveDeviceModel: resolveDeviceModel,
+  resetDeviceModel: function () { setDeviceModel(''); },
   getSessionId: getSessionId,
   timeAgoText: timeAgoText,
   presenceText: presenceText,
@@ -6038,28 +6111,39 @@ async function isTrustedTeacherDevice() {
   return parseTrustedList(raw).some(function (d) { return d.token === t.token; });
 }
 
+/* Ishonchli qurilmalar ro'yxati serverga ketma-ket yoziladi: yozish va tozalash
+   bir-birini bosib ketmasin (parallel setSetting poyga holati). */
+let trustedQueue = Promise.resolve();
+
 /* 2FA muvaffaqiyatli o'tgach qurilmani eslab qolamiz */
 async function rememberTrustedDevice() {
+  await resolveDeviceModel();
   const token = randToken();
   const until = Date.now() + TRUSTED_DAYS * 24 * 3600 * 1000;
   const name = (detectDevice() || {}).name || "Noma'lum qurilma";
   try { localStorage.setItem(TRUSTED_KEY, JSON.stringify({ token: token, until: until, name: name })); } catch (e) {}
-  const raw = await CloudSync.getSetting('trusted_devices');
-  const list = parseTrustedList(raw).slice(-9);
-  list.push({ token: token, until: until, name: name });
-  await CloudSync.setSetting('trusted_devices', JSON.stringify(list));
-  if (typeof adminTrusted !== 'undefined') adminTrusted.list = list;
+  trustedQueue = trustedQueue.then(async function () {
+    const raw = await CloudSync.getSetting('trusted_devices');
+    const list = parseTrustedList(raw).slice(-9);
+    list.push({ token: token, until: until, name: name });
+    await CloudSync.setSetting('trusted_devices', JSON.stringify(list));
+    if (typeof adminTrusted !== 'undefined') adminTrusted.list = list;
+  }).catch(function () {});
+  await trustedQueue;
 }
 
 /* Ustoz paroli o'zgarsa — barcha ishonchli qurilmalar bekor qilinadi */
-function resetTrustedSilently() {
+async function resetTrustedSilently() {
   try { localStorage.removeItem(TRUSTED_KEY); } catch (e) {}
-  CloudSync.setSetting('trusted_devices', '[]');
+  trustedQueue = trustedQueue.then(function () {
+    return CloudSync.setSetting('trusted_devices', '[]');
+  }).catch(function () {});
   if (typeof adminTrusted !== 'undefined') adminTrusted.list = [];
+  await trustedQueue;
 }
 
 async function forgetTrustedDevices() {
-  resetTrustedSilently();
+  await resetTrustedSilently();
   render();
   toast('Ishonchli qurilmalar tozalandi ✓');
 }
@@ -6074,11 +6158,12 @@ async function beginTeacherLogin(userObj) {
     toast('Xush kelibsiz!');
     return;
   }
-  startTeacher2FA(userObj);
+  await startTeacher2FA(userObj);
 }
 
 /* ==================== USTOZ 2-BOSQICHLI HIMOYA (2FA) ==================== */
-function startTeacher2FA(userObj) {
+async function startTeacher2FA(userObj) {
+  await resolveDeviceModel();
   const code = sixDigitCode();
   const dev = (detectDevice() || {}).name || "Noma'lum qurilma";
   const until = Date.now() + 3 * 60 * 1000;   /* 3 daqiqa */
@@ -6113,9 +6198,10 @@ function startTeacher2FA(userObj) {
   openTwoFA();
 }
 
-function openTwoFA() {
+async function openTwoFA() {
   const p = state.pending2fa;
   if (!p) return;
+  await resolveDeviceModel();
   const dev = (detectDevice() || {}).name || '';
   openModal(`
     <div class="modal-head">
@@ -7262,6 +7348,8 @@ $('#modal-overlay').addEventListener('click', function (e) {
   if (!s || !accounts[s.login]) store.del(K.session);
   state.screen = currentUser() ? 'home' : 'login';
   applyTheme();
+  /* Aniq qurilma modeli (SM-A546B / Redmi Note 12 ...) — bir marta, erta aniqlanadi */
+  resolveDeviceModel();
   render();
   /* Faol qurilmalar nazorati: sahifa ochilganda + har 30 soniyada tekshiriladi */
   Sessions.check();

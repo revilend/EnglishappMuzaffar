@@ -1932,6 +1932,43 @@ await (async () => {
   check(win.localStorage.getItem('et_session_id') !== null,
     "qurilma: session_id localStorage'da saqlangan");
 
+  /* Aniq model: navigator.userAgentData (high entropy) */
+  const uaOriginal = win.navigator.userAgent;
+  win.__sessions.resetDeviceModel();
+  Object.defineProperty(win.navigator, 'userAgentData', {
+    value: { getHighEntropyValues: async () => ({ model: 'Redmi Note 12', platform: 'Android', platformVersion: '13' }) },
+    configurable: true
+  });
+  const modelHE = await win.__sessions.resolveDeviceModel();
+  check(modelHE === 'Redmi Note 12' && win.__sessions.detectDevice().short === 'Redmi Note 12 • Chrome',
+    'qurilma: userAgentData orqali aniq model (Redmi Note 12 • Chrome)');
+  check(win.sessionStorage.getItem('et_device_model') === 'Redmi Note 12',
+    "qurilma: aniq model sessionStorage'da keshlandi");
+  /* Model kesilmaydi: presence matni to'liq modelni ko'rsatadi (SVG ikonka bilan) */
+  const presOn = win.__sessions.presenceText({ lastSeen: new Date().toISOString(), lastDevice: 'Redmi Note 12 (Chrome)' });
+  check(presOn.indexOf('<svg') >= 0 && presOn.indexOf('Onlayn: Redmi Note 12 • Chrome') >= 0,
+    'qurilma: onlayn satri SVG + to\'liq model ("Onlayn: Redmi Note 12 • Chrome")');
+  const presOff = win.__sessions.presenceText({ lastSeen: new Date(Date.now() - 20 * 60000).toISOString(), lastDevice: 'Redmi Note 12 (Chrome)' });
+  check(presOff.indexOf('<svg') >= 0 && presOff.indexOf('20 daqiqa oldin • Redmi Note 12') >= 0,
+    'qurilma: oflayn satri SVG + model ("20 daqiqa oldin • Redmi Note 12")');
+
+  /* Aniq model: UA ichidagi "... Build/" (userAgentData yo'q) */
+  try { delete win.navigator.userAgentData; } catch (e) {}
+  win.__sessions.resetDeviceModel();
+  Object.defineProperty(win.navigator, 'userAgent', {
+    value: 'Mozilla/5.0 (Linux; Android 13; SM-A546B Build/TP1A.220624.014) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+    configurable: true
+  });
+  const modelUA = await win.__sessions.resolveDeviceModel();
+  check(modelUA === 'SM-A546B' && win.__sessions.detectDevice().name === 'SM-A546B (Chrome)',
+    'qurilma: UA "Build/" dan aniq model (SM-A546B (Chrome))');
+  check(win.__sessions.detectDevice().os === 'Android',
+    'qurilma: model aniqlanganda ham OS "Android" bo\'lib qoladi');
+  /* Asl UA va keshni tiklaymiz (keyingi testlar "Android • Chrome" kutadi) */
+  win.__sessions.resetDeviceModel();
+  Object.defineProperty(win.navigator, 'userAgent', { value: uaOriginal, configurable: true });
+  win.__sessions.resetDeviceModel();
+
   /* O'quvchi login qilganda last_device / last_seen yoziladi */
   logout();
   await loginAs('restore1', '9876');
@@ -1944,8 +1981,9 @@ await (async () => {
   await loginAs('m_amirov', '123');
   forceNav('students');
   const cardOn = qa('.student-card').filter(c => c.textContent.indexOf('Restored Student') >= 0)[0];
-  check(!!cardOn && cardOn.textContent.indexOf('🟢 Onlayn (Android)') >= 0,
-    'karta: 5 daqiqa ichida → "🟢 Onlayn (Android)"');
+  check(!!cardOn && cardOn.textContent.indexOf('Onlayn: Android • Chrome') >= 0 &&
+        !!cardOn.querySelector('.s-presence.is-on svg'),
+    'karta: 5 daqiqa ichida → SVG ikonka + "Onlayn: Android • Chrome"');
   /* Eski vaqt → "20 daqiqa oldin" ko'rinishi */
   const rowsOld = JSON.parse(win.localStorage.getItem('et_students') || '[]');
   const jOld = rowsOld.filter(x => x.id === 's77')[0];
@@ -1953,8 +1991,9 @@ await (async () => {
   win.localStorage.setItem('et_students', JSON.stringify(rowsOld));
   forceNav('students');
   const cardOld = qa('.student-card').filter(c => c.textContent.indexOf('Restored Student') >= 0)[0];
-  check(!!cardOld && cardOld.textContent.replace(/\s+/g, ' ').indexOf('📱 Android • 20 daqiqa oldin') >= 0,
-    'karta: 20 daqiqa oldin → "📱 Android • 20 daqiqa oldin"');
+  check(!!cardOld && cardOld.textContent.replace(/\s+/g, ' ').indexOf('20 daqiqa oldin • Android') >= 0 &&
+        !!cardOld.querySelector('.s-presence svg'),
+    'karta: 20 daqiqa oldin → SVG ikonka + "20 daqiqa oldin • Android"');
   /* last_seen o'chirilsa — qurilma satri umuman chiqmaydi */
   const rowsNone = JSON.parse(win.localStorage.getItem('et_students') || '[]');
   rowsNone.filter(x => x.id === 's77')[0].lastSeen = null;
