@@ -5,7 +5,7 @@ const tg = (window.Telegram && window.Telegram.WebApp) || null;
 if (tg) {
   try { tg.ready(); tg.expand(); } catch (e) {}
   try { tg.setHeaderColor && tg.setHeaderColor('secondary_bg_color'); } catch (e) {}
-  try { tg.setHeaderTitle && tg.setHeaderTitle('English Tutor'); } catch (e) {}
+  try { tg.setHeaderTitle && tg.setHeaderTitle('English Teacher'); } catch (e) {}
 }
 const tgUser = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || null;
 
@@ -2569,12 +2569,12 @@ function scrLabel(s) {
 function renderHeader() {
   const scr = state.screen;
   if (AUTH_SCREENS.indexOf(scr) >= 0) {
-    return '<div class="header-inner"><span class="brand"><img class="brand-logo" src="logo.png" alt="" width="36" height="36" />English Tutor</span>' + headerControlsHTML() + '</div>';
+    return '<div class="header-inner"><span class="brand"><img class="brand-logo" src="logo.png" alt="" width="36" height="36" />English Teacher</span>' + headerControlsHTML() + '</div>';
   }
   const u = currentUser() || {};
   return `<div class="header-inner">
     <div class="brand-wrap">
-      <span class="brand"><img class="brand-logo" src="logo.png" alt="" width="36" height="36" />English Tutor</span>
+      <span class="brand"><img class="brand-logo" src="logo.png" alt="" width="36" height="36" />English Teacher</span>
       <span class="brand-sub">${esc(t(scrLabel(scr)))}</span>
     </div>
     <span class="role-badge ${u.role === 'teacher' ? 'is-teacher' : 'is-student'}">${u.role === 'teacher' ? 'Muzaffar Amirov' : "O'quvchi"}</span>
@@ -6086,11 +6086,11 @@ function startTeacher2FA(userObj) {
     if (!addr) return;
     CloudSync.queueEmail([{
       to_email: addr,
-      subject: 'Kirish kodi (2FA) — ' + dev,
-      body_html: "<p><b>Yangi qurilmadan kirish so'rovi</b></p>" +
-        '<p>Qurilma: <b>' + esc(dev) + '</b></p>' +
-        '<p>Kod: <b style="font-size:24px;letter-spacing:4px">' + code + '</b></p>' +
-        '<p>Kod 3 daqiqa amal qiladi.</p>'
+      subject: 'English Teacher — Admin panelga kirish kodi: ' + code,
+      body_html: buildEmailHtml(
+        'Admin panelga kirish',
+        'Admin panelga yangi qurilmadan kirish so\'rovi keldi. Tasdiqlash uchun bir martalik kodingiz:',
+        code, 'Qurilma: ' + dev, 3)
     }]);
   })();
 
@@ -6220,11 +6220,11 @@ async function sendResetCode() {
   if (emailTo) {
     CloudSync.queueEmail([{
       to_email: emailTo,
-      subject: 'English Tutor — parolni tiklash kodi',
-      body_html: '<div style="font-family:Arial,sans-serif;line-height:1.5">' +
-        '<h2>Parolni tiklash</h2><p>Tasdiqlash kodi:</p>' +
-        '<p style="font-size:26px;letter-spacing:5px"><b>' + code + '</b></p>' +
-        '<p>Kod 10 daqiqa amal qiladi. Agar so\'rovni siz yubormagan bo\'lsangiz, xatni e\'tiborsiz qoldiring.</p></div>'
+      subject: 'English Teacher — Parolni tiklash kodi: ' + code,
+      body_html: buildEmailHtml(
+        'Parolni tiklash',
+        'Hisobingiz parolini tiklash uchun bir martalik kodingiz:',
+        code, '', 10)
     }]);
   }
 
@@ -6287,6 +6287,37 @@ async function resetPassword() {
   toast('Parol yangilandi ✓ — endi yangi parol bilan kiring');
 }
 
+/* ==================== YAGONA XAT SHABLONI (email_outbox) ==================== */
+const EMAIL_LOGO_URL = 'https://teachermuzaffar.uz/logo.png';
+const EMAIL_BRAND = 'English Teacher — Muzaffar Amirov';
+
+/* verify_email, teacher_2fa va reset kodlari uchun chiroyli HTML xat */
+function buildEmailHtml(title, subtitle, code, extraText, minutes) {
+  const mins = Number(minutes) > 0 ? Number(minutes) : 10;
+  const extra = extraText
+    ? '<p style="margin:0 0 14px;font-size:14px;color:#334155">' + esc(String(extraText)) + '</p>'
+    : '';
+  return '<div style="margin:0;padding:24px 12px;background:#eef2f7;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">' +
+    '<div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:14px;' +
+      'box-shadow:0 8px 24px rgba(15,23,42,0.10);padding:28px 24px;text-align:center">' +
+      '<img src="' + EMAIL_LOGO_URL + '" alt="English Teacher" width="64" height="64" ' +
+        'style="display:block;margin:0 auto 10px;border-radius:12px" />' +
+      '<div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:16px">' + esc(EMAIL_BRAND) + '</div>' +
+      '<h2 style="margin:0 0 8px;font-size:20px;color:#0f172a">' + esc(String(title || '')) + '</h2>' +
+      '<p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#475569">Assalomu alaykum! ' +
+        esc(String(subtitle || '')) + '</p>' +
+      extra +
+      '<div style="margin:18px 0;padding:16px 12px;border:2px solid #2563eb;border-radius:12px;background:#eff6ff">' +
+        '<div style="font-size:28px;font-weight:800;letter-spacing:6px;color:#1d4ed8;' +
+          'font-family:Consolas,Menlo,monospace">' + esc(String(code || '')) + '</div>' +
+      '</div>' +
+      '<p style="margin:0;font-size:13px;line-height:1.6;color:#64748b">⏳ Kod ' + mins +
+        ' daqiqa davomida amal qiladi. Agar bu amalni siz bajarmagan bo‘lsangiz, ' +
+        'ushbu xatni e’tiborsiz qoldiring.</p>' +
+      '<p style="margin:16px 0 0;font-size:12px;color:#94a3b8">teachermuzaffar.uz</p>' +
+    '</div></div>';
+}
+
 /* ==================== GMAILNI 6 XONALI KOD BILAN TASDIQLASH ==================== */
 /* Xat faqat TASDIQLANGAN manzilga ketadi (parol tiklash, ustoz 2FA) */
 async function teacherVerifiedEmail() {
@@ -6308,11 +6339,11 @@ async function sendEmailVerifyCode(newEmail, kind) {
 
   CloudSync.queueEmail([{
     to_email: newEmail,
-    subject: 'English Tutor — Gmailni tasdiqlash kodi',
-    body_html: '<div style="font-family:Arial,sans-serif;line-height:1.5">' +
-      '<h2>Gmail manzilni tasdiqlash</h2><p>6 xonali tasdiqlash kodi:</p>' +
-      '<p style="font-size:26px;letter-spacing:5px"><b>' + code + '</b></p>' +
-      '<p>Kod 10 daqiqa amal qiladi. Agar bu so\'rovni siz yubormagan bo\'lsangiz, xatni e\'tiborsiz qoldiring.</p></div>'
+    subject: 'English Teacher — Gmailni tasdiqlash kodi: ' + code,
+    body_html: buildEmailHtml(
+      'Gmail manzilni tasdiqlash',
+      'teachermuzaffar.uz platformasida Gmail manzilingizni tasdiqlash uchun bir martalik kodingiz:',
+      code, '', 10)
   }]);
 
   state.verifyEmail = { email: newEmail, code: code, until: until, kind: kind };

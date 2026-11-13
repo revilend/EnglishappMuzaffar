@@ -310,7 +310,8 @@ check(text().includes('Teacher Muzaffar Amirov'), 'login: hero sarlavhasi "Teach
 check(!!q('#login-input'), 'login: Login inputi mavjud');
 check(!!q('#password-input'), 'login: Parol inputi mavjud');
 check(text().includes('Kirish'), 'login: "Kirish" tugmasi');
-check(q('#app-header').textContent.includes('English Tutor'), 'header: ilova nomi');
+check(q('#app-header').textContent.includes('English Teacher'), 'header: ilova nomi');
+check(win.document.title === 'English Teacher', 'index: <title> “English Teacher”');
 check(qa('.nav-item').length === 0, 'login rejimida bottom nav yo\'q');
 check(!q('.hint-card') && !text().includes('Demo kirish') && !text().includes('Demo') && !q('.login-demo'), "login: demo credentials kartasi/chiplari olib tashlandi");
 check(q('#login-input').placeholder === 'Login' && q('#login-input').placeholder.indexOf('admin') < 0,
@@ -2045,7 +2046,7 @@ await (async () => {
   check(text().includes('Yakkama-yakka Speaking va Audio/Video tahlil') &&
         text().includes('Kundalik 10 ballik elektron jurnal va Davomat') &&
         text().includes('Telegram Bot ekotizimi (@uzbekspeakingcheckbot)'), 'hero: 3 karta sarlavhalari to\'liq');
-  check(!q('.auth-brand'), 'hero: login formasi tepasidagi ikkinchi "English Tutor" yozuvi olib tashlangan');
+  check(!q('.auth-brand'), 'hero: login formasi tepasidagi ikkinchi "English Teacher" yozuvi olib tashlangan');
   check(!/[\u{1F5E3}\u{1F4CA}\u{1F916}]/u.test(q('.hero').textContent),
     'hero: emojilar (🗣️📊🤖) olib tashlangan');
   check(qa('.hero-ico svg').length === 3 && qa('.hero-ico[class*="tone-"]').length === 3,
@@ -2268,6 +2269,15 @@ await (async () => {
   check((cloudStub.db.email_outbox || []).some(r => String(r.to_email) === 'ustoz@test.uz' &&
       String(r.body_html || '').includes(String(tf.code))),
     '2fa: kod faqat tasdiqlangan ustoz Gmailiga (email_outbox) qo‘yildi');
+  const tfMail = (cloudStub.db.email_outbox || []).filter(r => String(r.to_email) === 'ustoz@test.uz').pop();
+  check(!!tfMail && String(tfMail.subject || '').includes('English Teacher — Admin panelga kirish kodi: ' + tf.code),
+    '2fa: mavzu “English Teacher — Admin panelga kirish kodi: {code}”');
+  check(!!tfMail && String(tfMail.body_html || '').includes('https://teachermuzaffar.uz/logo.png') &&
+        String(tfMail.body_html || '').includes('English Teacher — Muzaffar Amirov') &&
+        String(tfMail.body_html || '').includes('letter-spacing:6px') &&
+        String(tfMail.body_html || '').includes('⏳ Kod 3 daqiqa davomida amal qiladi') &&
+        String(tfMail.body_html || '').includes('Qurilma:'),
+    '2fa: xat yagona shablon bilan (logo, sarlavha, kod bloki, qurilma nomi)');
 
   setVal('#twofa-code', '000000');
   clickAct('do-2fa');
@@ -2325,6 +2335,10 @@ await (async () => {
   check((cloudStub.db.email_outbox || []).some(r => String(r.to_email) === resetMail &&
       String(r.body_html || '').includes(String(rc.code))),
     'reset: kod tasdiqlangan Gmail outbox ga qo‘yildi');
+  const rsMail = (cloudStub.db.email_outbox || []).filter(r => String(r.to_email) === resetMail).pop();
+  check(!!rsMail && String(rsMail.subject || '').includes('English Teacher — Parolni tiklash kodi: ' + rc.code) &&
+        String(rsMail.body_html || '').includes('⏳ Kod 10 daqiqa davomida amal qiladi'),
+    'reset: mavzu va shablon reset xati uchun to‘g‘ri');
 
   const hashBefore = String(resetRow.password || '');
   setVal('#fp-code', '000000');
@@ -2362,7 +2376,11 @@ await (async () => {
     'profil: verify_email kodi (contact: yangi Gmail) auth_codes ga yozildi');
   check((cloudStub.db.email_outbox || []).some(r => String(r.to_email) === 'yangi.mail@gmail.com' &&
       String(r.subject || '').includes('Gmailni tasdiqlash') && String(r.body_html || '').includes(String(evc.code))),
-    'profil: kod “English Tutor — Gmailni tasdiqlash kodi” mavzusi bilan yuborildi');
+    'profil: kod “English Teacher — Gmailni tasdiqlash kodi” mavzusi bilan yuborildi');
+  const vfMail = (cloudStub.db.email_outbox || []).filter(r => String(r.to_email) === 'yangi.mail@gmail.com').pop();
+  check(!!vfMail && String(vfMail.subject || '').includes('English Teacher — Gmailni tasdiqlash kodi: ' + evc.code) &&
+        String(vfMail.body_html || '').includes('https://teachermuzaffar.uz/logo.png'),
+    'profil: verify_email xati ham yagona shablon bilan yuboriladi');
   check(String((cloudStub.db.students || []).filter(r => r.id === resetRow.id)[0].email || '') === resetMail,
     'profil: kod tasdiqlanmaguncha students.email o‘zgarmaydi');
 
