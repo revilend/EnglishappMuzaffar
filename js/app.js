@@ -638,6 +638,32 @@ const CloudSync = (function () {
     }
   }
 
+  /* bot_settings yozuvi — xato YASHIRILMAYDI: { ok, error } qaytaradi.
+     Profilda saqlash tugmasi shu orqali ishlaydi (res.error.message ekranga chiqadi). */
+  async function setSettingChecked(key, value) {
+    if (!ready()) return { ok: false, error: "Bulut bilan aloqa yo'q (Supabase sozlanmagan)" };
+    if (!key) return { ok: false, error: 'Kalit berilmadi' };
+    try {
+      let res = await client.from('bot_settings')
+        .update({ value: value }).eq('key', key).select('key');
+      if (res.error) {
+        if (missing(res.error)) hasSettings = false;
+        return { ok: false, error: res.error.message || String(res.error) };
+      }
+      if (!res.data || !res.data.length) {
+        res = await client.from('bot_settings').insert({ key: key, value: value }).select('key');
+        if (res.error) {
+          if (missing(res.error)) hasSettings = false;
+          return { ok: false, error: res.error.message || String(res.error) };
+        }
+      }
+      return { ok: true, error: '' };
+    } catch (e) {
+      console.warn('[cloud] bot_settings ' + key + ':', (e && e.message) || e);
+      return { ok: false, error: (e && e.message) || String(e) };
+    }
+  }
+
   /* --- Bulutdan tortib olish ---
      Ustoz: barcha jadvallar. O'quvchi: FAQAT o'z ma'lumotlari —
      boshqa o'quvchilarning parollari/ma'lumotlari brauzerga tushmaydi. --- */
@@ -1219,59 +1245,79 @@ const CloudSync = (function () {
     }
   }
 
-  /* Telefon (oxirgi 9 raqam), Gmail yoki login bo'yicha o'quvchini topadi */
+    /* Telefon (oxirgi 9 raqam), Gmail yoki login bo'yicha o'quvchini topadi.
+     Qidiruv serverda `.ilike` bilan bajariladi — "+998 90...", "99890..." va
+     "90..." ko'rinishidagi raqamlar bir xil topiladi. */
   async function lookupStudentByContact(value) {
     if (!ready()) return null;
     const raw = String(value || '').trim();
     if (!raw) return null;
-    let rows = [];
-    try {
-      const res = await client.from('students').select('*');
-      if (res.error) throw res.error;
-      rows = res.data || [];
-    } catch (e) {
-      console.warn('[cloud] students lookup:', (e && e.message) || e);
-      return null;
-    }
     const lower = raw.toLowerCase();
     const digits = raw.replace(/\D/g, '');
     const last9 = digits.length >= 9 ? digits.slice(-9) : '';
-    let hit = null;
+
+    async function firstOf(build) {
+      try {
+        const res = await build();
+        if (res.error) throw res.error;
+        return (res.data && res.data[0]) || null;
+      } catch (e) {
+        console.warn('[cloud] students lookup:', (e && e.message) || e);
+        return null;
+      }
+    }
+
     if (last9) {
-      hit = rows.filter(function (r) {
-        const d = String(r.phone || '').replace(/\D/g, '');
-        return d.length >= 9 && d.slice(-9) === last9;
-      })[0] || null;
+      const byPhone = await firstOf(function () {
+        return client.from('students').select('*').ilike('phone', '%' + last9).limit(1);
+      });
+      if (byPhone) return byPhone;
     }
-    if (!hit && lower.indexOf('@') > 0) {
-      hit = rows.filter(function (r) { return String(r.email || '').trim().toLowerCase() === lower; })[0] || null;
+    if (lower.indexOf('@') > 0) {
+      const byMail = await firstOf(function () {
+        return client.from('students').select('*').ilike('email', lower).limit(1);
+      });
+      if (byMail) return byMail;
     }
-    if (!hit) {
-      hit = rows.filter(function (r) { return String(r.login || '').trim().toLowerCase() === lower; })[0] || null;
-    }
-    return hit;
+    return firstOf(function () {
+      return client.from('students').select('*').ilike('login', lower).limit(1);
+    });
   }
 
-  /* Telefon/Gmail maydonlarini yangilaydi (students.email / students.phone) */
-  async function updateStudentContact(sid, fields) {
-    if (!ready() || !fields) return false;
+  /* Telefon/Gmail maydonlari (students.email / students.phone).
+     Xato yashirilmaydi: { ok, error } qaytaradi. */
+  async function updateStudentContactChecked(sid, fields) {
+    if (!ready()) return { ok: false, error: "Bulut bilan aloqa yo'q (Supabase sozlanmagan)" };
+    if (!fields) return { ok: false, error: 'Maydonlar berilmadi' };
     const st = studentById(sid);
-    if (!st || st.dbId == null) return false;
+    if (!st) return { ok: false, error: "O'quvchi topilmadi" };
+    if (st.dbId == null) return { ok: false, error: "O'quvchi bazada saqlanmagan (dbId yo'q)" };
     const payload = {};
     if ('email' in fields) payload.email = fields.email ? String(fields.email) : null;
     if ('phone' in fields) payload.phone = fields.phone ? String(fields.phone) : null;
     if ('emailVerified' in fields) payload.email_verified = !!fields.emailVerified;
-    if (!Object.keys(payload).length) return false;
-    const res = await client.from('students').update(payload).eq('id', st.dbId);
-    if (res.error) throw res.error;
-    const list = getStudents();
-    const t = list.filter(function (x) { return x.id === sid; })[0];
-    if (t) {
-      if ('email' in payload) t.email = payload.email || '';
-      if ('phone' in payload) t.phone = payload.phone || '';
-      if ('email_verified' in payload) t.emailVerified = !!payload.email_verified;
-      store.set(K.students, list);
+    if (!Object.keys(payload).length) return { ok: false, error: "Saqlanadigan maydon yo'q" };
+    try {
+      const res = await client.from('students').update(payload).eq('id', st.dbId);
+      if (res.error) return { ok: false, error: res.error.message || String(res.error) };
+      const list = getStudents();
+      const t = list.filter(function (x) { return x.id === sid; })[0];
+      if (t) {
+        if ('email' in payload) t.email = payload.email || '';
+        if ('phone' in payload) t.phone = payload.phone || '';
+        if ('email_verified' in payload) t.emailVerified = !!payload.email_verified;
+        store.set(K.students, list);
+      }
+      return { ok: true, error: '' };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) || String(e) };
     }
+  }
+
+  /* Orqaga moslik: muvaffaqiyatsiz bo'lsa throw qiladi */
+  async function updateStudentContact(sid, fields) {
+    const r = await updateStudentContactChecked(sid, fields);
+    if (!r.ok) throw new Error(r.error);
     return true;
   }
 
@@ -1662,6 +1708,8 @@ const CloudSync = (function () {
     updateStudentContact: updateStudentContact,
     getSetting: getSetting,
     setSetting: setSetting,
+    setSettingChecked: setSettingChecked,
+    updateStudentContactChecked: updateStudentContactChecked,
     addPayment: addPayment,
     pullMonthlyFees: pullMonthlyFees,
     saveMonthlyFee: saveMonthlyFee,
@@ -6274,11 +6322,29 @@ function resetError(m) {
   err.classList.toggle('show', !!m);
 }
 
+/* bot_settings.admin_phone oxirgi 9 raqami (ustoz raqami) */
+async function adminPhoneLast9() {
+  if (!CloudSync.ready()) return '';
+  let stored = '';
+  try { stored = String((await CloudSync.getSetting('admin_phone')) || ''); } catch (e) { stored = ''; }
+  const d = stored.replace(/\D/g, '');
+  return d.length >= 9 ? d.slice(-9) : '';
+}
+
 async function sendResetCode() {
   const raw = String(($('#fp-contact') || {}).value || '').trim();
   if (!raw) { resetError('Telefon, Gmail yoki loginni kiriting'); return; }
 
-  const isTeacher = raw.toLowerCase() === TEACHER_LOGIN;
+  const digits = raw.replace(/\D/g, '');
+  const last9 = digits.length >= 9 ? digits.slice(-9) : '';
+  let isTeacher = raw.toLowerCase() === TEACHER_LOGIN;
+
+  /* Ustoz telefoni kiritilgan bo'lsa ham kod ADMIN kanaliga ketadi */
+  if (!isTeacher && last9) {
+    const admin9 = await adminPhoneLast9();
+    if (admin9 && admin9 === last9) isTeacher = true;
+  }
+
   let row = null;
   let telegramChat = null;
   let emailTo = '';
@@ -6293,8 +6359,15 @@ async function sendResetCode() {
     if (!row) { resetError("Bunday telefon, Gmail yoki login topilmadi — qayta tekshirib ko'ring"); return; }
     if (row.telegram_chat_id) telegramChat = String(row.telegram_chat_id);
     if (row.email && row.email_verified) emailTo = String(row.email).trim();   /* faqat tasdiqlangan */
+
+    /* Raqam kiritilgan, lekin bot ulanmagan — aniq sabab aytiladi */
+    if (!telegramChat && last9) {
+      toast('Bu raqamga Telegram bot ulanmagan. Avval @uzbekspeakingcheckbot da /login qiling', 'error');
+    }
     if (!telegramChat && !emailTo) {
-      resetError("Telegram ulanmagan va Gmail tasdiqlanmagan — parolni tiklash uchun ustozga murojaat qiling");
+      resetError(last9
+        ? 'Bu raqamga Telegram bot ulanmagan. Avval @uzbekspeakingcheckbot da /login qiling. Gmail ham tasdiqlanmagan.'
+        : 'Telegram ulanmagan va Gmail tasdiqlanmagan — parolni tiklash uchun ustozga murojaat qiling');
       return;
     }
   }
@@ -6312,22 +6385,32 @@ async function sendResetCode() {
 
   /* Ulangan kanallarga yuboramiz */
   if (telegramChat) {
-    CloudSync.queueMessages([{
-      chat_id: telegramChat,
-      student_id: row ? row.id : null,
-      text: '<b>Parolni tiklash kodi</b>\nKod: <b>' + code + '</b>\n10 daqiqa amal qiladi.' +
-            "\n\nAgar bu so'rovni siz yubormagan bo'lsangiz, kodni hech kimga bermang."
-    }]);
+    try {
+      const ids = await CloudSync.queueMessages([{
+        chat_id: telegramChat,
+        student_id: row ? row.id : null,
+        text: '<b>Parolni tiklash kodi</b>\nKod: <b>' + code + '</b>\n10 daqiqa amal qiladi.' +
+              "\n\nAgar bu so'rovni siz yubormagan bo'lsangiz, kodni hech kimga bermang."
+      }]);
+      if (!ids || !ids.length) toast("Telegram navbati yozilmadi — bot sozlanmagan bo'lishi mumkin", 'error');
+    } catch (e) {
+      resetError('Xatolik: ' + ((e && e.message) || e));
+      return;
+    }
   }
   if (emailTo) {
-    CloudSync.queueEmail([{
-      to_email: emailTo,
-      subject: 'English Teacher — Parolni tiklash kodi: ' + code,
-      body_html: buildEmailHtml(
-        'Parolni tiklash',
-        'Hisobingiz parolini tiklash uchun bir martalik kodingiz:',
-        code, '', 10)
-    }]);
+    try {
+      await CloudSync.queueEmail([{
+        to_email: emailTo,
+        subject: 'English Teacher — Parolni tiklash kodi: ' + code,
+        body_html: buildEmailHtml(
+          'Parolni tiklash',
+          'Hisobingiz parolini tiklash uchun bir martalik kodingiz:',
+          code, '', 10)
+      }]);
+    } catch (e) {
+      console.warn('[mail] reset code:', (e && e.message) || e);
+    }
   }
 
   state.resetCtx = {
@@ -6429,6 +6512,10 @@ async function teacherVerifiedEmail() {
 }
 
 async function sendEmailVerifyCode(newEmail, kind) {
+  if (!CloudSync.ready()) {
+    toast("Xatolik: bulut bilan aloqa yo'q (Supabase sozlanmagan)", 'error');
+    return false;
+  }
   const code = sixDigitCode();
   const until = Date.now() + 10 * 60 * 1000;   /* 10 daqiqa */
   const saved = await CloudSync.saveAuthCode({
@@ -6437,16 +6524,27 @@ async function sendEmailVerifyCode(newEmail, kind) {
     code: code,
     expiresAt: new Date(until).toISOString()
   });
-  if (!saved) { toast('Kod yaratishda xatolik — keyinroq urinib ko\'ring', 'error'); return false; }
+  if (!saved) {
+    toast("Xatolik: kod bazaga yozilmadi (auth_codes jadvali yoki ruxsati yo'q)", 'error');
+    return false;
+  }
 
-  CloudSync.queueEmail([{
-    to_email: newEmail,
-    subject: 'English Teacher — Gmailni tasdiqlash kodi: ' + code,
-    body_html: buildEmailHtml(
-      'Gmail manzilni tasdiqlash',
-      'teachermuzaffar.uz platformasida Gmail manzilingizni tasdiqlash uchun bir martalik kodingiz:',
-      code, '', 10)
-  }]);
+  /* Xatni bot yuboradi (email_outbox). Navbat yozilmasa — buni yashirmaymiz. */
+  let mailQueued = true;
+  try {
+    const ids = await CloudSync.queueEmail([{
+      to_email: newEmail,
+      subject: 'English Teacher — Gmailni tasdiqlash kodi: ' + code,
+      body_html: buildEmailHtml(
+        'Gmail manzilni tasdiqlash',
+        'teachermuzaffar.uz platformasida Gmail manzilingizni tasdiqlash uchun bir martalik kodingiz:',
+        code, '', 10)
+    }]);
+    mailQueued = !!(ids && ids.length);
+  } catch (e) {
+    mailQueued = false;
+    console.warn('[mail] verify code:', (e && e.message) || e);
+  }
 
   state.verifyEmail = { email: newEmail, code: code, until: until, kind: kind };
   openModal(`
@@ -6456,6 +6554,7 @@ async function sendEmailVerifyCode(newEmail, kind) {
     </div>
     <div class="muted small">Gmailingizga yuborilgan 6 xonali kodni kiriting:
       <b>${esc(newEmail)}</b></div>
+    ${mailQueued ? '' : `<div class="field-error show">Gmail yuborish navbati ishlamadi — botda <b>GMAIL_USER</b> va <b>GMAIL_APP_PASSWORD</b> sozlanmagan bo'lishi mumkin. Kod kelmasa ustozga murojaat qiling.</div>`}
     <label class="field-label" for="ev-code" style="margin-top:10px">Tasdiqlash kodi</label>
     <input class="input" id="ev-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••" />
     <div class="field-error" id="ev-error"></div>
@@ -6463,7 +6562,7 @@ async function sendEmailVerifyCode(newEmail, kind) {
     <button type="button" class="btn btn-ghost btn-block" data-act="resend-verify-email">Kodni qayta yuborish</button>
   `);
   setTimeout(function () { const el = $('#ev-code'); if (el) el.focus(); }, 30);
-  toast('Kod Gmailga yuborildi');
+  toast(mailQueued ? 'Kod Gmailga yuborildi' : "Gmail yuborish navbati ishlamadi — kod yetib bormasligi mumkin", mailQueued ? undefined : 'error');
   return true;
 }
 
@@ -6489,18 +6588,17 @@ async function submitEmailVerify() {
 
   if (ctx.kind === 'teacher') {
     /* bot_settings.admin_email + admin_email_verified */
-    const ok1 = await CloudSync.setSetting('admin_email', ctx.email);
-    const ok2 = await CloudSync.setSetting('admin_email_verified', 'true');
-    if (!ok1 || !ok2) { verifyEmailError("Saqlashda xatolik — keyinroq urinib ko'ring"); return; }
+    const ok1 = await CloudSync.setSettingChecked('admin_email', ctx.email);
+    if (!ok1.ok) { verifyEmailError('Xatolik: ' + ok1.error); return; }
+    const ok2 = await CloudSync.setSettingChecked('admin_email_verified', 'true');
+    if (!ok2.ok) { verifyEmailError('Xatolik: ' + ok2.error); return; }
     adminContacts.email = ctx.email;
     adminContacts.verified = true;
   } else {
     const st = linkedStudent();
     if (!st) { verifyEmailError("O'quvchi topilmadi"); return; }
-    let ok = false;
-    try { ok = await CloudSync.updateStudentContact(st.id, { email: ctx.email, emailVerified: true }); }
-    catch (e) { ok = false; }
-    if (!ok) { verifyEmailError("Saqlashda xatolik — keyinroq urinib ko'ring"); return; }
+    const r = await CloudSync.updateStudentContactChecked(st.id, { email: ctx.email, emailVerified: true });
+    if (!r.ok) { verifyEmailError('Xatolik: ' + r.error); return; }
   }
 
   state.verifyEmail = null;
@@ -6526,39 +6624,10 @@ function normPhone(raw) {
 function validEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
 function validPhone(v) { return /^\+\d{9,15}$/.test(v); }
 
-/* O'quvchi: telefon + Gmail (students.phone / students.email) */
+/* O'quvchi: telefon + Gmail → yagona saveProfileContact (rol bo'yicha ajratiladi) */
 function saveStudentContact() {
-  const st = linkedStudent();
-  if (!st) return;
-  const phone = normPhone(String(($('#st-phone') || {}).value || '').trim());
-  const email = String(($('#st-email') || {}).value || '').trim();
-  if (phone && !validPhone(phone)) { toast("Telefon raqam noto'g'ri: +998 90 123 45 67", 'error'); return; }
-  if (email && !validEmail(email)) { toast("Gmail manzil noto'g'ri", 'error'); return; }
-
-  const currentEmail = String(st.email || '').trim();
-  const emailChanged = email.toLowerCase() !== currentEmail.toLowerCase();
-
-  /* Telefon tasdiqlash talab qilmaydi — darhol saqlanadi */
-  if (phone !== String(st.phone || '')) {
-    CloudSync.updateStudentContact(st.id, { phone: phone }).catch(function () {});
-  }
-  if (!emailChanged) {
-    render();
-    toast(phone !== String(st.phone || '') ? 'Telefon saqlandi ✓' : "Aloqa ma'lumotlari saqlandi ✓");
-    return;
-  }
-  if (!email) {
-    /* Gmailni olib tashlash — tasdiqlash shart emas */
-    CloudSync.updateStudentContact(st.id, { email: '', emailVerified: false })
-      .then(function (ok) {
-        render();
-        toast(ok ? 'Gmail olib tashlandi' : "Bulut bilan aloqa yo'q", ok ? undefined : 'error');
-      })
-      .catch(function () { toast('Saqlashda xatolik', 'error'); });
-    return;
-  }
-  /* Yangi Gmail — 6 xonali kod bilan MAJBURIY tasdiqlanadi */
-  sendEmailVerifyCode(email, 'student');
+  if (isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  return saveProfileContact();
 }
 
 /* Saqlangan, lekin hali TASDIQLANMAGAN manzilga qayta kod yuborish */
@@ -6593,43 +6662,75 @@ async function ensureAdminContacts() {
   if (changed && state.screen === 'profile') render();
 }
 
+/* Ustoz: bot_settings.admin_email / admin_phone → yagona saveProfileContact */
 function saveTeacherContact() {
   if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
-  const email = String(($('#tc-email') || {}).value || '').trim();
-  const phone = normPhone(String(($('#tc-phone') || {}).value || '').trim());
-  if (email && !validEmail(email)) { toast("Gmail manzil noto'g'ri", 'error'); return; }
+  return saveProfileContact();
+}
+
+/* Profil: aloqa ma'lumotlarini saqlash — rol ANIQ ajratiladi.
+   O'quvchi → students (id = st.dbId), ustoz → bot_settings (admin_email, admin_phone).
+   Supabase xatosi yashirilmaydi: toast("Xatolik: ...") ko'rsatiladi. */
+async function saveProfileContact() {
+  const teacher = isTeacher();
+  const st = teacher ? null : linkedStudent();
+  if (!teacher && !st) { toast("O'quvchi ma'lumoti topilmadi — qayta kiring", 'error'); return; }
+  if (!CloudSync.ready()) { toast("Xatolik: bulut bilan aloqa yo'q (Supabase sozlanmagan)", 'error'); return; }
+
+  const phoneEl = teacher ? $('#tc-phone') : $('#st-phone');
+  const emailEl = teacher ? $('#tc-email') : $('#st-email');
+  const phone = normPhone(String((phoneEl || {}).value || '').trim());
+  const email = String((emailEl || {}).value || '').trim();
+
   if (phone && !validPhone(phone)) { toast("Telefon raqam noto'g'ri: +998 90 123 45 67", 'error'); return; }
+  if (email && !validEmail(email)) { toast("Gmail manzil noto'g'ri", 'error'); return; }
 
-  const currentEmail = String(adminContacts.email || '').trim();
-  const emailChanged = email.toLowerCase() !== currentEmail.toLowerCase();
-  const phoneChanged = phone !== String(adminContacts.phone || '');
+  const curEmail = teacher ? String(adminContacts.email || '').trim() : String(st.email || '').trim();
+  const curPhone = teacher ? String(adminContacts.phone || '').trim() : String(st.phone || '').trim();
+  const emailChanged = email.toLowerCase() !== curEmail.toLowerCase();
+  const phoneChanged = phone !== curPhone;
+  let phoneSaved = false;
 
-  /* Telefon darhol saqlanadi */
+  /* 1) Telefon tasdiqlash talab qilmaydi — darhol saqlanadi */
   if (phoneChanged) {
-    adminContacts.phone = phone;
-    CloudSync.setSetting('admin_phone', phone).then(function (ok) {
-      if (ok && state.screen === 'profile') render();
-    });
+    if (teacher) {
+      const r = await CloudSync.setSettingChecked('admin_phone', phone);
+      if (!r.ok) { toast('Xatolik: ' + r.error, 'error'); return; }
+      adminContacts.phone = phone;
+    } else {
+      const r = await CloudSync.updateStudentContactChecked(st.id, { phone: phone });
+      if (!r.ok) { toast('Xatolik: ' + r.error, 'error'); return; }
+    }
+    phoneSaved = true;
   }
+
   if (!emailChanged) {
     render();
-    toast(phoneChanged ? 'Telefon saqlandi ✓' : "Aloqa ma'lumotlari saqlandi ✓");
+    toast(phoneSaved ? 'Telefon saqlandi ✓' : "Aloqa ma'lumotlari saqlandi ✓");
     return;
   }
+
+  /* 2) Gmailni olib tashlash — tasdiqlash shart emas */
   if (!email) {
-    Promise.all([
-      CloudSync.setSetting('admin_email', ''),
-      CloudSync.setSetting('admin_email_verified', 'false')
-    ]).then(function () {
+    if (teacher) {
+      const r1 = await CloudSync.setSettingChecked('admin_email', '');
+      if (!r1.ok) { toast('Xatolik: ' + r1.error, 'error'); return; }
+      const r2 = await CloudSync.setSettingChecked('admin_email_verified', 'false');
+      if (!r2.ok) { toast('Xatolik: ' + r2.error, 'error'); return; }
       adminContacts.email = '';
       adminContacts.verified = false;
-      render();
-      toast('Gmail olib tashlandi');
-    }).catch(function () { toast('Saqlashda xatolik', 'error'); });
+    } else {
+      const r = await CloudSync.updateStudentContactChecked(st.id, { email: '', emailVerified: false });
+      if (!r.ok) { toast('Xatolik: ' + r.error, 'error'); return; }
+    }
+    render();
+    toast('Gmail olib tashlandi');
     return;
   }
-  /* Yangi ustoz Gmaili — 6 xonali kod bilan MAJBURIY tasdiqlanadi */
-  sendEmailVerifyCode(email, 'teacher');
+
+  /* 3) Yangi Gmail — modal yopilmaydi, 6 xonali kod oynasi ochiladi */
+  if (phoneSaved) render();
+  await sendEmailVerifyCode(email, teacher ? 'teacher' : 'student');
 }
 
 /* ==================== Render ==================== */

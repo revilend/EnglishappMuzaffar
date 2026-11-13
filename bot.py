@@ -2063,6 +2063,32 @@ async def execute_rejection(r_id: int, reason_text: str, admin_user: types.User)
 # ============================================================
 # Telegram Outbox (Saytdan yuborilgan eslatma va to'lov xabarlari)
 # ============================================================
+def resolve_phone_chat(raw_chat: str):
+    """Telefon raqamni students.telegram_chat_id ga aylantiradi.
+
+    Sayt ba'zi qatorlarga chat_id o'rniga telefon raqamini yozgan bo'lsa ham
+    (eski/chetlab o'tilgan holat), kod o'quvchining ulangan Telegramiga yetadi.
+    Oxirgi 9 raqam bo'yicha qidiriladi: +998 90..., 99890... va 90... bir xil.
+    """
+    digits = re.sub(r"\D", "", str(raw_chat or ""))
+    last9 = digits[-9:] if len(digits) >= 9 else ""
+    if not last9:
+        return None
+    try:
+        rows = (supabase.table("students").select("telegram_chat_id, phone")
+                .ilike("phone", f"%{last9}").limit(5).execute().data or [])
+    except Exception as e:
+        logging.warning(f"phone lookup xato: {e}")
+        return None
+    for r in rows:
+        if r.get("telegram_chat_id"):
+            try:
+                return int(r["telegram_chat_id"])
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
 async def outbox_tick() -> int:
     try:
         rows = supabase.table("telegram_outbox").select("id, chat_id, text, status")\
@@ -2091,6 +2117,19 @@ async def outbox_tick() -> int:
             if raw_chat.upper() == "ADMIN":
                 # Sayt 'ADMIN' manziliga yozgan xabarlar ustozga boradi
                 target_id = config.ADMIN_ID
+            elif raw_chat.startswith("+") or re.fullmatch(r"998\d{9}", raw_chat):
+                # Telefon ko'rinishidagi chat_id → o'quvchining ulangan Telegrami
+                target_id = resolve_phone_chat(raw_chat)
+                if target_id is None:
+                    logging.warning(
+                        f"Outbox #{row_id}: {raw_chat} raqamiga Telegram bot ulanmagan"
+                    )
+                    try:
+                        supabase.table("telegram_outbox") \
+                            .update({"status": "failed"}).eq("id", row_id).execute()
+                    except Exception:
+                        pass
+                    continue
             else:
                 target_id = int(raw_chat) if raw_chat.lstrip("-").isdigit() else raw_chat
             await bot.send_message(

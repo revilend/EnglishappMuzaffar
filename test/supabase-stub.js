@@ -25,7 +25,15 @@ function createStub(seed) {
       if (f.op === 'eq') return String(v) === String(f.val);
       if (f.op === 'neq') return String(v) !== String(f.val);
       if (f.op === 'in') return (f.val || []).map(String).indexOf(String(v)) >= 0;
-      if (f.op === 'ilike') return String(v == null ? '' : v).toLowerCase() === String(f.val == null ? '' : f.val).toLowerCase();
+      if (f.op === 'ilike') {
+        const hay = String(v == null ? '' : v).toLowerCase();
+        const pat = String(f.val == null ? '' : f.val).toLowerCase();
+        if (pat.indexOf('%') < 0) return hay === pat;
+        const rx = new RegExp('^' + pat.split('%').map(function (part) {
+          return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }).join('.*') + '$');
+        return rx.test(hay);
+      }
       if (f.op === 'gte') return Number(v) >= Number(f.val);
       if (f.op === 'is') return f.val === null ? v == null : String(v) === String(f.val);
       return true;
