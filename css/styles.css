@@ -1492,7 +1492,7 @@ body.auth-mode .toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
 .auth-brand { display: flex; justify-content: center; margin: 16px 0 -8px; }
 .auth-brand .auth-title { font-size: 15px; color: var(--muted); letter-spacing: -0.02em; }
 
-/* ==================== HEADER: rejim ☀️/🌙 + til 🇺🇿 UZ | 🇬🇧 EN ==================== */
+/* Header nazorat tugmalari: rejim (sun/moon) + UZ | EN til */
 .header-controls { display: inline-flex; align-items: center; gap: 6px; }
 .header-inner > .header-controls { margin-left: auto; }
 .mode-btn {

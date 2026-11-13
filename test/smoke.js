@@ -376,7 +376,7 @@ check(!!q('[data-act="pay-student"]'), "moliya: '💵 To'lov kiritish' tugmasi b
 click('[data-act="nav"][data-screen="groups"]');
 check(text().includes('Guruhlar'), 'guruhlar: ekran');
 check(groupCards() === 2, 'guruhlar: 2 ta guruh');
-check(text().includes('🏫 Maktab guruhi') && text().includes('🎓 Repetitor guruhi'),
+check(text().includes('Maktab guruhi') && text().includes('Repetitor guruhi'),
   "guruh turi: ustoz kartalarida '🏫 Maktab guruhi' (ko'k) + '🎓 Repetitor guruhi' (binafsha) nishoni");
 check(qa('.gc-type.is-school').length === 1 && qa('.gc-type.is-tutoring').length === 1,
   'guruh turi: har guruh turiga mos .gc-type klassi');
@@ -475,7 +475,7 @@ check(!!edGrp && edGrp.days === 'Chorshanba 10:00, Shanba 14:30',
   "tahrirlash: 'kun + vaqt' formatida saqlandi (hafta tartibida: Chorshanba 10:00, Shanba 14:30)");
 check(edGrp.time === '10:00', "tahrirlash: legacy time = haftaning birinchi kunning vaqti (10:00)");
 check(edGrp.groupType === 'tutoring', "tahrirlash: guruh turi 'tutoring' ga o'zgartirilib saqlandi");
-check(text().includes('🎓 Repetitor guruhi'),
+check(text().includes('Repetitor guruhi'),
   "tahrirlash: karta nishoni '🎓 Repetitor guruhi' ga yangilandi");
 check(text().includes('Shanba 14:30') && text().includes('Chorshanba 10:00') && text().includes(' • '),
   "tahrirlash: karta 'Shanba 14:30 • Chorshanba 10:00' ko'rinishida");
@@ -611,7 +611,7 @@ check(!!azizCard4b.querySelector('[data-act="remind-student"]'),
 click(azizCard4b.querySelector('[data-act="remind-student"]'));
 check(debtQueueCalls === 1 && lastDebtRows.length === 1,
   "eslatma faqat tugma bosilganda yuborildi (1 ta)");
-check(lastDebtRows[0].text.includes("⚠️ <b>To'lov eslatmasi!</b>") &&
+check(lastDebtRows[0].text.includes("<b>To'lov eslatmasi!</b>") &&
       lastDebtRows[0].text.includes('<b>Aziz Rahimov</b>') &&
       lastDebtRows[0].text.includes("50 000 so'm") &&
       lastDebtRows[0].text.includes("Iltimos, to'lovni amalga oshirishingizni so'raymiz."),
@@ -2252,6 +2252,8 @@ await (async () => {
     "captcha: noto'g'ri javob kirishni bloklaydi");
   check(!!q('#login-captcha') && q('#login-captcha').value === '',
     'captcha: xatodan keyin javob maydoni tozalanadi (yangi misol)');
+  check(((q('[data-act="captcha-refresh"]') || {}).innerHTML || '').indexOf('<svg') >= 0,
+    'captcha: yangilash tugmasida SVG refresh ikonka (emoji emas)');
 
   /* (b) to'g'ri CAPTCHA → ustoz uchun 2FA modal va kod 3 joyga yoziladi */
   setVal('#login-input', 'm_amirov');
@@ -2275,7 +2277,7 @@ await (async () => {
   check(!!tfMail && String(tfMail.body_html || '').includes('https://teachermuzaffar.uz/logo.png') &&
         String(tfMail.body_html || '').includes('English Teacher — Muzaffar Amirov') &&
         String(tfMail.body_html || '').includes('letter-spacing:6px') &&
-        String(tfMail.body_html || '').includes('⏳ Kod 3 daqiqa davomida amal qiladi') &&
+        String(tfMail.body_html || '').includes('Kod 3 daqiqa davomida amal qiladi') &&
         String(tfMail.body_html || '').includes('Qurilma:'),
     '2fa: xat yagona shablon bilan (logo, sarlavha, kod bloki, qurilma nomi)');
 
@@ -2337,7 +2339,7 @@ await (async () => {
     'reset: kod tasdiqlangan Gmail outbox ga qo‘yildi');
   const rsMail = (cloudStub.db.email_outbox || []).filter(r => String(r.to_email) === resetMail).pop();
   check(!!rsMail && String(rsMail.subject || '').includes('English Teacher — Parolni tiklash kodi: ' + rc.code) &&
-        String(rsMail.body_html || '').includes('⏳ Kod 10 daqiqa davomida amal qiladi'),
+        String(rsMail.body_html || '').includes('Kod 10 daqiqa davomida amal qiladi'),
     'reset: mavzu va shablon reset xati uchun to‘g‘ri');
 
   const hashBefore = String(resetRow.password || '');
@@ -2381,6 +2383,8 @@ await (async () => {
   check(!!vfMail && String(vfMail.subject || '').includes('English Teacher — Gmailni tasdiqlash kodi: ' + evc.code) &&
         String(vfMail.body_html || '').includes('https://teachermuzaffar.uz/logo.png'),
     'profil: verify_email xati ham yagona shablon bilan yuboriladi');
+  check(String(vfMail.body_html || '').includes('<svg'),
+    'xat: shablonda emoji o‘rniga SVG ikonka');
   check(String((cloudStub.db.students || []).filter(r => r.id === resetRow.id)[0].email || '') === resetMail,
     'profil: kod tasdiqlanmaguncha students.email o‘zgarmaydi');
 
@@ -2453,6 +2457,8 @@ await (async () => {
   forceNav('profile');
   check(await until(() => !!q('#tc-email') && !!q('#tc-phone'), 3000),
     'profil: ustozda “2FA va tiklash sozlamalari” bloki bor');
+  check(!/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/u.test(q('#screen').textContent),
+    'profil: interfeysda emoji yo‘q (faqat SVG ikonkalar)');
   setVal('#tc-email', 'ustoz.2fa@gmail.com');
   setVal('#tc-phone', '+998 90 111 22 33');
   clickAct('save-teacher-contact');

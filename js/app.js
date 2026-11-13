@@ -2014,7 +2014,7 @@ function forcedLogout() {
   toast('Siz ushbu qurilmadan chiqarildingiz!', 'error');
 }
 
-/* Profil: 📱 Faol qurilmalar bloki */
+/* Profil: Faol qurilmalar bloki */
 function sessionsSectionHTML() {
   const dev = detectDevice();
   const cur = getSessionId();
@@ -2415,7 +2415,23 @@ const ICON = {
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 9.5 17.5 19.5 6.5"/></svg>',
   checkCircle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.4 12.3 2.5 2.5 4.7-5.2"/></svg>',
   star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3.4 2.75 5.6 6.15.9-4.45 4.3 1.05 6.15L12 17.45l-5.5 2.9 1.05-6.15L3.1 9.9l6.15-.9Z"/></svg>',
-  fileText: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9 13.5h6M9 17h4"/></svg>'
+  fileText: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9 13.5h6M9 17h4"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.4 5.7"/><path d="M20 4v7h-7"/></svg>',
+  save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h7V3"/><rect x="8" y="13" width="8" height="6" rx="1"/></svg>',
+  mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
+  wallet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h15a3 3 0 0 1 3 3v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 7V6a2 2 0 0 1 2-2h11"/><circle cx="17" cy="13" r="1.2"/></svg>',
+  creditCard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/><path d="M6 15h4"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg>',
+  headphones: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13a8 8 0 0 1 16 0"/><path d="M4 13v4a3 3 0 0 0 3 3h2v-7H6a2 2 0 0 0-2 2z"/><path d="M20 13v4a3 3 0 0 1-3 3h-2v-7h3a2 2 0 0 1 2 2z"/></svg>',
+  bellOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.3 6.3A6 6 0 0 0 6 8c0 7-3 8-3 8h12"/><path d="M18 8a6 6 0 0 0-9.4-5"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/><path d="m3 3 18 18"/></svg>',
+  unlock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg>',
+  megaphone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h3l7 4V5L7 9z"/><path d="M17 9a4 4 0 0 1 0 6"/></svg>',
+  gift: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8h14v-8"/><path d="M12 8v12"/><path d="M8 8a2 2 0 1 1 4 0"/><path d="M16 8a2 2 0 1 0-4 0"/></svg>',
+  building: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/></svg>',
+  paperclip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11.5 12 19.5a5 5 0 0 1-7-7l8-8a3.5 3.5 0 0 1 5 5l-8 8a2 2 0 0 1-3-3l7-7"/></svg>',
 };
 
 /* Matndagi mayda vektor ikonka: o'lchami aniq (SVG width/height) */
@@ -2532,7 +2548,7 @@ function toggleTheme() {
   applyTheme();
   render();
 }
-/* Header nazorat tugmalari: ☀️/🌙 rejim + 🇺🇿 UZ | 🇬🇧 EN til */
+/* Header nazorat tugmalari: rejim (sun/moon) + UZ | EN til */
 function headerControlsHTML() {
   const dark = getTheme() === 'dark';
   const en = getLang() === 'en';
@@ -2746,7 +2762,7 @@ function loginScreen() {
       <div class="captcha-row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         <canvas id="captcha-canvas" width="170" height="44" data-q="" aria-label="Tekshiruv misoli" style="border-radius:10px;flex:0 0 auto"></canvas>
         <span class="captcha-text" id="captcha-text" style="font-weight:700;letter-spacing:1px">—</span>
-        <button type="button" class="icon-btn" data-act="captcha-refresh" aria-label="CAPTCHA yangilash" title="Yangi misol">🔄</button>
+        <button type="button" class="icon-btn" data-act="captcha-refresh" aria-label="CAPTCHA yangilash" title="Yangi misol">${ico('refresh', 16)}</button>
       </div>
       <input class="input" id="login-captcha" inputmode="numeric" autocomplete="off" placeholder="${t('Javob')}" />
 
@@ -2808,11 +2824,11 @@ function hwMediaType(h) {
 }
 
 function attLabel(type) {
-  if (type === 'video') return '🎬 Video';
-  if (type === 'audio') return '🎧 Audio';
-  if (type === 'image') return '🖼 Rasm';
-  if (type === 'pdf' || type === 'doc' || type === 'file') return '📄 Hujjat';
-  return '📎 Fayl';
+  if (type === 'video') return 'Video';
+  if (type === 'audio') return 'Audio';
+  if (type === 'image') return 'Rasm';
+  if (type === 'pdf' || type === 'doc' || type === 'file') return 'Hujjat';
+  return 'Fayl';
 }
 
 function hwMediaHTML(h) {
@@ -2824,11 +2840,11 @@ function hwMediaHTML(h) {
   const docs = list.filter(a => ['pdf', 'doc', 'file'].indexOf(a.type) >= 0 || !['video', 'audio', 'image'].includes(a.type));
   const videoHTML = videos.map(a => `<div class="hw-media-item">
       <video class="plyr-video" controls playsinline preload="metadata" src="${esc(a.url)}"></video>
-      <div class="hw-media-bar"><span class="hw-media-tag">🎬 Video · Plyr (0.5x–2x, fullscreen, ±10s)</span></div>
+      <div class="hw-media-bar"><span class="hw-media-tag">${ico('video', 14)} Video · Plyr (0.5x–2x, fullscreen, ±10s)</span></div>
     </div>`).join('');
   const audioHTML = audios.map(a => `<div class="hw-media-item">
       <audio class="plyr-audio" controls preload="metadata" src="${esc(a.url)}"></audio>
-      <div class="hw-media-bar"><span class="hw-media-tag">🎧 Audio · listening uchun tezlikni o'zgartiring</span></div>
+      <div class="hw-media-bar"><span class="hw-media-tag">${ico('headphones', 14)} Audio · listening uchun tezlikni o'zgartiring</span></div>
     </div>`).join('');
   const imgHTML = images.length ? `<div class="hw-gallery">${images.map(a =>
     `<a class="hw-gallery-item" href="${esc(a.url)}" target="_blank" rel="noopener"><img class="hw-media-img" src="${esc(a.url)}" alt="${esc(a.name || h.title || 'Rasm')}" loading="lazy" /></a>`
@@ -2836,9 +2852,9 @@ function hwMediaHTML(h) {
   const docHTML = docs.length ? `<div class="hw-docs">${docs.map(a => {
     const isPdf = a.type === 'pdf' || /\.pdf($|\?)/i.test(a.url);
     return `<a class="hw-doc-link" href="${esc(a.url)}" target="_blank" rel="noopener" download>
-      <span class="hw-doc-ico">${isPdf ? '📄' : '📎'}</span>
+      <span class="hw-doc-ico">${isPdf ? ico('fileText', 16) : ico('paperclip', 16)}</span>
       <span class="hw-doc-name">${esc(a.name || (isPdf ? 'PDF fayl' : 'Fayl'))}</span>
-      <span class="hw-doc-dl">⬇ Yuklab olish</span>
+      <span class="hw-doc-dl">${ico('download', 14)} Yuklab olish</span>
     </a>`;
   }).join('')}</div>` : '';
   return `<div class="hw-media">${videoHTML}${audioHTML}${imgHTML}${docHTML}</div>`;
@@ -2989,10 +3005,10 @@ function openHwModal(hid, preGroup) {
     <input class="input" id="hw-due" type="date" value="${cur && cur.dueDate ? esc(cur.dueDate) : todayKey()}" />
 
     <div class="hw-upload">
-      <label class="field-label" for="hw-media-input">📎 Fayllar biriktirish — bir nechta fayl tanlash mumkin (rasm, video, audio, pdf, doc):</label>
+      <label class="field-label" for="hw-media-input">${ico('paperclip', 14)} Fayllar biriktirish — bir nechta fayl tanlash mumkin (rasm, video, audio, pdf, doc):</label>
       <div class="hw-upload-row">
         <label class="hw-upload-btn" for="hw-media-input">
-          <span class="hw-upload-ico" aria-hidden="true">📁</span>
+          <span class="hw-upload-ico" aria-hidden="true">${ico('folder', 18)}</span>
           <span>Fayl tanlash</span>
         </label>
         <input type="file" id="hw-media-input" class="hw-file-input" multiple accept="image/*,video/*,audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.mp4,.mov,.webm,.pdf,.doc,.docx" />
@@ -3123,9 +3139,9 @@ function onHwFilePick(inp) {
   });
   refreshHwPreview();
   if (errors.length) {
-    setHwStatus('❌ ' + errors.join('; '), 'err');
+    setHwStatus('Xatolik: ' + errors.join('; '), 'err');
   } else {
-    setHwStatus('✅ ' + added + ' ta fayl tanlandi: ' + addedNames.join(', '));
+    setHwStatus(added + ' ta fayl tanlandi: ' + addedNames.join(', '));
   }
 }
 
@@ -3213,7 +3229,7 @@ function saveHomework() {
 
   if (!pending.length) { finish([]); return; }
 
-  setHwStatus("⏳ " + pending.length + " ta fayl yuklanmoqda... (uzun videoda biroz kutish mumkin)", 'busy');
+  setHwStatus(pending.length + " ta fayl yuklanmoqda... (uzun videoda biroz kutish mumkin)", 'busy');
   const uploaded = [];
   const chain = pending.reduce(function (p, file) {
     return p.then(function () {
@@ -3222,20 +3238,20 @@ function saveHomework() {
           url: res.url, type: detectMediaType(file),
           name: file.name, size: Number(file.size) || 0
         });
-        setHwStatus("⏳ Yuklanmoqda... " + uploaded.length + "/" + pending.length, 'busy');
+        setHwStatus("Yuklanmoqda... " + uploaded.length + "/" + pending.length, 'busy');
       });
     });
   }, Promise.resolve());
 
   chain.then(function () {
-    setHwStatus("✅ " + uploaded.length + " ta fayl yuklandi");
+    setHwStatus(uploaded.length + " ta fayl yuklandi");
     revokeHwPreview();
     state.hwNewFiles = [];
     finish(uploaded);
   }).catch(function (e) {
     if (btn) { btn.disabled = false; btn.textContent = 'Saqlash'; }
     if (err) { err.textContent = "Faylni yuklab bo'lmadi: " + ((e && e.message) || 'xatolik'); err.classList.add('show'); }
-    setHwStatus("❌ Yuklashda xatolik: " + ((e && e.message) || 'xatolik'), 'err');
+    setHwStatus("Yuklashda xatolik: " + ((e && e.message) || 'xatolik'), 'err');
   });
 }
 
@@ -3310,7 +3326,7 @@ function tutoringStudents() {
 function payHistoryHTML(st) {
   const rows = getPayments().filter(function (p) { return p.sid === st.id; })
     .sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
-  if (!rows.length) return `<div class="empty"><span class="empty-ico">💵</span>Hozircha to'lov yo'q</div>`;
+  if (!rows.length) return `<div class="empty"><span class="empty-ico">${ico('wallet', 22)}</span>Hozircha to'lov yo'q</div>`;
   return `<div class="pay-history att-scroll">${rows.map(function (p) {
     const d = String(p.createdAt || '').slice(0, 10);
     return `<div class="att-line">
@@ -3419,14 +3435,14 @@ function studentPortal() {
   let lastPayHTML = '<div class="pay-last-line muted small" style="margin-top:8px">Hozircha to\'lovlar mavjud emas</div>';
   if (st.lastPaymentInfo) {
     lastPayHTML = `<div class="pay-last-line" style="margin-top:8px;font-size:13px;color:var(--text,#1e293b)">
-      🗓 <b>So'nggi to'lov:</b> ${esc(st.lastPaymentInfo)} qabul qilindi
+      ${ico('cal', 14)} <b>So'nggi to'lov:</b> ${esc(st.lastPaymentInfo)} qabul qilindi
     </div>`;
   } else if (payRows.length > 0) {
     const lp = payRows[0];
     const lpDate = lp.createdAt ? fmtDMY(lp.createdAt.slice(0, 10)) : fmtDMY(todayKey());
     const lpMonth = lp.note ? lp.note.replace(" uchun to'lov", "") : monthLabel(paymentPeriod(lp));
     lastPayHTML = `<div class="pay-last-line" style="margin-top:8px;font-size:13px;color:var(--text,#1e293b)">
-      🗓 <b>So'nggi to'lov:</b> ${lpDate} da ${fmtSom(lp.amount)} so'm (${esc(lpMonth)} uchun qabul qilindi)
+      ${ico('cal', 14)} <b>So'nggi to'lov:</b> ${lpDate} da ${fmtSom(lp.amount)} so'm (${esc(lpMonth)} uchun qabul qilindi)
     </div>`;
   }
 
@@ -3434,21 +3450,21 @@ function studentPortal() {
   <section class="card pay-banner ${hasDebt ? 'due' : 'ok'}">
     <div class="pay-banner-main">
       ${hasDebt
-        ? `🔴 <b>Diqqat:</b> Sizda <b>${fmtSom(currentDebt)} so'm</b> to'lov qarzdorligi mavjud!`
-        : `🟢 <b>To'langan</b> <span class="muted">(Qarzdorlik mavjud emas)</span>`}
+        ? `${ico('alert', 14)} <b>Diqqat:</b> Sizda <b>${fmtSom(currentDebt)} so'm</b> to'lov qarzdorligi mavjud!`
+        : `<b>To'langan</b> <span class="muted">(Qarzdorlik mavjud emas)</span>`}
     </div>
     ${pendingReceipt ? `
     <div class="pay-pending-alert" style="margin:8px 0;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;color:#92400e;font-size:13px">
-      ⏳ <b>To'lov cheki ko'rib chiqilmoqda!</b> Ustoz tasdiqlashi bilan qarzingiz o'chiriladi.
+      <b>To'lov cheki ko'rib chiqilmoqda!</b> Ustoz tasdiqlashi bilan qarzingiz o'chiriladi.
     </div>` : ''}
     ${rejectedReceipt ? `
     <div class="pay-rejected-alert" style="margin:8px 0;padding:8px 12px;background:#fee2e2;border:1px solid #ef4444;border-radius:8px;color:#991b1b;font-size:13px">
-      ❌ <b>Chekingiz rad etildi:</b> ${esc(rejectedReceipt.note || "Noto'g'ri chek")}. Iltimos, qaytadan to'g'ri chekni yuklang:
+      <b>Chekingiz rad etildi:</b> ${esc(rejectedReceipt.note || "Noto'g'ri chek")}. Iltimos, qaytadan to'g'ri chekni yuklang:
     </div>` : ''}
     ${hasDebt && !pendingReceipt ? `
     <div style="margin:10px 0 6px 0">
       <button type="button" class="btn btn-primary btn-block" data-act="open-pay-receipt" data-amount="${currentDebt}" data-period="${esc(per)}">
-        💳 Karta orqali to'lash
+        ${ico('creditCard', 16)} Karta orqali to'lash
       </button>
     </div>` : ''}
     ${lastPayHTML}
@@ -3539,7 +3555,7 @@ function studentPortal() {
   <div class="card att-card">
     <div class="row between att-head">
       <div class="col">
-        <div class="strong-label">📅 Davomat: ${attPct}% qatnashgan (${attMissed} ta qoldirilgan)</div>
+        <div class="strong-label">${ico('cal', 14)} Davomat: ${attPct}% qatnashgan (${attMissed} ta qoldirilgan)</div>
         <div class="muted small">${cnt.present} keldi · ${cnt.absent} kelmadi · ${cnt.excused} sababli</div>
       </div>
       <button type="button" class="btn btn-xs ghost att-toggle" data-act="att-toggle" aria-expanded="${!!state.attOpen}">${state.attOpen ? '▴ Yopish' : '▾ Ochish'}</button>
@@ -3550,7 +3566,7 @@ function studentPortal() {
     <button type="button" class="btn btn-xs ghost btn-block" data-act="att-toggle">▾ Barchasini ko'rish</button>`}
   </div>
 
-  <div class="section-title">${hideMoney ? '🎙 Speaking topshirish' : '🎙 Speaking qarzdorligi va topshirish'}</div>
+  <div class="section-title">${hideMoney ? ico('mic', 15) + ' Speaking topshirish' : ico('mic', 15) + ' Speaking qarzdorligi va topshirish'}</div>
   <div class="card">
     ${hideMoney ? '' : (Number(st.speakingDebt) > 0
       ? `<div class="debt-badge" style="margin-bottom:8px">${ico('alert', 15)} Speaking qarzingiz: ${Number(st.speakingDebt)} ta</div>`
@@ -3569,7 +3585,7 @@ function studentPortal() {
   <div class="section-title">${ico('bookOpen', 13)} Uyga vazifalar</div>
   <div class="card">${homeworkListHTML(myHw)}</div>
 
-  <div class="section-title">📊 Baholar va natijalar</div>
+  <div class="section-title">${ico('grades', 15)} Baholar va natijalar</div>
   <div class="card avg-card">
     <div class="col">
       <div class="strong-label">O'rtacha baho</div>
@@ -3643,7 +3659,7 @@ function groupCard(g, students) {
       <h3 class="card-h">${esc(g.name)}</h3>
       <span class="pill">${cnt} o'quvchi</span>
     </div>
-    <div class="gc-type ${tutoring ? 'is-tutoring' : 'is-school'}">${tutoring ? '🎓 Repetitor guruhi' : '🏫 Maktab guruhi'}</div>
+    <div class="gc-type ${tutoring ? 'is-tutoring' : 'is-school'}">${tutoring ? ico('gradCap', 14) + ' Repetitor guruhi' : ico('building', 14) + ' Maktab guruhi'}</div>
     <div class="meta-rows">
       ${sched
         ? `<div class="meta-row">${ico('calendar', 15)} <span>${esc(sched)}</span></div>`
@@ -3651,8 +3667,8 @@ function groupCard(g, students) {
            <div class="meta-row">${ico('clock', 15)} <span>${esc(g.time)}</span></div>`}
     </div>
     <div class="gc-fee">${tutoring
-      ? `💵 Oylik to'lov: ${fee > 0 ? `<b>${fmtSom(fee)} so'm</b>` : `<span class="muted">belgilanmagan</span>`}`
-      : `🎁 <b>Bepul</b> <span class="muted">(maktab guruhi)</span>`}</div>
+      ? `${ico('wallet', 14)} Oylik to'lov: ${fee > 0 ? `<b>${fmtSom(fee)} so'm</b>` : `<span class="muted">belgilanmagan</span>`}`
+      : `${ico('gift', 14)} <b>Bepul</b> <span class="muted">(maktab guruhi)</span>`}</div>
     <div class="muted small" style="margin-top:7px">Bosib, guruh o'quvchilarini ko'rish</div>
     <div class="gc-actions">
       <button type="button" class="btn btn-ghost btn-sm" data-act="grade-group-go" data-group="${g.id}">${ico('grades', 15)} Baholar</button>
@@ -3684,7 +3700,7 @@ function paymentsScreen() {
           <span class="s-name">${esc(s.fullName)}</span>
           <div class="muted small">${g ? esc(g.name) : '—'}</div>
         </div>
-        <span class="pay-status ${isDue ? 'due' : 'ok'}">${isDue ? `${fmtSom(debt)} so'm qarz` : "🟢 To'langan"}</span>
+        <span class="pay-status ${isDue ? 'due' : 'ok'}">${isDue ? `${fmtSom(debt)} so'm qarz` : "To'langan"}</span>
       </div>
       <div class="pay-row-meta">
         <span>Oylik: <b>${fee ? fmtSom(fee) + " so'm" : 'belgilanmagan'}</b></span>
@@ -3692,17 +3708,17 @@ function paymentsScreen() {
       </div>
       <div class="pay-actions">
         <button type="button" class="btn btn-xs btn-primary" data-act="pay-student"
-                data-sid="${s.id}" data-period="${esc(period)}">💵 To'lov kiritish</button>
-        <button type="button" class="btn btn-xs ghost" data-act="debt-add" data-sid="${s.id}">➕ Qarz qo'shish</button>
+                data-sid="${s.id}" data-period="${esc(period)}">${ico('wallet', 14)} To'lov kiritish</button>
+        <button type="button" class="btn btn-xs ghost" data-act="debt-add" data-sid="${s.id}">${ico('plus', 14)} Qarz qo'shish</button>
         <button type="button" class="btn btn-xs ghost" data-act="remind-student" data-sid="${s.id}">${ico('bell', 13)} Eslatma yuborish</button>
-        <button type="button" class="btn btn-xs ghost" data-act="fee-schedule" data-gid="${s.groupId}">🗓 Oylik jadval</button>
+        <button type="button" class="btn btn-xs ghost" data-act="fee-schedule" data-gid="${s.groupId}">${ico('cal', 14)} Oylik jadval</button>
       </div>
     </div>`;
   }).join('');
   return `
   <div class="screen-head">
     <div>
-      <h2 class="screen-title">💳 To'lovlar</h2>
+      <h2 class="screen-title">${ico('creditCard', 16)} To'lovlar</h2>
       <div class="muted small">${list.length} nafar repetitor o'quvchisi · ${monthLabel(period)}</div>
     </div>
   </div>
@@ -3715,10 +3731,10 @@ function paymentsScreen() {
       <div><span class="muted small">Qolgan</span><b>${fmtSom(Math.max(0, expected - collected))} so'm</b></div>
     </div>
   </div>
-  <button type="button" class="btn btn-ghost btn-block" data-act="nav" data-screen="debtors">💳 Qarzdorlar ro'yxati</button>
+  <button type="button" class="btn btn-ghost btn-block" data-act="nav" data-screen="debtors">${ico('creditCard', 16)} Qarzdorlar ro'yxati</button>
   ${rows || emptyState("Repetitorlik o'quvchisi yo'q", 'students')}
 
-  <div class="section-title">🗓 Guruhlar oylik to'lov jadvali</div>
+  <div class="section-title">${ico('cal', 15)} Guruhlar oylik to'lov jadvali</div>
   ${groups.length ? groups.map(function (g) {
     const fee = feeForGroup(g.id, period);
     return `<div class="card row between pay-row">
@@ -3810,7 +3826,7 @@ function debtorCard(s) {
         : `${ico('calendar', 13)} Oxirgi to'lov: <span class="muted">hali to'lov yo'q</span>`}
     </div>
     <div class="debtor-actions">
-      <button type="button" class="btn btn-xs btn-primary" data-act="pay-student" data-sid="${s.id}">💵 To'lov kiritish</button>
+      <button type="button" class="btn btn-xs btn-primary" data-act="pay-student" data-sid="${s.id}">${ico('wallet', 14)} To'lov kiritish</button>
       <button type="button" class="btn btn-xs ghost" data-act="open-chat" data-sid="${s.id}">${ico('message', 14)} Xabar</button>
     </div>
   </div>`;
@@ -3825,7 +3841,7 @@ function debtorsScreen() {
   return `
   <div class="screen-head">
     <div>
-      <h2 class="screen-title">💳 Qarzdorlar</h2>
+      <h2 class="screen-title">${ico('creditCard', 16)} Qarzdorlar</h2>
       <div class="muted small">${debtors.length} nafar · umumiy qarz: ${fmtSom(total)} so'm</div>
     </div>
     <button type="button" class="btn btn-ghost btn-sm" data-act="nav" data-screen="students">← Orqaga</button>
@@ -3833,7 +3849,7 @@ function debtorsScreen() {
 
   ${debtors.length ? `
   <button type="button" class="btn btn-primary btn-block debtors-btn" data-act="remind-debtors">
-    <span class="debtors-ico">📢</span> Barcha qarzdorlarga eslatma yuborish
+    <span class="debtors-ico">${ico('megaphone', 18)}</span> Barcha qarzdorlarga eslatma yuborish
   </button>
   <div class="debtor-list">${debtors.map(debtorCard).join('')}</div>`
   : emptyState("Qarzdor o'quvchi yo'q — hamma to'langan ✓", 'checkCircle')}
@@ -3891,11 +3907,11 @@ function studentCard(s) {
                 role="switch" aria-checked="${s.voiceAllowed !== false}" aria-label="${t('Ovozli ruxsat')}"></button>
       </div>
       ${showMoney ? `<div class="pay-line">
-        <span class="pay-status ${debt > 0 ? 'due' : 'ok'}">${debt > 0 ? `🔴 To'lov qarzi: ${fmtSom(debt)} so'm` : "🟢 To'langan"}</span>
+        <span class="pay-status ${debt > 0 ? 'due' : 'ok'}">${debt > 0 ? `To'lov qarzi: ${fmtSom(debt)} so'm` : "To'langan"}</span>
       </div>
       <div class="pay-actions">
-        <button type="button" class="btn btn-xs ghost" data-act="debt-add" data-sid="${s.id}">➕ Qarz qo'shish</button>
-        <button type="button" class="btn btn-xs ghost pay-btn" data-act="pay-student" data-sid="${s.id}">💵 To'lov kiritish</button>
+        <button type="button" class="btn btn-xs ghost" data-act="debt-add" data-sid="${s.id}">${ico('plus', 14)} Qarz qo'shish</button>
+        <button type="button" class="btn btn-xs ghost pay-btn" data-act="pay-student" data-sid="${s.id}">${ico('wallet', 14)} To'lov kiritish</button>
         <button type="button" class="btn btn-xs ghost" data-act="remind-student" data-sid="${s.id}">${ico('bell', 13)} Eslatma yuborish</button>
       </div>` : ''}
     </div>
@@ -3945,7 +3961,7 @@ function studentsScreen() {
     <span class="muted small">${ico('groups', 14)} <b>${esc(gf.name)}</b> guruhidagi o'quvchilar</span>
     <button type="button" class="chip-btn" data-act="filter-group-all">Barcha o'quvchilar</button>
   </div>
-  <div class="section-title">📚 ${esc(gf.name)} — uyga vazifalar</div>
+  <div class="section-title">${ico('bookOpen', 15)} ${esc(gf.name)} — uyga vazifalar</div>
   <div class="card">${homeworkListHTML(getHomework().filter(h => h.groupId === gf.id))}</div>
   <button type="button" class="btn btn-primary btn-block" data-act="open-hw" data-gid="${gf.id}">+ Uyga vazifa berish</button>` : ''}
 
@@ -3954,9 +3970,9 @@ function studentsScreen() {
   </div>
 
   <button type="button" class="btn btn-primary btn-block debtors-btn" data-act="remind-debtors">
-    <span class="debtors-ico">📢</span> Barcha qarzdorlarga eslatma yuborish
+    <span class="debtors-ico">${ico('megaphone', 18)}</span> Barcha qarzdorlarga eslatma yuborish
   </button>
-  <button type="button" class="btn btn-ghost btn-block" data-act="nav" data-screen="debtors">💳 Qarzdorlar ro'yxati</button>
+  <button type="button" class="btn btn-ghost btn-block" data-act="nav" data-screen="debtors">${ico('creditCard', 16)} Qarzdorlar ro'yxati</button>
 
   <div class="chips${state.classHint ? ' is-hl' : ''}">
     ${chips.map(c => `<button type="button" class="chip-btn ${state.filterClass === c ? 'active' : ''}" data-act="filter-class" data-class="${esc(c)}">${esc(tClass(c))}</button>`).join('')}
@@ -3990,15 +4006,15 @@ function openAddDebtModal(sid) {
     </div>
     <div class="card" style="margin:9px 0">
       <div class="row between"><span class="muted small">Joriy qarz</span>
-        <span class="pay-status ${debt > 0 ? 'due' : 'ok'}">${debt > 0 ? fmtSom(debt) + " so'm" : "🟢 Qarz yo'q"}</span></div>
+        <span class="pay-status ${debt > 0 ? 'due' : 'ok'}">${debt > 0 ? fmtSom(debt) + " so'm" : "Qarz yo'q"}</span></div>
     </div>
     <label class="field-label" for="debt-sum">Qo'shiladigan summa (so'mda)</label>
     <input class="input" id="debt-sum" type="number" min="0" step="1000" inputmode="numeric" placeholder="Masalan: 50000" />
-    <p class="pay-hint">🔕 Bu amalda o'quvchiga xabar yuborilmaydi. Eslatma faqat kartadagi <b>🔔 Eslatma yuborish</b> tugmasi bilan ketadi.</p>
+    <p class="pay-hint">${ico('bellOff', 14)} Bu amalda o'quvchiga xabar yuborilmaydi. Eslatma faqat kartadagi <b>${ico('bell', 14)} Eslatma yuborish</b> tugmasi bilan ketadi.</p>
     <div class="field-error" id="debt-error"></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
-      <button type="button" class="btn btn-primary" data-act="save-add-debt" data-sid="${esc(String(sid))}">➕ Qarzni qo'shish</button>
+      <button type="button" class="btn btn-primary" data-act="save-add-debt" data-sid="${esc(String(sid))}">${ico('plus', 14)} Qarzni qo'shish</button>
     </div>
   `);
 }
@@ -4029,7 +4045,7 @@ function saveAddedDebt(sid) {
 
 /* Qarz eslatmasi matni (bitta o'quvchi va ommaviy uchun bir xil) */
 function debtReminderText(s) {
-  return `⚠️ <b>To'lov eslatmasi!</b>\n\nHurmatli o'quvchi / ota-ona, <b>${esc(s.fullName)}</b>ning ingliz tili darslari uchun <b>${fmtSom(s.paymentDebt)} so'm</b> to'lov qarzdorligi mavjud.\n\nIltimos, to'lovni amalga oshirishingizni so'raymiz.`;
+  return `<b>To'lov eslatmasi!</b>\n\nHurmatli o'quvchi / ota-ona, <b>${esc(s.fullName)}</b>ning ingliz tili darslari uchun <b>${fmtSom(s.paymentDebt)} so'm</b> to'lov qarzdorligi mavjud.\n\nIltimos, to'lovni amalga oshirishingizni so'raymiz.`;
 }
 
 function debtRowOf(s) {
@@ -4059,7 +4075,7 @@ function remindStudent(sid) {
   if (!g || isSchoolGroup(g)) { toast("Maktab guruhida qarz yo'q (bepul)", 'error'); return; }
   if (!(Number(st.paymentDebt) || 0)) { toast("Bu o'quvchida qarz yo'q ✓"); return; }
   if (!st.telegramChatId) { toast("O'quvchida Telegram ulanmagan", 'error'); return; }
-  queueDebtReminders([debtRowOf(st)], `✅ ${st.fullName}ga eslatma yuborildi!`);
+  queueDebtReminders([debtRowOf(st)], `${st.fullName}ga eslatma yuborildi!`);
 }
 
 function openPayModal(sid, period) {
@@ -4087,7 +4103,7 @@ function openPayModal(sid, period) {
     </div>
     <div class="card" style="margin:9px 0">
       <div class="row between"><span class="muted small">Joriy qarz</span>
-        <span class="pay-balance">${debt > 0 ? fmtSom(debt) + " so'm" : "🟢 Qarz yo'q"}</span></div>
+        <span class="pay-balance">${debt > 0 ? fmtSom(debt) + " so'm" : "Qarz yo'q"}</span></div>
     </div>
     <label class="field-label" for="pay-sum">To'lov summasi (so'mda)</label>
     <input class="input" id="pay-sum" type="number" min="0" step="1000" inputmode="numeric" value="${debt > 0 ? debt : (fee || '')}" />
@@ -4099,7 +4115,7 @@ function openPayModal(sid, period) {
     <div class="field-error" id="pay-error"></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
-      <button type="button" class="btn btn-primary" data-act="save-pay" data-sid="${esc(String(sid))}" data-period="${esc(per)}">💵 To'lovni saqlash</button>
+      <button type="button" class="btn btn-primary" data-act="save-pay" data-sid="${esc(String(sid))}" data-period="${esc(per)}">${ico('wallet', 14)} To'lovni saqlash</button>
     </div>
   `);
 }
@@ -4147,7 +4163,7 @@ function savePayment(sid) {
     CloudSync.queueMessages([{
       student_id: st.dbId != null ? st.dbId : null,
       chat_id: String(st.telegramChatId),
-      text: `💵 <b>To'lov qabul qilindi!</b>\n\n<b>${esc(st.fullName)}</b>, ${esc(monthName)} uchun <b>${fmtSom(sum)} so'm</b> to'lov qabul qilindi.\n${after > 0 ? `Qolgan qarz: <b>${fmtSom(after)} so'm</b>` : "Qarzingiz yo'q — rahmat! 🟢"}`,
+      text: `<b>To'lov qabul qilindi!</b>\n\n<b>${esc(st.fullName)}</b>, ${esc(monthName)} uchun <b>${fmtSom(sum)} so'm</b> to'lov qabul qilindi.\n${after > 0 ? `Qolgan qarz: <b>${fmtSom(after)} so'm</b>` : "Qarzingiz yo'q — rahmat!"}`,
       status: 'pending'
     }]).catch(function (e) { console.warn('[outbox]', (e && e.message) || e); });
   }
@@ -4174,10 +4190,10 @@ function openRemindDebtors() {
       <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
     </div>
     <div class="confirm-body">
-      <div class="confirm-emoji tint-amber">📢</div>
+      <div class="confirm-emoji tint-amber">${ico('megaphone', 22)}</div>
       <p class="confirm-text">${debtors.length} nafar qarzdor o'quvchiga Telegram orqali shaxsiy eslatma yuborilsinmi?</p>
       <p class="muted small" style="margin-top:7px">Umumiy qarzdorlik: <b>${fmtSom(total)} so'm</b></p>
-      ${noTg ? `<p class="muted small" style="margin-top:7px">⚠️ ${noTg} nafar o'quvchida Telegram ulanmagan — ularga yuborilmaydi.</p>` : ''}
+      ${noTg ? `<p class="muted small" style="margin-top:7px">${ico('alert', 14)} ${noTg} nafar o'quvchida Telegram ulanmagan — ularga yuborilmaydi.</p>` : ''}
     </div>
     <div class="confirm-actions">
       <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
@@ -4192,7 +4208,7 @@ function sendDebtorsReminder() {
   if (!debtors.length) { closeModal(); toast("Qarzdor o'quvchi yo'q ✓"); return; }
   const rows = debtors.filter(s => s.telegramChatId).map(debtRowOf);
   closeModal();
-  queueDebtReminders(rows, `✅ ${rows.length} nafar qarzdorga eslatma yuborildi!`);
+  queueDebtReminders(rows, `${rows.length} nafar qarzdorga eslatma yuborildi!`);
 }
 
 /* ==================== PROFIL ==================== */
@@ -4219,32 +4235,32 @@ function profileScreen() {
   <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">${ico('key', 16)} ${t("Parolni o'zgartirish")}</button>
 
   ${(!isTeacher() && st) ? `
-  <div class="section-title">📱 ${t("Aloqa va tiklash ma'lumotlari")}</div>
+  <div class="section-title">${ico('smartphone', 15)} ${t("Aloqa va tiklash ma'lumotlari")}</div>
   <div class="card">
     <label class="field-label" for="st-phone">${t('Telefon raqam')}</label>
     <input class="input" id="st-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="+998 90 123 45 67" value="${esc(st.phone || '')}" />
     <label class="field-label" for="st-email" style="margin-top:6px">${t('Gmail manzili')}</label>
     <input class="input" id="st-email" type="email" autocomplete="email" placeholder="ism@gmail.com" value="${esc(st.email || '')}" />
-    <div class="muted small" style="margin-top:4px">${st.email ? (st.emailVerified ? '✅ ' + t('Tasdiqlangan') : '⚠️ ' + t('Tasdiqlanmagan')) : ''}</div>
-    ${(st.email && !st.emailVerified) ? `<button type="button" class="btn btn-ghost btn-block" data-act="resend-verify-existing" style="margin-top:6px">✉️ ${t('Kod yuborish')}</button>` : ''}
+    <div class="muted small" style="margin-top:4px">${st.email ? (st.emailVerified ? ico('checkCircle', 14) + ' ' + t('Tasdiqlangan') : ico('alert', 14) + ' ' + t('Tasdiqlanmagan')) : ''}</div>
+    ${(st.email && !st.emailVerified) ? `<button type="button" class="btn btn-ghost btn-block" data-act="resend-verify-existing" style="margin-top:6px">${ico('mail', 14)} ${t('Kod yuborish')}</button>` : ''}
     <div class="muted small" style="margin-top:6px">${t("Parolni tiklash kodi shu telefon (Telegram) yoki Gmail manzilga yuboriladi.")}</div>
-    <button type="button" class="btn btn-primary btn-block" data-act="save-student-contact" style="margin-top:8px">💾 ${t('Saqlash')}</button>
+    <button type="button" class="btn btn-primary btn-block" data-act="save-student-contact" style="margin-top:8px">${ico('save', 14)} ${t('Saqlash')}</button>
   </div>` : ''}
 
   ${isTeacher() ? `
-  <div class="section-title">🔐 ${t('2FA va tiklash sozlamalari')}</div>
+  <div class="section-title">${ico('lock', 15)} ${t('2FA va tiklash sozlamalari')}</div>
   <div class="card">
     <div class="muted small" style="margin-bottom:8px">${t("Kirishdagi 2 bosqichli kod va parolni tiklash kodi shu manzillarga yuboriladi.")}</div>
     <label class="field-label" for="tc-email">${t('Ustoz Gmail manzili')}</label>
     <input class="input" id="tc-email" type="email" autocomplete="email" placeholder="ustoz@gmail.com" value="${esc(adminContacts.email || '')}" />
-    <div class="muted small" style="margin-top:4px">${adminContacts.email ? (adminContacts.verified ? '✅ ' + t('Tasdiqlangan') : '⚠️ ' + t('Tasdiqlanmagan')) : ''}</div>
-    ${(adminContacts.email && !adminContacts.verified) ? `<button type="button" class="btn btn-ghost btn-block" data-act="resend-verify-existing" style="margin-top:6px">✉️ ${t('Kod yuborish')}</button>` : ''}
+    <div class="muted small" style="margin-top:4px">${adminContacts.email ? (adminContacts.verified ? ico('checkCircle', 14) + ' ' + t('Tasdiqlangan') : ico('alert', 14) + ' ' + t('Tasdiqlanmagan')) : ''}</div>
+    ${(adminContacts.email && !adminContacts.verified) ? `<button type="button" class="btn btn-ghost btn-block" data-act="resend-verify-existing" style="margin-top:6px">${ico('mail', 14)} ${t('Kod yuborish')}</button>` : ''}
     <label class="field-label" for="tc-phone" style="margin-top:6px">${t('Telefon raqam')}</label>
     <input class="input" id="tc-phone" type="tel" inputmode="tel" maxlength="20" placeholder="+998 90 123 45 67" value="${esc(adminContacts.phone || '')}" />
-    <button type="button" class="btn btn-primary btn-block" data-act="save-teacher-contact" style="margin-top:10px">💾 ${t('Saqlash')}</button>
+    <button type="button" class="btn btn-primary btn-block" data-act="save-teacher-contact" style="margin-top:10px">${ico('save', 14)} ${t('Saqlash')}</button>
     <div class="muted small" style="margin-top:12px">${t('Ishonchli qurilmalar')}: <b>${adminTrusted.list.length}</b> ·
-      ${t("bu qurilma")} ${trustedToken() ? '✅ ' + t('ishonchli') : '🆕 ' + t('yangi')}</div>
-    <button type="button" class="btn btn-ghost btn-block" data-act="clear-trusted" style="margin-top:6px">🔓 ${t('Ishonchli qurilmalarni tozalash')}</button>
+      ${t("bu qurilma")} ${trustedToken() ? ico('checkCircle', 14) + ' ' + t('ishonchli') : t('yangi')}</div>
+    <button type="button" class="btn btn-ghost btn-block" data-act="clear-trusted" style="margin-top:6px">${ico('unlock', 14)} ${t('Ishonchli qurilmalarni tozalash')}</button>
   </div>` : ''}
 
   ${isTeacher() ? `
@@ -4265,14 +4281,14 @@ function profileScreen() {
 
   
   ${isTeacher() ? `
-  <div class="section-title">💳 To\'lov kartasi sozlamalari</div>
+  <div class="section-title">${ico('creditCard', 15)} To\'lov kartasi sozlamalari</div>
   <div class="card card-settings-block">
     <div class="muted small" style="margin-bottom:8px">O\'quvchilar repetitorlik to\'lovini o\'tkazishi uchun karta raqamingiz va ism-familiyangizni kiriting:</div>
     <label class="field-label" for="teacher-card-num">Karta raqami (16 ta raqam)</label>
     <input class="input" id="teacher-card-num" inputmode="numeric" maxlength="24" placeholder="8600 0000 0000 0000" value="${esc((store.get(K.cardSettings) || {}).number || '')}" />
     <label class="field-label" for="teacher-card-holder" style="margin-top:6px">Karta egasining ism-familiyasi</label>
     <input class="input" id="teacher-card-holder" autocapitalize="characters" placeholder="MUZAFFAR AMIROV" value="${esc((store.get(K.cardSettings) || {}).holder || '')}" />
-    <button type="button" class="btn btn-primary btn-block" data-act="save-card-settings" style="margin-top:10px">💾 Kartani saqlash</button>
+    <button type="button" class="btn btn-primary btn-block" data-act="save-card-settings" style="margin-top:10px">${ico('save', 14)} Kartani saqlash</button>
   </div>` : ''}
 
   ${sessionsSectionHTML()}
@@ -4329,11 +4345,11 @@ function openAddGroup() {
     <div class="gtype-grid" id="f-gtype">
       <label class="gtype-opt">
         <input type="radio" name="f-gtype" value="school" checked />
-        <span>🏫 Maktab guruhi (bepul)</span>
+        <span>${ico('building', 14)} Maktab guruhi (bepul)</span>
       </label>
       <label class="gtype-opt">
         <input type="radio" name="f-gtype" value="tutoring" />
-        <span>🎓 Repetitorlik guruhi</span>
+        <span>${ico('gradCap', 14)} Repetitorlik guruhi</span>
       </label>
     </div>
     <p class="muted small" style="margin-top:6px">Guruh turi faqat sizga ko'rinadi — o'quvchilarga hech qachon ko'rsatilmaydi.</p>
@@ -4489,11 +4505,11 @@ function openEditGroup(gid) {
     <div class="gtype-grid" id="f-gtype">
       <label class="gtype-opt">
         <input type="radio" name="f-gtype" value="school" ${groupTypeOf(g) === 'school' ? 'checked' : ''} />
-        <span>🏫 Maktab guruhi (bepul)</span>
+        <span>${ico('building', 14)} Maktab guruhi (bepul)</span>
       </label>
       <label class="gtype-opt">
         <input type="radio" name="f-gtype" value="tutoring" ${groupTypeOf(g) === 'tutoring' ? 'checked' : ''} />
-        <span>🎓 Repetitorlik guruhi</span>
+        <span>${ico('gradCap', 14)} Repetitorlik guruhi</span>
       </label>
     </div>
     <p class="muted small" style="margin-top:6px">Guruh turi faqat sizga ko'rinadi — o'quvchilarga hech qachon ko'rsatilmaydi.</p>
@@ -5627,7 +5643,7 @@ function renderTgInbox() {
         ${[1,2,3,4,5,6,7,8,9,10].map(n => `
           <button type="button" class="btn btn-xs ${t.score === n ? 'btn-primary' : 'ghost'}" data-act="tg-grade" data-tid="${t.id}" data-score="${n}">${n}</button>`).join('')}
         <input class="input" style="flex:1;min-width:140px" placeholder="Izoh (ixtiyoriy)" value="${esc(t.feedback || '')}" data-act="tg-feedback" data-tid="${t.id}" />
-        <button type="button" class="btn btn-xs danger" data-act="tg-reject" data-tid="${t.id}">❌ Bekor qilish</button>
+        <button type="button" class="btn btn-xs danger" data-act="tg-reject" data-tid="${t.id}">Bekor qilish</button>
       </div>
     </div>`;
   }).join('');
@@ -6077,7 +6093,7 @@ function startTeacher2FA(userObj) {
   });
   CloudSync.queueMessages([{
     chat_id: 'ADMIN',
-    text: '🔐 <b>2-bosqichli tasdiqlash</b>\nQurilma: ' + esc(dev) +
+    text: '<b>2-bosqichli tasdiqlash</b>\nQurilma: ' + esc(dev) +
           '\nKod: <b>' + code + '</b>\nKod 3 daqiqa amal qiladi.'
   }]);
   /* Xat faqat TASDIQLANGAN ustoz Gmailiga yuboriladi */
@@ -6103,7 +6119,7 @@ function openTwoFA() {
   const dev = (detectDevice() || {}).name || '';
   openModal(`
     <div class="modal-head">
-      <h3>🔐 2-bosqichli tasdiqlash</h3>
+      <h3>${ico('lock', 18)} 2-bosqichli tasdiqlash</h3>
       <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
     </div>
     <div class="muted small">Yangi qurilma aniqlandi — 6 xonali kod Telegram (ustoz) va Gmail orqali yuborildi.
@@ -6213,7 +6229,7 @@ async function sendResetCode() {
     CloudSync.queueMessages([{
       chat_id: telegramChat,
       student_id: row ? row.id : null,
-      text: '🔑 <b>Parolni tiklash kodi</b>\nKod: <b>' + code + '</b>\n10 daqiqa amal qiladi.' +
+      text: '<b>Parolni tiklash kodi</b>\nKod: <b>' + code + '</b>\n10 daqiqa amal qiladi.' +
             "\n\nAgar bu so'rovni siz yubormagan bo'lsangiz, kodni hech kimga bermang."
     }]);
   }
@@ -6311,7 +6327,7 @@ function buildEmailHtml(title, subtitle, code, extraText, minutes) {
         '<div style="font-size:28px;font-weight:800;letter-spacing:6px;color:#1d4ed8;' +
           'font-family:Consolas,Menlo,monospace">' + esc(String(code || '')) + '</div>' +
       '</div>' +
-      '<p style="margin:0;font-size:13px;line-height:1.6;color:#64748b">⏳ Kod ' + mins +
+      '<p style="margin:0;font-size:13px;line-height:1.6;color:#64748b">' + ico('clock', 14) + ' Kod ' + mins +
         ' daqiqa davomida amal qiladi. Agar bu amalni siz bajarmagan bo‘lsangiz, ' +
         'ushbu xatni e’tiborsiz qoldiring.</p>' +
       '<p style="margin:16px 0 0;font-size:12px;color:#94a3b8">teachermuzaffar.uz</p>' +
@@ -6349,7 +6365,7 @@ async function sendEmailVerifyCode(newEmail, kind) {
   state.verifyEmail = { email: newEmail, code: code, until: until, kind: kind };
   openModal(`
     <div class="modal-head">
-      <h3>✉️ Gmailni tasdiqlash</h3>
+      <h3>${ico('mail', 18)} Gmailni tasdiqlash</h3>
       <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
     </div>
     <div class="muted small">Gmailingizga yuborilgan 6 xonali kodni kiriting:
@@ -6770,14 +6786,14 @@ function openPayReceiptModal(amount, period) {
 
   openModal(`
     <div class="modal-head">
-      <h3>💳 Karta orqali to'lov</h3>
+      <h3>${ico('creditCard', 18)} Karta orqali to'lov</h3>
       <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
     </div>
 
     <div class="bank-card-box" style="background:linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);color:#fff;border-radius:14px;padding:16px;margin:8px 0 12px 0;box-shadow:0 6px 18px rgba(37,99,235,0.25)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <span style="font-size:12px;letter-spacing:1px;font-weight:700;opacity:0.9">UZCARD / HUMO</span>
-        <span style="font-size:18px">💳</span>
+        <span style="display:inline-flex;vertical-align:middle">${ico('creditCard', 20)}</span>
       </div>
       <div style="font-family:monospace;font-size:18px;letter-spacing:2px;font-weight:700;margin-bottom:12px">${esc(fmtCard)}</div>
       <div style="display:flex;justify-content:space-between;align-items:flex-end">
@@ -6785,7 +6801,7 @@ function openPayReceiptModal(amount, period) {
           <div style="font-size:10px;opacity:0.75;text-transform:uppercase">Karta egasi</div>
           <div style="font-size:13px;font-weight:600;letter-spacing:0.5px">${esc(cardHolder)}</div>
         </div>
-        <button type="button" class="btn btn-xs" data-act="copy-card" data-card="${esc(rawNum)}" style="background:#fff;color:#1e3a8a;font-weight:600;border:none;border-radius:6px;padding:4px 10px">📋 Nusxalash</button>
+        <button type="button" class="btn btn-xs" data-act="copy-card" data-card="${esc(rawNum)}" style="background:#fff;color:#1e3a8a;font-weight:600;border:none;border-radius:6px;padding:4px 10px">${ico('copy', 14)} Nusxalash</button>
       </div>
     </div>
 
@@ -6795,7 +6811,7 @@ function openPayReceiptModal(amount, period) {
     </div>
 
     <div class="receipt-upload" style="margin-bottom:12px">
-      <label class="field-label" for="receipt-file">📎 To'lov chekini yuklash (Rasm):</label>
+      <label class="field-label" for="receipt-file">${ico('paperclip', 14)} To'lov chekini yuklash (Rasm):</label>
       <input type="file" id="receipt-file" accept="image/*" class="input" style="padding:6px" />
       <div id="receipt-preview-wrap" style="display:none;margin-top:8px;text-align:center">
         <img id="receipt-preview-img" src="" alt="Chek rasmi" style="max-height:160px;max-width:100%;border-radius:8px;border:1px solid #e2e8f0" />
@@ -6805,7 +6821,7 @@ function openPayReceiptModal(amount, period) {
 
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
-      <button type="button" class="btn btn-primary" data-act="do-submit-receipt" data-amount="${sum}" data-period="${esc(per)}">📤 Chekni yuborish</button>
+      <button type="button" class="btn btn-primary" data-act="do-submit-receipt" data-amount="${sum}" data-period="${esc(per)}">${ico('upload', 14)} Chekni yuborish</button>
     </div>
   `);
 
@@ -6846,9 +6862,9 @@ async function doSubmitPaymentReceipt() {
     await CloudSync.submitPaymentReceipt(st.dbId, period, amount, uploadRes.url);
     closeModal();
     render();
-    toast("⏳ Chekingiz qabul qilindi! Ustoz tasdiqlashi bilan qarzingiz o'chiriladi.");
+    toast("Chekingiz qabul qilindi! Ustoz tasdiqlashi bilan qarzingiz o'chiriladi.");
   } catch (e) {
-    if (btn) { btn.disabled = false; btn.textContent = '📤 Chekni yuborish'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = ico('upload', 14) + ' Chekni yuborish'; }
     if (err) { err.textContent = "Yuklashda xatolik: " + ((e && e.message) || 'xatolik'); err.classList.add('show'); }
   }
 }
