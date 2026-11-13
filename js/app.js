@@ -649,18 +649,17 @@ const CloudSync = (function () {
     if (!ready()) return { ok: false, error: "Bulut bilan aloqa yo'q (Supabase sozlanmagan)" };
     if (!key) return { ok: false, error: 'Kalit berilmadi' };
     try {
-      let res = await client.from('bot_settings')
-        .update({ value: value }).eq('key', key).select('key');
-      if (res.error) {
-        if (missing(res.error)) hasSettings = false;
-        return { ok: false, error: res.error.message || String(res.error) };
+      /* .select() YO'Q: SELECT ruxsati cheklangan bo'lsa ham yozuv muvaffaqiyati bilinadi */
+      const upd = await client.from('bot_settings').update({ value: value }).eq('key', key);
+      if (upd.error) {
+        if (missing(upd.error)) hasSettings = false;
+        return { ok: false, error: upd.error.message || String(upd.error) };
       }
-      if (!res.data || !res.data.length) {
-        res = await client.from('bot_settings').insert({ key: key, value: value }).select('key');
-        if (res.error) {
-          if (missing(res.error)) hasSettings = false;
-          return { ok: false, error: res.error.message || String(res.error) };
-        }
+      /* Qator hali yo'q bo'lishi mumkin — insert qilamiz; mavjud bo'lsa unique xatosi e'tiborsiz */
+      const ins = await client.from('bot_settings').insert({ key: key, value: value });
+      if (ins.error && !/duplicate|unique|already exists/i.test(String(ins.error.message || ins.error))) {
+        if (missing(ins.error)) hasSettings = false;
+        return { ok: false, error: ins.error.message || String(ins.error) };
       }
       return { ok: true, error: '' };
     } catch (e) {
@@ -1169,16 +1168,25 @@ const CloudSync = (function () {
   /* --- telegram_outbox: sayt yozadi, bot yuboradi (chek / eslatma) --- */
   async function queueMessages(rows) {
     if (!ready() || !rows || !rows.length) return [];
-    let res = await client.from('telegram_outbox').insert(rows).select('id');
+    /* status HAR DOIM yoziladi — aks holda bot (status='pending') qatorni ko'rmaydi */
+    const full = rows.map(function (r) {
+      const row = Object.assign({}, r);
+      row.chat_id = String(r.chat_id == null ? '' : r.chat_id);
+      row.status = r.status || 'pending';
+      return row;
+    });
+    let res = await client.from('telegram_outbox').insert(full).select('id');
     if (res.error && /student_id|schema cache|column/i.test(String(res.error.message || ''))) {
       /* student_id ustuni hali ochilmagan bo'lsa — faqat chat_id, text, status bilan xatosiz yozadi */
-      const cleanRows = rows.map(function (r) {
-        return { chat_id: String(r.chat_id || ''), text: String(r.text || ''), status: r.status || 'pending' };
+      const cleanRows = full.map(function (r) {
+        return { chat_id: r.chat_id, text: String(r.text || ''), status: r.status };
       });
       res = await client.from('telegram_outbox').insert(cleanRows).select('id');
     }
     if (res.error) throw res.error;
-    return (res.data || []).map(function (r) { return r.id; });
+    const ids = (res.data || []).map(function (r) { return r.id; });
+    /* INSERT ruxsat berilgan, SELECT javob qaytarmagan bo'lsa ham xabar navbatga tushgan */
+    return ids.length ? ids : full.map(function () { return null; });
   }
   async function messageStatus(ids) {
     if (!ready() || !ids || !ids.length) return [];
@@ -1200,7 +1208,15 @@ const CloudSync = (function () {
         used: false
       }).select('*');
       if (res.error) throw res.error;
-      return (res.data || [])[0] || null;
+      return (res.data || [])[0] || {
+        id: null,
+        purpose: row.purpose || 'reset',
+        student_id: row.studentId == null ? null : Number(row.studentId),
+        contact: row.contact == null ? null : String(row.contact),
+        code: String(row.code || ''),
+        expires_at: row.expiresAt || new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        used: false
+      };
     } catch (e) {
       console.warn('[cloud] auth_codes insert:', (e && e.message) || e);
       return null;
@@ -1243,7 +1259,8 @@ const CloudSync = (function () {
     try {
       const res = await client.from('email_outbox').insert(list).select('id');
       if (res.error) throw res.error;
-      return (res.data || []).map(function (r) { return r.id; });
+      const ids = (res.data || []).map(function (r) { return r.id; });
+      return ids.length ? ids : list.map(function () { return null; });
     } catch (e) {
       console.warn('[cloud] email_outbox:', (e && e.message) || e);
       return [];
@@ -6922,6 +6939,10 @@ function saveTeacherContact() {
 async function saveProfileContact() {
   const teacher = isTeacher();
   const st = teacher ? null : linkedStudent();
+  /* Ustoz kanallari hali yuklanmagan bo'lsa — joriy qiymatlarni avval o'qiymiz */
+  if (teacher && !adminContacts.loaded) {
+    try { await ensureAdminContacts(); } catch (e) { /* yuqoridagi toast yetarli */ }
+  }
   if (!teacher && !st) { toast("O'quvchi ma'lumoti topilmadi — qayta kiring", 'error'); return; }
   if (!CloudSync.ready()) { toast("Xatolik: bulut bilan aloqa yo'q (Supabase sozlanmagan)", 'error'); return; }
 

@@ -2100,6 +2100,16 @@ async def outbox_tick() -> int:
         logging.warning(f"outbox_tick: {e}")
         return 0
 
+    # Eski yozuvlarda status NULL bo'lib qolgan bo'lishi mumkin — ular ham yuboriladi
+    try:
+        legacy = (supabase.table("telegram_outbox")
+                  .select("id, chat_id, text, status")
+                  .is_("status", "null").order("id").limit(20).execute().data or [])
+        if legacy:
+            rows = list(rows) + [r for r in legacy if r["id"] not in {x["id"] for x in rows}]
+    except Exception:
+        pass
+
     sent_count = 0
     for r in rows:
         row_id = r["id"]

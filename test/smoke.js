@@ -2437,6 +2437,8 @@ await (async () => {
   check((cloudStub.db.telegram_outbox || []).some(r => String(r.chat_id) === '777001' &&
       String(r.text || '').includes(String(rc.code))),
     'reset: kod Telegram outbox ga qo‘yildi');
+  check((cloudStub.db.telegram_outbox || []).every(r => String(r.status || '') === 'pending'),
+    'reset: outbox qatorlarida status=pending — bot watcher ularni ko‘radi');
   check((cloudStub.db.email_outbox || []).some(r => String(r.to_email) === resetMail &&
       String(r.body_html || '').includes(String(rc.code))),
     'reset: kod tasdiqlangan Gmail outbox ga qo‘yildi');
