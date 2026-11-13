@@ -4234,6 +4234,9 @@ function profileScreen() {
     <label class="field-label" for="tc-phone" style="margin-top:6px">${t('Telefon raqam')}</label>
     <input class="input" id="tc-phone" type="tel" inputmode="tel" maxlength="20" placeholder="+998 90 123 45 67" value="${esc(adminContacts.phone || '')}" />
     <button type="button" class="btn btn-primary btn-block" data-act="save-teacher-contact" style="margin-top:10px">💾 ${t('Saqlash')}</button>
+    <div class="muted small" style="margin-top:12px">${t('Ishonchli qurilmalar')}: <b>${adminTrusted.list.length}</b> ·
+      ${t("bu qurilma")} ${trustedToken() ? '✅ ' + t('ishonchli') : '🆕 ' + t('yangi')}</div>
+    <button type="button" class="btn btn-ghost btn-block" data-act="clear-trusted" style="margin-top:6px">🔓 ${t('Ishonchli qurilmalarni tozalash')}</button>
   </div>` : ''}
 
   ${isTeacher() ? `
@@ -4748,7 +4751,7 @@ function saveChangePwd() {
   if (acc) acc.password = newPw;
   persistAccounts();
   if (u.role === 'student' && u.studentId) CloudSync.pushStudent(u.studentId);
-  if (u.role === 'teacher') CloudSync.pushTeacherPassword(n1); /* bot_settings */
+  if (u.role === 'teacher') { CloudSync.pushTeacherPassword(n1); resetTrustedSilently(); } /* bot_settings */
   closeModal();
   render();
   toast("Parol o'zgartirildi ✓");
@@ -5901,11 +5904,11 @@ function doLogin() {
         }
         if (!teachPw) teachPw = TEACHER_PASSWORD;
         if (!passwordMatches(pass, teachPw)) { onFail(); return; }
-        startTeacher2FA({ login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, studentId: null });
+        beginTeacherLogin({ login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, studentId: null });
       }).catch(() => { loginEl.disabled = false; onFail(); });
     } else {
       if (!passwordMatches(pass, TEACHER_PASSWORD)) { onFail(); return; }
-      startTeacher2FA({ login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, studentId: null });
+      beginTeacherLogin({ login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, studentId: null });
     }
     return;
   }
@@ -5974,6 +5977,82 @@ function logout() {
   toast('Hisobdan chiqdingiz');
 }
 
+/* ==================== ISHONCHLI QURILMA (tanilgan qurilmada 2FA'siz) ==================== */
+const TRUSTED_KEY = 'et_teacher_trusted_device';
+const TRUSTED_DAYS = 30;
+
+function randToken() {
+  const arr = new Uint32Array(4);
+  if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(arr);
+  else for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 4294967296);
+  return Array.prototype.map.call(arr, function (n) { return n.toString(16); }).join('');
+}
+
+/* Serverdagi ro'yxat: faqat muddati o'tmagan tokenlar */
+function parseTrustedList(raw) {
+  try {
+    const arr = JSON.parse(String(raw || '[]'));
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(function (d) { return d && d.token && Number(d.until) > Date.now(); });
+  } catch (e) { return []; }
+}
+
+/* Bu qurilmada saqlangan token (30 kun) */
+function trustedToken() {
+  let meta = null;
+  try { meta = JSON.parse(localStorage.getItem(TRUSTED_KEY) || 'null'); } catch (e) { meta = null; }
+  if (!meta || !meta.token || !meta.until) return null;
+  if (Date.now() > Number(meta.until)) return null;
+  return meta;
+}
+
+/* Token server ro'yxatida ham bo'lishi shart */
+async function isTrustedTeacherDevice() {
+  const t = trustedToken();
+  if (!t) return false;
+  const raw = await CloudSync.getSetting('trusted_devices');
+  return parseTrustedList(raw).some(function (d) { return d.token === t.token; });
+}
+
+/* 2FA muvaffaqiyatli o'tgach qurilmani eslab qolamiz */
+async function rememberTrustedDevice() {
+  const token = randToken();
+  const until = Date.now() + TRUSTED_DAYS * 24 * 3600 * 1000;
+  const name = (detectDevice() || {}).name || "Noma'lum qurilma";
+  try { localStorage.setItem(TRUSTED_KEY, JSON.stringify({ token: token, until: until, name: name })); } catch (e) {}
+  const raw = await CloudSync.getSetting('trusted_devices');
+  const list = parseTrustedList(raw).slice(-9);
+  list.push({ token: token, until: until, name: name });
+  await CloudSync.setSetting('trusted_devices', JSON.stringify(list));
+  if (typeof adminTrusted !== 'undefined') adminTrusted.list = list;
+}
+
+/* Ustoz paroli o'zgarsa — barcha ishonchli qurilmalar bekor qilinadi */
+function resetTrustedSilently() {
+  try { localStorage.removeItem(TRUSTED_KEY); } catch (e) {}
+  CloudSync.setSetting('trusted_devices', '[]');
+  if (typeof adminTrusted !== 'undefined') adminTrusted.list = [];
+}
+
+async function forgetTrustedDevices() {
+  resetTrustedSilently();
+  render();
+  toast('Ishonchli qurilmalar tozalandi ✓');
+}
+
+/* Ustoz kirishi: tanilgan qurilmada 2FA o'tkazib yuboriladi */
+async function beginTeacherLogin(userObj) {
+  let trusted = false;
+  try { trusted = await isTrustedTeacherDevice(); } catch (e) { trusted = false; }
+  if (trusted) {
+    store.del(K.loginFails);
+    startSession(userObj);
+    toast('Xush kelibsiz!');
+    return;
+  }
+  startTeacher2FA(userObj);
+}
+
 /* ==================== USTOZ 2-BOSQICHLI HIMOYA (2FA) ==================== */
 function startTeacher2FA(userObj) {
   const code = sixDigitCode();
@@ -6014,8 +6093,8 @@ function openTwoFA() {
       <h3>🔐 2-bosqichli tasdiqlash</h3>
       <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
     </div>
-    <div class="muted small">6 xonali kod Telegram (ustoz) va Gmail orqali yuborildi.
-      Qurilma: <b>${esc(dev)}</b></div>
+    <div class="muted small">Yangi qurilma aniqlandi — 6 xonali kod Telegram (ustoz) va Gmail orqali yuborildi.
+      Qurilma: <b>${esc(dev)}</b>. Tasdiqlangach bu qurilma 30 kun eslab qolinadi.</div>
     <label class="field-label" for="twofa-code" style="margin-top:10px">Tasdiqlash kodi</label>
     <input class="input" id="twofa-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••" />
     <div class="field-error" id="twofa-error"></div>
@@ -6043,7 +6122,9 @@ function submitTwoFA() {
   closeModal();
   store.del(K.loginFails);
   startSession(p.user);
-  toast('Xush kelibsiz!');
+  /* Bu qurilma 30 kun tanilgan hisoblanadi — keyingi kirishda kod so'ralmaydi */
+  rememberTrustedDevice();
+  toast('Qurilma eslab qolindi ✓');
 }
 
 /* ==================== PAROLNI TIKLASH (telefon / Gmail / login) ==================== */
@@ -6174,6 +6255,7 @@ async function resetPassword() {
   if (ctx.isTeacher) {
     /* bot_settings.teacher_password yangilanadi */
     CloudSync.pushTeacherPassword(n1);
+    resetTrustedSilently();
     accounts[TEACHER_LOGIN] = Object.assign({}, accounts[TEACHER_LOGIN] || {},
       { login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, password: n1 });
   } else {
@@ -6194,6 +6276,7 @@ async function resetPassword() {
 
 /* ==================== ALOQA MA'LUMOTLARI (o'quvchi / ustoz) ==================== */
 let adminContacts = { email: '', phone: '', loaded: false };
+let adminTrusted = { list: [], loaded: false };
 
 /* Telefonni +998XXXXXXXXX ko'rinishida normallashtiradi */
 function normPhone(raw) {
@@ -6233,6 +6316,9 @@ async function ensureAdminContacts() {
   const phone = await CloudSync.getSetting('admin_phone');
   adminContacts.email = email || '';
   adminContacts.phone = phone || '';
+  const trustedRaw = await CloudSync.getSetting('trusted_devices');
+  adminTrusted.list = parseTrustedList(trustedRaw);
+  adminTrusted.loaded = true;
   if (state.screen === 'profile') render();
 }
 
@@ -6594,6 +6680,7 @@ document.addEventListener('click', function (e) {
     'resend-2fa': function () { if (state.pending2fa) startTeacher2FA(state.pending2fa.user); },
     'save-student-contact': saveStudentContact,
     'save-teacher-contact': saveTeacherContact,
+    'clear-trusted': function () { forgetTrustedDevices(); },
     'logout': logout,
     'nav': function () { go(btn.getAttribute('data-screen')); },
 

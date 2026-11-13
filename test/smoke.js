@@ -279,10 +279,20 @@ async function loginAs(l, p) {
     if (a && b && a.value === l && b.value === p) break;
   }
   clickAct('do-login');
-  /* bulut rejimida login asinxron — pull tugashini kutamiz */
+  /* Ustoz kirishi asinxron (2FA yoki ishonchli qurilma) — natijani kutamiz;
+     o'quvchi kirishi tez, kutish ortiqcha render'lar bilan xatoni o'chirib yuboradi */
+  const isTeacherLogin = String(l).trim().toLowerCase() === 'm_amirov';
+  if (isTeacherLogin) {
+    const pollUntil = async (fn, ms) => {
+      const end = Date.now() + ms;
+      while (Date.now() < end) { if (fn()) return true; await new Promise(r => setTimeout(r, 60)); }
+      return !!fn();
+    };
+    await pollUntil(() => !!q('#twofa-code') || !!win.localStorage.getItem('et_session'), 2500);
+  }
   await new Promise(r => setTimeout(r, 150));
 
-  /* Ustoz uchun 2-bosqichli tasdiqlash modali */
+  /* Ustoz uchun 2-bosqichli tasdiqlash modali (faqat notanish qurilmada) */
   if (q('#twofa-code')) {
     const code = lastAuthCode('teacher_2fa');
     setVal('#twofa-code', code || '');
@@ -2222,6 +2232,8 @@ await (async () => {
 
   /* ================= 32. CAPTCHA + USTOZ 2FA + PAROLNI TIKLASH ================= */
   logout();
+  /* Yangi (notanish) qurilma sifatida boshlaymiz — 2FA majburiy bo'lsin */
+  win.localStorage.removeItem('et_teacher_trusted_device');
 
   /* (a) noto'g'ri CAPTCHA → kirish bloklanadi va yangi misol beriladi */
   setVal('#login-input', 'm_amirov');
@@ -2374,6 +2386,49 @@ await (async () => {
       (cloudStub.db.bot_settings || []).some(r => String(r.key) === 'admin_phone' &&
       String(r.value) === '+998901112233'), 3000),
     'profil: ustoz Gmail va telefoni bot_settings (admin_email/admin_phone) ga saqlandi');
+
+
+  /* (g) tanilgan qurilma: 2FA o'tkazib yuboriladi */
+  check(!!win.localStorage.getItem('et_teacher_trusted_device'),
+    'trusted: 2FA muvaffaqiyatidan keyin qurilma tokeni saqlandi');
+  const trustedRow = (cloudStub.db.bot_settings || []).filter(r => String(r.key) === 'trusted_devices')[0];
+  let trustedList = [];
+  try { trustedList = JSON.parse((trustedRow && trustedRow.value) || '[]'); } catch (e) { trustedList = []; }
+  check(Array.isArray(trustedList) && trustedList.length === 1 && /^[0-9a-f]{8,}/.test(String(trustedList[0].token)),
+    'trusted: token bot_settings.trusted_devices ga ham yozildi');
+
+  logout();
+  await loginAs('m_amirov', '12345');
+  check(!q('#twofa-code'), 'trusted: tanilgan qurilmada 2FA modali chiqmaydi');
+  check(!!JSON.parse(win.localStorage.getItem('et_session') || 'null'),
+    'trusted: tanilgan qurilmada sessiya darhol ochiladi');
+
+  /* (h) notanish qurilma (lokal token yo'q) — 2FA yana talab qilinadi */
+  logout();
+  win.localStorage.removeItem('et_teacher_trusted_device');
+  setVal('#login-input', 'm_amirov');
+  setVal('#password-input', '12345');
+  setVal('#login-captcha', solveCaptcha());
+  clickAct('do-login');
+  check(await until(() => !!q('#twofa-code'), 3000), 'trusted: notanish qurilmada 2FA modali chiqadi');
+  check(!win.localStorage.getItem('et_session'), 'trusted: kod kiritilmaguncha sessiya ochilmaydi');
+  setVal('#twofa-code', lastAuthCode('teacher_2fa') || '');
+  clickAct('do-2fa');
+  check(await until(() => !!JSON.parse(win.localStorage.getItem('et_session') || 'null'), 2500),
+    'trusted: kod kiritilgach sessiya ochiladi');
+  check(!!win.localStorage.getItem('et_teacher_trusted_device'),
+    'trusted: yangi qurilma yana eslab qolinadi');
+
+  /* (i) ishonchli qurilmalarni tozalash */
+  forceNav('profile');
+  check(await until(() => !!q('[data-act="clear-trusted"]'), 3000),
+    'trusted: profilda “Ishonchli qurilmalarni tozalash” tugmasi bor');
+  clickAct('clear-trusted');
+  await new Promise(r => setTimeout(r, 350));
+  const trustedRow2 = (cloudStub.db.bot_settings || []).filter(r => String(r.key) === 'trusted_devices')[0];
+  check(!win.localStorage.getItem('et_teacher_trusted_device') &&
+        JSON.parse((trustedRow2 && trustedRow2.value) || '[]').length === 0,
+    'trusted: tozalash lokal tokenni ham, server ro‘yxatini ham bo‘shatadi');
 
   console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
   process.exit(failed ? 1 : 0);
