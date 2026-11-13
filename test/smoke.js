@@ -186,7 +186,9 @@ function buildCloudSeed(w) {
   };
 
   check(!fq('.hint-card') && !ftext().includes('Demo') && !fq('.login-demo'),
-    'toza start: login ekranida demo kart/chiplar YO\'Q');
+    'toza start: landing sahifasida demo kart/chiplar YO\'Q');
+  check(!!fq('[data-act="auth-login-open"]'), 'toza start: landingda "Kirish" tugmasi');
+  fclick(fq('[data-act="auth-login-open"]'));
   fset('#login-input', 'm_amirov');
   fset('#password-input', '123');
   fset('#login-captcha', fsolve());
@@ -258,6 +260,17 @@ function solveCaptcha() {
 }
 
 /* Stub bazadan oxirgi bir martalik kodni oladi (2FA / reset) */
+/* Tiklash ekranidagi 5 xonali CAPTCHA: canvas bo'lmasa raqamlar matn fallbackda ko'rinadi */
+const recoverCaptcha = () => String((q('#fr-captcha-text') || {}).textContent || '').trim();
+
+/* 3 bosqichli kirish: forma kerak bo'lsa avval "Kirish" oynasini ochamiz */
+const openLogin = () => {
+  if (!q('#login-input')) {
+    const b = q('[data-act="auth-login-open"]');
+    if (b) click(b);
+  }
+};
+
 function lastAuthCode(purpose) {
   const rows = (cloudStub.db.auth_codes || []).filter(r => r.purpose === purpose && !r.used);
   if (!rows.length) return null;
@@ -266,6 +279,13 @@ function lastAuthCode(purpose) {
 }
 
 async function loginAs(l, p) {
+  /* Yangi oqim: birinchi ekran — landing (Bosh sahifa), keyin Kirish oynasi.
+     Login maydoni hali ochilmagan bo'lsa, "Kirish" tugmasini bosamiz. */
+  if (!q('#login-input')) {
+    const openBtn = q('[data-act="auth-login-open"]');
+    if (openBtn) click(openBtn);
+    await new Promise(r => setTimeout(r, 60));
+  }
   /* bulut rejimidagi kechikkan async yangilanishlar formani tozalab
      yubormasligi uchun: kutamiz va qiymatlar barqaror bo'lgach bosamiz */
   for (let i = 0; i < 8; i++) {
@@ -306,10 +326,15 @@ const pad2 = n => String(n).padStart(2, '0');
 const TODAY = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
 
 /* ================= 1. KIRISH EKRANI ================= */
-check(text().includes('Teacher Muzaffar Amirov'), 'login: hero sarlavhasi "Teacher Muzaffar Amirov" (auth-brand olib tashlangan)');
+check(text().includes('English Teacher — Muzaffar Amirov'), 'landing: sarlavha "English Teacher — Muzaffar Amirov"');
+check(!!q('[data-act="auth-login-open"]'), 'landing: "Kirish" tugmasi mavjud');
+check(text().includes('Tizimga kirish'), 'landing: "Tizimga kirish" CTA');
+check(qa('.landing-feature').length === 3, 'landing: 3 ta imkoniyat kartasi');
+click('[data-act="auth-login-open"]');
 check(!!q('#login-input'), 'login: Login inputi mavjud');
 check(!!q('#password-input'), 'login: Parol inputi mavjud');
-check(text().includes('Kirish'), 'login: "Kirish" tugmasi');
+check(text().includes('Tizimga kirish'), 'login: "Tizimga kirish" tugmasi');
+check(!!q('[data-act="auth-back"]'), 'login: "Orqaga" tugmasi (landingga qaytish)');
 check(q('#app-header').textContent.includes('English Teacher'), 'header: ilova nomi');
 check(win.document.title === 'English Teacher', 'index: <title> “English Teacher”');
 check(qa('.nav-item').length === 0, 'login rejimida bottom nav yo\'q');
@@ -794,7 +819,10 @@ check(q('#toast').textContent.includes('Parol yangilandi'), 'reset: tasdiq toast
 
 /* ================= 10. O'QUVCHI KABINETI (jasur/123) ================= */
 logout();
-check(text().includes('Login') && !!q('#login-input'), 'logout: login ekraniga qaytdi');
+check(text().includes('Tizimga kirish') && !!q('[data-act="auth-login-open"]'),
+  'logout: bosh sahifaga (landing) qaytdi');
+click('[data-act="auth-login-open"]');
+check(!!q('#login-input'), 'logout: "Kirish" oynasi ochildi');
 await loginAs('jasur', '1234');
 check(q('#login-error').classList.contains('show'), 'student: noto\'g\'ri parol rad etildi');
 await loginAs('jasur', '123');
@@ -1868,6 +1896,7 @@ await (async () => {
   clickAct('save-edit-student');
 
   logout();
+  click('[data-act="auth-login-open"]');
   /* Honeypot: login */
   check(!!q('#login-bot-hp') && q('#login-bot-hp').getAttribute('name') === 'bot_check_field' &&
         q('#login-bot-hp').tabIndex === -1,
@@ -1876,7 +1905,7 @@ await (async () => {
   setVal('#password-input', '123');
   setVal('#login-bot-hp', 'i-am-bot');
   clickAct('do-login');
-  check(text().includes('Teacher Muzaffar Amirov') && !q('#login-error').classList.contains('show'),
+  check(!!q('#login-input') && !q('#login-error').classList.contains('show'),
     "xavfsizlik: honeypot to'ldirildi → jimjimrad rad etildi (xabarsiz)");
   check(!JSON.parse(win.localStorage.getItem('et_session') || 'null'),
     'xavfsizlik: honeypot bilan session yaratilmadi');
@@ -1895,10 +1924,11 @@ await (async () => {
     initDataUnsafe: { user: { id: 222 } }
   } };
   logout();
+  openLogin();
   setVal('#login-input', 'm_amirov');
   setVal('#password-input', '123');
   clickAct('do-login');
-  check(q('#login-error').textContent.includes('tekshiruvi') && text().includes('Teacher Muzaffar Amirov'),
+  check(q('#login-error').textContent.includes('tekshiruvi') && text().includes('Tizimga kirish'),
     'xavfsizlik: initData id mos emas → kirish rad etildi (spoofing)');
   /* Mos keldi → kirish o\'tadi */
   win.Telegram.WebApp.initDataUnsafe.user.id = 111;
@@ -1921,7 +1951,7 @@ await (async () => {
   setVal('#password-input', '123');
   q('[data-act="do-login"]').dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
   await new Promise(r => setTimeout(r, 250));
-  check(text().includes('Teacher Muzaffar Amirov') && !JSON.parse(win.localStorage.getItem('et_session') || 'null'),
+  check(text().includes('Tizimga kirish') && !JSON.parse(win.localStorage.getItem('et_session') || 'null'),
     "xavfsizlik: qulflangan holda to'g'ri parol bilan ham kira olmaydi");
   /* Qulfni tozalash → tugma qayta yoqiladi */
   win.localStorage.removeItem('et_login_fails');
@@ -2077,49 +2107,36 @@ await (async () => {
     "majburiy chiqish: localStorage tozalandi (et_session yo'q)");
   check(win.localStorage.getItem('et_session_id') === null,
     "majburiy chiqish: session_id ham o'chirildi");
-  check(text().includes('Teacher Muzaffar Amirov') && !q('.bottom-nav .nav-item'),
-    'majburiy chiqish: login ekraniga qaytdi');
+  check(text().includes('Tizimga kirish') && !q('.bottom-nav .nav-item'),
+    'majburiy chiqish: kirish ekraniga qaytdi');
 
   /* ============ 27. PREMIUM UI: HERO, REJIM, I18N, JURNAL ============ */
-  /* Hero — kirish sahifasidagi taqdimot */
-  check(text().includes("Teacher Muzaffar Amirov — Ingliz tili ta'lim platformasi"),
-    'hero: yangi sarlavha ("Tutoring" so\'zi olib tashlangan)');
-  check(!text().includes('Offline English Tutoring') && !text().includes('Tutoring'),
-    'hero: eski "Offline English Tutoring" sarlavhasi yo\'q');
-  check(text().includes("Ushbu platforma Muzaffar Amirovning 5–11-sinf o'quvchilari uchun mo'ljallangan zamonaviy ta'lim va nazorat tizimidir"),
-    'hero: batafsil platforma tavsifi (qisqa 3 so\'z emas)');
-  check(!!q('.hero-emblem') && !!q('.hero-title') && !!q('.hero-sub'),
-    'hero: gerb + sarlavha + tavsif bloklari');
-  check(qa('.hero-card').length === 3, 'hero: 3 ta batafsil ma\'lumot kartasi');
-  check(text().includes('Yakkama-yakka Speaking va Audio/Video tahlil') &&
-        text().includes('Kundalik 10 ballik elektron jurnal va Davomat') &&
-        text().includes('Telegram Bot ekotizimi (@uzbekspeakingcheckbot)'), 'hero: 3 karta sarlavhalari to\'liq');
-  check(!q('.auth-brand'), 'hero: login formasi tepasidagi ikkinchi "English Teacher" yozuvi olib tashlangan');
-  check(!/[\u{1F5E3}\u{1F4CA}\u{1F916}]/u.test(q('.hero').textContent),
-    'hero: emojilar (🗣️📊🤖) olib tashlangan');
-  check(qa('.hero-ico svg').length === 3 && qa('.hero-ico[class*="tone-"]').length === 3,
-    'hero: 3 ta rangli doira ichida SVG ikonka');
-  const tgLogo = q('.hero-ico.tone-telegram');
-  check(!!tgLogo && tgLogo.querySelectorAll('svg').length === 1 &&
-        !!tgLogo.querySelector('svg path[fill="white"]'),
-    'hero: bot kartasida rasmiy Telegram logotipi (oq samolyot SVG)');
-  check(!q('.hero-card img') && !q('.hero-bot-logo'),
-    'hero: 3-kartadan logo.png rasmi olib tashlangan');
-  const tgCss = (cssSrc.match(/\.hero-ico\.tone-telegram\s*\{[^}]*\}/) || [''])[0];
-  check(/linear-gradient\(135deg, #2AABEE 0%, #229ED9 100%\)/.test(tgCss),
-    'hero: Telegram rasmiy gradient foni (#2AABEE -> #229ED9)');
-  const icoCss = (cssSrc.match(/\.hero-ico\s*\{[^}]*\}/g) || []).join(' ');
-  check(/width: 48px/.test(icoCss) && /height: 48px/.test(icoCss),
-    'hero: uchala ikonka ham 48x48 dumaloq');
-  check(/\.hero-ico\.tone-telegram svg\s*\{[^}]*width: 24px/.test(cssSrc),
-    'hero: Telegram samolyot SVG 24x24');
+  /* Landing — kirish sahifasidagi taqdimot (3 bosqichli oqim) */
+  if (q('[data-act="auth-back"]')) click('[data-act="auth-back"]');
+  check(text().includes('English Teacher — Muzaffar Amirov'),
+    'landing: sarlavha "English Teacher — Muzaffar Amirov"');
+  check(text().includes("5–11-sinf va repetitorlik guruhlari uchun ingliz tili ta'lim platformasi"),
+    'landing: qisqa tavsif matni');
+  check(!!q('.landing-hero') && !!q('.landing-title') && !!q('.landing-sub'),
+    'landing: hero bloki (sarlavha + tavsif)');
+  check(qa('.landing-feature').length === 3, 'landing: 3 ta imkoniyat kartasi (tablarsiz)');
+  check(text().includes('Uyga vazifalar va media darslar') &&
+        text().includes('10 ballik jurnal va davomat') &&
+        text().includes('Telegram bot (@uzbekspeakingcheckbot)'), 'landing: 3 karta sarlavhalari to\u2019liq');
+  check(qa('.landing-feature svg').length === 3, 'landing: har bir kartada SVG ikonka');
+  check(!/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(q('.landing').textContent),
+    'landing: emoji yo\u2019q (faqat ICON/ico SVG)');
+  check(!!q('.landing-footer') && text().includes('teachermuzaffar.uz') &&
+        text().includes('@uzbekspeakingcheckbot'), 'landing: footer (sayt + bot)');
+  check(cssSrc.indexOf('.landing-hero') >= 0 && /\.landing-hero \{[^}]*border-radius/.test(cssSrc),
+    'css: landing hero uslubi mavjud');
   check(cssSrc.indexOf('.auth') >= 0 && /\.auth \{[^}]*justify-content: flex-start/.test(cssSrc),
-    'css: login wrapper justify-content: flex-start (center olib tashlangan)');
-  check(/\.auth \{[^}]*min-height: 100vh/.test(cssSrc) && /\.auth \{[^}]*overflow-y: visible/.test(cssSrc) &&
-        !/\.auth \{[^}]*overflow: hidden/.test(cssSrc),
-    'css: login wrapper min-height:100vh + overflow-y:visible (qirqilish yo\'q)');
-  check(!!q('.hero-title') && !!q('#login-input') && !!q('[data-act="do-login"]'),
-    'hero: brend + login formasi saqlangan');
+    'css: auth wrapper justify-content: flex-start');
+  check(/\.recover-modes \{[^}]*grid/.test(cssSrc) && cssSrc.indexOf('.recover-opt') >= 0,
+    'css: tiklash radio tanlovlari uslubi');
+  click('[data-act="auth-login-open"]');
+  check(!!q('#login-input') && !!q('[data-act="do-login"]') && !!q('[data-act="open-forgot"]'),
+    'login: ixcham karta (login, parol, kirish, tiklash havolasi)');
   check(!!q('[data-act="toggle-theme"]') && !!q('[data-act="toggle-lang"]'),
     'header: rejim ☀️/🌙 + til 🇺🇿/🇬🇧 tugmalari (login ekrani)');
 
@@ -2147,14 +2164,15 @@ await (async () => {
   click('[data-act="toggle-lang"]');
   check((win.localStorage.getItem('app_lang') || '').indexOf('en') >= 0,
     "til: localStorage 'app_lang' = en saqlandi");
-  check(text().includes('Teacher Muzaffar Amirov — English Learning Platform'),
-    'i18n EN: hero sarlavha → "English Learning Platform"');
-  check(text().includes("A modern learning and monitoring platform designed for Teacher Muzaffar Amirov's Grade 5–11 students"),
-    'i18n EN: batafsil tavsif tarjimasi');
-  check(text().includes('1-on-1 Speaking & Audio/Video Review') &&
-        text().includes('Daily 10-Point Gradebook & Attendance') &&
-        text().includes('Telegram Bot Ecosystem (@uzbekspeakingcheckbot)'),
-    'i18n EN: 3 karta sarlavhalari to\'liq inglizcha');
+  if (q('[data-act="auth-back"]')) click('[data-act="auth-back"]');
+  check(text().includes('English Teacher — Muzaffar Amirov'),
+    'i18n EN: landing sarlavhasi');
+  check(text().includes('An English learning platform for Grade 5–11 and tutoring groups'),
+    'i18n EN: landing tavsifi tarjimasi');
+  check(text().includes('Homework & media lessons') &&
+        text().includes('10-point gradebook & attendance') &&
+        text().includes('Telegram bot (@uzbekspeakingcheckbot)'),
+    'i18n EN: 3 karta sarlavhalari inglizcha');
   await loginAs('m_amirov', '123');
   check(navLabels().join(',') === 'Home,Students,Payments,Grades,Attendance,Speaking,Profile',
     'i18n: ustoz nav EN tilida');
@@ -2285,6 +2303,7 @@ await (async () => {
 
   /* ================= 32. CAPTCHA + USTOZ 2FA + PAROLNI TIKLASH ================= */
   logout();
+  openLogin();
   /* Yangi (notanish) qurilma sifatida boshlaymiz — 2FA majburiy bo'lsin */
   win.localStorage.removeItem('et_teacher_trusted_device');
   /* 2FA xati faqat TASDIQLANGAN ustoz Gmailiga ketadi */
@@ -2354,8 +2373,39 @@ await (async () => {
   resetRow.email_verified = true;
   resetRow.telegram_chat_id = 777001;
   logout();
+  click('[data-act="auth-login-open"]');
   clickAct('open-forgot');
-  check(!!q('#fp-contact') && !!q('#fp-step2'), 'reset: parolni tiklash modali ochildi');
+  check(!!q('#fp-contact') && !!q('#fp-step2'), 'reset: "Kirishni tiklash" ekrani ochildi');
+  check(!!q('[data-act="auth-back"]'), 'reset: "Orqaga" tugmasi bor');
+  check(qa('input[name="fr-mode"]').length === 3, 'reset: 3 ta radio tanlov');
+
+  /* Radio tanlovlari forma maydonlarini almashtiradi */
+  setVal('#fp-contact', resetPhone);
+  const rLoginOpt = q('input[name="fr-mode"][value="login"]');
+  rLoginOpt.checked = true;
+  rLoginOpt.dispatchEvent(new win.Event('change', { bubbles: true }));
+  check(!q('#fr-captcha-input') && !!q('#fp-contact'),
+    'reset: "Login yodimda yo\u2018q" — CAPTCHA talab qilinmaydi');
+  check(text().includes('Login tasdiqlangan telefon/Gmailga yuboriladi'),
+    'reset: login varianti izohi');
+  const loginMailKeep = resetRow.email_verified;
+  resetRow.email_verified = false;   /* faqat Telegram kanali sinaladi */
+  clickAct('forgot-send');
+  check(await until(() => String(((cloudStub.db.telegram_outbox || []).slice(-1)[0] || {}).text || '').includes(resetLogin), 2500),
+    'reset: login ma\u2019lumoti Telegramga yuborildi');
+  resetRow.email_verified = loginMailKeep;
+
+  const rBothOpt = q('input[name="fr-mode"][value="both"]');
+  rBothOpt.checked = true;
+  rBothOpt.dispatchEvent(new win.Event('change', { bubbles: true }));
+  check(text().includes('ustozga murojaat'), 'reset: "Ikkalasi ham yodimda yo\u2018q" — ustozga murojaat izohi');
+
+  const rPwOpt = q('input[name="fr-mode"][value="password"]');
+  rPwOpt.checked = true;
+  rPwOpt.dispatchEvent(new win.Event('change', { bubbles: true }));
+  check(!!q('#fr-captcha') && !!q('#fr-captcha-input') && !!q('[data-act="recover-captcha-refresh"]'),
+    'reset: "Parol yodimda yo\u2018q" — 5 xonali CAPTCHA + refresh');
+  check(/^\d{5}$/.test(recoverCaptcha()), 'reset: CAPTCHA 5 xonali raqam');
 
   /* (c1) tasdiqlanmagan Gmail va Telegram yo'q → kod yuborilmaydi */
   const tgKeep = resetRow.telegram_chat_id;
@@ -2363,6 +2413,7 @@ await (async () => {
   resetRow.telegram_chat_id = null;
   resetRow.email_verified = false;
   setVal('#fp-contact', resetPhone);
+  setVal('#fr-captcha-input', recoverCaptcha());
   clickAct('forgot-send');
   await new Promise(r => setTimeout(r, 400));
   check(q('#fp-error').classList.contains('show') &&
@@ -2376,6 +2427,7 @@ await (async () => {
 
   /* (c2) telefon (oxirgi 9 raqam) bo'yicha topib, Telegram + tasdiqlangan Gmailga kod */
   setVal('#fp-contact', '+998 90 123 45 67');
+  setVal('#fr-captcha-input', recoverCaptcha());
   clickAct('forgot-send');
   check(await until(() => q('#fp-step2') && q('#fp-step2').hidden === false, 3000),
     'reset: telefon bo‘yicha topildi — kod/parol maydonlari ochildi');
@@ -2404,7 +2456,9 @@ await (async () => {
   setVal('#fp-code', String(rc.code));
   setVal('#fp-new', 'yangi456');
   clickAct('forgot-reset');
-  check(await until(() => q('#modal-overlay').hidden === true, 2500), 'reset: modal yopildi');
+  check(await until(() => q('#modal-overlay').hidden === true &&
+      String((cloudStub.db.students || []).filter(r => r.id === resetRow.id)[0].password || '') !== hashBefore, 2500),
+    'reset: parol yangilandi, kirish ekraniga qaytildi');
   const hashAfter = String((cloudStub.db.students || []).filter(r => r.id === resetRow.id)[0].password || '');
   check(/^[0-9a-f]{64}$/.test(hashAfter) && hashAfter !== hashBefore,
     'reset: yangi parol SHA-256 xesh ko‘rinishida saqlandi');
@@ -2481,8 +2535,10 @@ await (async () => {
 
   /* (e) ustoz (m_amirov) uchun OTP → bot_settings.teacher_password */
   logout();
+  click('[data-act="auth-login-open"]');
   clickAct('open-forgot');
   setVal('#fp-contact', 'm_amirov');
+  setVal('#fr-captcha-input', recoverCaptcha());
   clickAct('forgot-send');
   check(await until(() => q('#fp-step2') && q('#fp-step2').hidden === false, 3000),
     'reset: ustoz uchun ham kod yuboriladi');
@@ -2497,8 +2553,8 @@ await (async () => {
   setVal('#fp-new', '12345');
   clickAct('forgot-reset');
   check(await until(() => q('#modal-overlay').hidden === true, 2500), 'reset: ustoz paroli saqlandi (modal yopildi)');
-  const bs = (cloudStub.db.bot_settings || []).filter(r => r.key === 'teacher_password')[0];
-  check(!!bs && String(bs.value) === '12345', 'reset: bot_settings.teacher_password yangilandi');
+  check(await until(() => String(((cloudStub.db.bot_settings || []).filter(r => r.key === 'teacher_password')[0] || {}).value || '') === '12345', 2500),
+    'reset: bot_settings.teacher_password yangilandi');
   await new Promise(r => setTimeout(r, 300));
   await loginAs('m_amirov', '12345');
   check(!!JSON.parse(win.localStorage.getItem('et_session') || 'null'),
@@ -2566,6 +2622,7 @@ await (async () => {
 
   /* (h) notanish qurilma (lokal token yo'q) — 2FA yana talab qilinadi */
   logout();
+  openLogin();
   win.localStorage.removeItem('et_teacher_trusted_device');
   setVal('#login-input', 'm_amirov');
   setVal('#password-input', '12345');

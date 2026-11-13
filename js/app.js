@@ -175,7 +175,12 @@ const state = {
   payMonth: '',
   captcha: null,
   pending2fa: null,
-  resetCtx: null
+  resetCtx: null,
+  authStep: 'landing',
+  resetMode: 'password',
+  resetContact: '',
+  resetDone: '',
+  recoverCaptcha: null
 };
 
 const AUTH_SCREENS = ['login'];
@@ -2129,6 +2134,7 @@ function forcedLogout() {
   state.forcedOut = true;
   state.screen = 'login';
   closeModal();
+  state.authStep = 'login';
   render();
   toast('Siz ushbu qurilmadan chiqarildingiz!', 'error');
 }
@@ -2553,6 +2559,10 @@ const ICON = {
   gift: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8h14v-8"/><path d="M12 8v12"/><path d="M8 8a2 2 0 1 1 4 0"/><path d="M16 8a2 2 0 1 0-4 0"/></svg>',
   building: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/></svg>',
   paperclip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11.5 12 19.5a5 5 0 0 1-7-7l8-8a3.5 3.5 0 0 1 5 5l-8 8a2 2 0 0 1-3-3l7-7"/></svg>',
+  arrowLeft: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m11 6-6 6 6 6"/></svg>',
+  arrowRight: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>',
+  telegram: '<svg viewBox="0 0 24 24" fill="none"><path d="M20.665 3.717l-17.73 6.837c-1.21.486-1.203 1.161-.222 1.462l4.552 1.42 10.532-6.645c.498-.303.953-.14.579.192l-8.533 7.701-.314 4.692c.46 0 .663-.211.921-.46l2.211-2.15 4.599 3.397c.848.467 1.457.227 1.668-.785l3.019-14.228c.309-1.239-.473-1.8-1.282-1.434z" fill="currentColor"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v6c0 4.4-3 8.2-7.5 9-4.5-.8-7.5-4.6-7.5-9V6z"/><path d="m9 12 2.2 2.2 4-4.4"/></svg>',
 };
 
 /* Matndagi mayda vektor ikonka: o'lchami aniq (SVG width/height) */
@@ -2633,7 +2643,38 @@ const I18N_EN = {
     'All tables are automatically downloaded as a file before cleanup.',
   'Xabarlar': 'Messages',
   'Topshiriqlar': 'Tasks',
-  'Tanlangan jadvalni tozalash': 'Clear Selected Table'
+  'Tanlangan jadvalni tozalash': 'Clear Selected Table',
+  /* --- Landing + kirish/tiklash ekranlari --- */
+  'English Teacher — Muzaffar Amirov': 'English Teacher — Muzaffar Amirov',
+  "5–11-sinf va repetitorlik guruhlari uchun ingliz tili ta'lim platformasi: uyga vazifalar, 10 ballik baholar jurnali, davomat va speaking nazorati.":
+    'An English learning platform for Grade 5–11 and tutoring groups: homework, a 10-point gradebook, attendance, and speaking control.',
+  'Tizimga kirish': 'Sign In', 'Orqaga': 'Back',
+  'Uyga vazifalar va media darslar': 'Homework & media lessons',
+  "Video, audio va hujjatlarni saytning o'zida tezlikni boshqarib o'rganish.":
+    'Study video, audio, and documents right on the site with playback speed control.',
+  '10 ballik jurnal va davomat': '10-point gradebook & attendance',
+  "Har bir darsdagi baholar, o'rtacha reyting va qatnashish nazorati.":
+    'Grades for every lesson, average rating, and attendance tracking.',
+  'Telegram bot (@uzbekspeakingcheckbot)': 'Telegram bot (@uzbekspeakingcheckbot)',
+  'Ovozli va video speaking topshirish hamda baho/xabarlarni tezkor olish.':
+    'Submit voice and video speaking tasks and receive grades and messages instantly.',
+  'Login va parolingizni kiriting': 'Enter your login and password',
+  'Login yoki parolni unutdingizmi?': 'Forgot your login or password?',
+  'Kirishni tiklash': 'Recover access',
+  'Muammoni tanlang — kod tasdiqlangan Telegram yoki Gmailga yuboriladi.':
+    'Choose an option — the code is sent to your verified Telegram or Gmail.',
+  'Login yodimda yo\u2018q': "I don't remember my login",
+  'Login tasdiqlangan telefon/Gmailga yuboriladi.': 'Your login is sent to your verified phone/Gmail.',
+  'Parol yodimda yo\u2018q': "I don't remember my password",
+  'Yangi parol olish uchun tasdiqlash kodi yuboriladi.': 'A verification code is sent to set a new password.',
+  'Ikkalasi ham yodimda yo\u2018q': 'I remember neither',
+  'Tasdiqlangan telefon/Gmail orqali tiklash yoki ustozga murojaat.':
+    'Recover via your verified phone/Gmail or contact the teacher.',
+  'Telefon yoki Gmail': 'Phone or Gmail',
+  '+998 90 123 45 67 yoki ism@gmail.com': '+998 90 123 45 67 or name@gmail.com',
+  '5 xonali kod': '5-digit code',
+  'Keyingi qadam': 'Next step', 'Yuborish': 'Send',
+  'Kod (6 xona)': 'Code (6 digits)', 'Yangi parol': 'New password', 'Parolni yangilash': 'Update password',
 };
 function getLang() { return store.get('app_lang', 'uz'); }
 function t(s) {
@@ -2706,7 +2747,11 @@ function scrLabel(s) {
 function renderHeader() {
   const scr = state.screen;
   if (AUTH_SCREENS.indexOf(scr) >= 0) {
-    return '<div class="header-inner"><span class="brand"><img class="brand-logo" src="logo.png" alt="" width="36" height="36" />English Teacher</span>' + headerControlsHTML() + '</div>';
+    const step = authStep();
+    const right = step === 'landing'
+      ? `<button type="button" class="btn btn-primary btn-sm auth-head-btn" data-act="auth-login-open">${t('Kirish')}</button>`
+      : `<button type="button" class="btn btn-ghost btn-sm auth-head-btn" data-act="auth-back">${ico('arrowLeft', 15)} ${t('Orqaga')}</button>`;
+    return '<div class="header-inner"><span class="brand"><img class="brand-logo" src="logo.png" alt="" width="36" height="36" />English Teacher</span>' + headerControlsHTML() + right + '</div>';
   }
   const u = currentUser() || {};
   return `<div class="header-inner">
@@ -2831,67 +2876,208 @@ function sixDigitCode() {
   return code;
 }
 
-function loginScreen() {
-  return `<div class="auth">
-    <section class="hero">
-      <img class="hero-emblem" src="logo.png" alt="Muzaffar Amirov gerbi" width="96" height="96" />
-      <h1 class="hero-title">${t("Teacher Muzaffar Amirov — Ingliz tili ta'lim platformasi")}</h1>
-      <p class="hero-sub">${t("Ushbu platforma Muzaffar Amirovning 5–11-sinf o'quvchilari uchun mo'ljallangan zamonaviy ta'lim va nazorat tizimidir. O'quvchilar darslarni o'zlashtirishi, vazifalar va speaking topshiriqlarini bajarishi, ota-onalar esa davomat va baholarni real vaqtda kuzatishi mumkin.")}</p>
-      <div class="hero-grid hero-grid-info">
-        <div class="hero-card">
-          <span class="hero-ico tone-indigo">${ico('mic', 20)}</span>
-          <div class="hero-card-body">
-            <b>${t("Yakkama-yakka Speaking va Audio/Video tahlil")}</b>
-            <span>${t("O'quvchilar mavzular bo'yicha speaking topshiriqlarini darsda yoki Telegram bot orqali ovozli xabar va krujok video shaklida yuboradilar. Har bir javob 10 ballik tizimda baholanadi va speaking qarzlari avtomatik hisoblanadi.")}</span>
-          </div>
-        </div>
-        <div class="hero-card">
-          <span class="hero-ico tone-blue">${ico('clipboardCheck', 20)}</span>
-          <div class="hero-card-body">
-            <b>${t("Kundalik 10 ballik elektron jurnal va Davomat")}</b>
-            <span>${t("Har bir darsdagi faollik, davomat va baholar shaffof elektron jurnalga kiritiladi hamda haftalik va umumiy o'rtacha reyting avtomatik hisoblanadi.")}</span>
-          </div>
-        </div>
-        <div class="hero-card">
-          <span class="hero-ico tone-telegram" role="img" aria-label="@uzbekspeakingcheckbot">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M20.665 3.717l-17.73 6.837c-1.21.486-1.203 1.161-.222 1.462l4.552 1.42 10.532-6.645c.498-.303.953-.14.579.192l-8.533 7.701h-.002l.002.001-.314 4.692c.46 0 .663-.211.921-.46l2.211-2.15 4.599 3.397c.848.467 1.457.227 1.668-.785l3.019-14.228c.309-1.239-.473-1.8-1.282-1.434z" fill="white"/>
-            </svg>
-          </span>
-          <div class="hero-card-body">
-            <b>${t("Telegram Bot ekotizimi (@uzbekspeakingcheckbot)")}</b>
-            <span>${t("Yangi uyga vazifalar, speaking eslatmalari, olingan baholar va ustoz xabarlari bevosita o'quvchining Telegram profiliga tezkor yetkaziladi.")}</span>
-          </div>
-        </div>
-      </div>
+function authStep() { return state.authStep === 'login' || state.authStep === 'recover' ? state.authStep : 'landing'; }
+function setAuthStep(step) {
+  state.authStep = step;
+  if (step === 'landing') { state.resetDone = ''; state.resetCtx = null; }
+  render();
+}
+
+/* --- 1-bosqich: Bosh sahifa (landing) --- */
+function landingScreen() {
+  return `<div class="landing">
+    <section class="landing-hero">
+      <span class="landing-kicker">${ico('gradCap', 15)} English Teacher</span>
+      <h1 class="landing-title">${t('English Teacher — Muzaffar Amirov')}</h1>
+      <p class="landing-sub">${t("5–11-sinf va repetitorlik guruhlari uchun ingliz tili ta'lim platformasi: uyga vazifalar, 10 ballik baholar jurnali, davomat va speaking nazorati.")}</p>
+      <button type="button" class="btn btn-primary landing-cta" data-act="auth-login-open">${t('Tizimga kirish')} ${ico('arrowRight', 16)}</button>
     </section>
 
-    <div class="card auth-card">
-      <label class="field-label" for="login-input">Login</label>
-      <input class="input" id="login-input" type="text" autocapitalize="none" autocorrect="off"
-             autocomplete="username" placeholder="Login" />
+    <div class="landing-features">
+      <article class="landing-feature">
+        <span class="landing-fico tint-indigo">${ico('bookOpen', 20)}</span>
+        <div class="landing-fbody">
+          <b>${t('Uyga vazifalar va media darslar')}</b>
+          <span>${t("Video, audio va hujjatlarni saytning o'zida tezlikni boshqarib o'rganish.")}</span>
+        </div>
+      </article>
+      <article class="landing-feature">
+        <span class="landing-fico tint-emerald">${ico('grades', 20)}</span>
+        <div class="landing-fbody">
+          <b>${t('10 ballik jurnal va davomat')}</b>
+          <span>${t("Har bir darsdagi baholar, o'rtacha reyting va qatnashish nazorati.")}</span>
+        </div>
+      </article>
+      <article class="landing-feature">
+        <span class="landing-fico tone-telegram">${ico('telegram', 20)}</span>
+        <div class="landing-fbody">
+          <b>${t('Telegram bot (@uzbekspeakingcheckbot)')}</b>
+          <span>${t('Ovozli va video speaking topshirish hamda baho/xabarlarni tezkor olish.')}</span>
+        </div>
+      </article>
+    </div>
 
-      <label class="field-label" for="password-input">${t('Parol')}</label>
-      <div class="pw-wrap">
-        <input class="input" id="password-input" type="password"
-               autocomplete="current-password" placeholder="••••" />
-        <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="password-input" aria-label="Parolni ko'rsatish">${ico('eye', 18)}</button>
+    <footer class="landing-footer">
+      <a href="https://teachermuzaffar.uz/" target="_blank" rel="noopener">teachermuzaffar.uz</a>
+      <span class="landing-dot">•</span>
+      <span>@uzbekspeakingcheckbot</span>
+    </footer>
+  </div>`;
+}
+
+/* --- 2-bosqich: Kirish oynasi --- */
+function loginFormScreen() {
+  return `<div class="auth">
+    <div class="auth-panel">
+      <button type="button" class="auth-back" data-act="auth-back">${ico('arrowLeft', 16)} ${t('Orqaga')}</button>
+      <div class="card auth-card auth-compact">
+        <div class="auth-card-head">
+          <span class="auth-card-ico">${ico('lock', 18)}</span>
+          <div>
+            <div class="auth-card-title">${t('Kirish')}</div>
+            <div class="muted small">${t('Login va parolingizni kiriting')}</div>
+          </div>
+        </div>
+
+        <label class="field-label" for="login-input">Login</label>
+        <input class="input" id="login-input" type="text" autocapitalize="none" autocorrect="off"
+               autocomplete="username" placeholder="Login" />
+
+        <label class="field-label" for="password-input">${t('Parol')}</label>
+        <div class="pw-wrap">
+          <input class="input" id="password-input" type="password"
+                 autocomplete="current-password" placeholder="••••" />
+          <button type="button" class="pw-toggle" data-act="toggle-pw" data-target="password-input" aria-label="Parolni ko'rsatish">${ico('eye', 18)}</button>
+        </div>
+        <input type="text" name="bot_check_field" id="login-bot-hp" style="display:none !important; position:absolute; left:-9999px;" tabindex="-1" autocomplete="off" aria-hidden="true" />
+
+        <label class="field-label" for="login-captcha">${t('Tekshiruv (CAPTCHA)')}</label>
+        <div class="captcha-row">
+          <canvas id="captcha-canvas" width="170" height="44" data-q="" aria-label="Tekshiruv misoli"></canvas>
+          <span class="captcha-text" id="captcha-text">—</span>
+          <button type="button" class="icon-btn" data-act="captcha-refresh" aria-label="CAPTCHA yangilash" title="Yangi misol">${ico('refresh', 16)}</button>
+        </div>
+        <input class="input" id="login-captcha" inputmode="numeric" autocomplete="off" placeholder="${t('Javob')}" />
+
+        <div class="field-error${state.forcedOut ? ' show' : ''}" id="login-error">${state.forcedOut ? 'Siz ushbu qurilmadan chiqarildingiz!' : ''}</div>
+        <button type="button" class="btn btn-primary btn-block" data-act="do-login">${t('Tizimga kirish')}</button>
+        <button type="button" class="auth-link" data-act="open-forgot">${t('Login yoki parolni unutdingizmi?')}</button>
       </div>
-      <input type="text" name="bot_check_field" id="login-bot-hp" style="display:none !important; position:absolute; left:-9999px;" tabindex="-1" autocomplete="off" aria-hidden="true" />
-
-      <label class="field-label" for="login-captcha">${t('Tekshiruv (CAPTCHA)')}</label>
-      <div class="captcha-row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <canvas id="captcha-canvas" width="170" height="44" data-q="" aria-label="Tekshiruv misoli" style="border-radius:10px;flex:0 0 auto"></canvas>
-        <span class="captcha-text" id="captcha-text" style="font-weight:700;letter-spacing:1px">—</span>
-        <button type="button" class="icon-btn" data-act="captcha-refresh" aria-label="CAPTCHA yangilash" title="Yangi misol">${ico('refresh', 16)}</button>
-      </div>
-      <input class="input" id="login-captcha" inputmode="numeric" autocomplete="off" placeholder="${t('Javob')}" />
-
-      <div class="field-error${state.forcedOut ? ' show' : ''}" id="login-error">${state.forcedOut ? 'Siz ushbu qurilmadan chiqarildingiz!' : ''}</div>
-      <button type="button" class="btn btn-primary btn-block" data-act="do-login">${t('Kirish')}</button>
-      <button type="button" class="btn btn-ghost btn-block" data-act="open-forgot" style="margin-top:8px">${t('Parolni unutdingizmi?')}</button>
     </div>
   </div>`;
+}
+
+/* --- 3-bosqich: Kirishni tiklash --- */
+function recoverScreen() {
+  const mode = state.resetMode === 'login' || state.resetMode === 'both' ? state.resetMode : 'password';
+  const isPw = mode === 'password';
+  const opt = function (value, title, sub) {
+    return `<label class="recover-opt${mode === value ? ' active' : ''}">
+      <input type="radio" name="fr-mode" value="${value}"${mode === value ? ' checked' : ''} />
+      <span class="recover-opt-body">
+        <span class="recover-opt-title">${t(title)}</span>
+        <span class="recover-opt-sub">${t(sub)}</span>
+      </span>
+    </label>`;
+  };
+  return `<div class="auth">
+    <div class="auth-panel">
+      <button type="button" class="auth-back" data-act="auth-back">${ico('arrowLeft', 16)} ${t('Orqaga')}</button>
+      <div class="card auth-card auth-compact">
+        <div class="auth-card-head">
+          <span class="auth-card-ico">${ico('key', 18)}</span>
+          <div>
+            <div class="auth-card-title">${t('Kirishni tiklash')}</div>
+            <div class="muted small">${t('Muammoni tanlang — kod tasdiqlangan Telegram yoki Gmailga yuboriladi.')}</div>
+          </div>
+        </div>
+
+        <div class="recover-modes">
+          ${opt('login', 'Login yodimda yo\u2018q', 'Login tasdiqlangan telefon/Gmailga yuboriladi.')}
+          ${opt('password', 'Parol yodimda yo\u2018q', 'Yangi parol olish uchun tasdiqlash kodi yuboriladi.')}
+          ${opt('both', 'Ikkalasi ham yodimda yo\u2018q', 'Tasdiqlangan telefon/Gmail orqali tiklash yoki ustozga murojaat.')}
+        </div>
+
+        <label class="field-label" for="fp-contact">${isPw ? 'Login' : t('Telefon yoki Gmail')}</label>
+        <input class="input" id="fp-contact" autocomplete="username" autocapitalize="none" autocorrect="off"
+               value="${esc(state.resetContact || '')}"
+               placeholder="${isPw ? 'Login' : t('+998 90 123 45 67 yoki ism@gmail.com')}" />
+
+        ${isPw ? `<label class="field-label" for="fr-captcha-input">${t('Tekshiruv (CAPTCHA)')}</label>
+        <div class="captcha-row">
+          <canvas id="fr-captcha" class="recover-captcha" width="150" height="44" aria-label="Tekshiruv kodi"></canvas>
+          <span class="captcha-text" id="fr-captcha-text">—</span>
+          <button type="button" class="icon-btn" data-act="recover-captcha-refresh" aria-label="CAPTCHA yangilash" title="Yangi kod">${ico('refresh', 16)}</button>
+        </div>
+        <input class="input" id="fr-captcha-input" inputmode="numeric" maxlength="5" autocomplete="off" placeholder="${t('5 xonali kod')}" />` : ''}
+
+        <div class="field-error" id="fp-error"></div>
+        ${state.resetDone ? `<div class="field-hint" id="fp-done">${esc(state.resetDone)}</div>` : ''}
+        <button type="button" class="btn btn-primary btn-block" data-act="forgot-send">${isPw ? t('Keyingi qadam') : t('Yuborish')}</button>
+
+        <div id="fp-step2" hidden>
+          <label class="field-label" for="fp-code" style="margin-top:10px">${t('Kod (6 xona)')}</label>
+          <input class="input" id="fp-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••" />
+          <label class="field-label" for="fp-new">${t('Yangi parol')}</label>
+          <input class="input" id="fp-new" type="password" autocomplete="new-password" placeholder="••••" />
+          <button type="button" class="btn btn-primary btn-block" data-act="forgot-reset">${t('Parolni yangilash')}</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* Faqat ICON/ico() SVG — emoji yo'q */
+function loginScreen() {
+  const step = authStep();
+  if (step === 'login') return loginFormScreen();
+  if (step === 'recover') return recoverScreen();
+  return landingScreen();
+}
+
+/* ==================== TIKLASH CAPTCHASI (5 xonali raqam, nuqtali fon) ==================== */
+function makeRecoverCaptcha() {
+  let d = '';
+  for (let i = 0; i < 5; i++) d += String(Math.floor(Math.random() * 10));
+  return { text: d, answer: d };
+}
+
+function paintRecoverCaptcha() {
+  const box = $('#fr-captcha');
+  const fallback = $('#fr-captcha-text');
+  const cap = state.recoverCaptcha || (state.recoverCaptcha = makeRecoverCaptcha());
+  if (fallback) fallback.textContent = cap.text;
+  if (!box) return;
+  box.setAttribute('aria-label', 'Tekshiruv kodi: ' + cap.text);
+  let ctx = null;
+  try { ctx = box.getContext ? box.getContext('2d') : null; } catch (e) { ctx = null; }
+  if (!ctx || typeof ctx.clearRect !== 'function') { if (fallback) fallback.style.display = ''; return; }
+  if (fallback) fallback.style.display = 'none';
+  const w = box.width || 150;
+  const h = box.height || 44;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#eef2ff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = 'rgba(79, 70, 229, 0.30)';
+  for (let y = 6; y < h; y += 8) {
+    for (let x = 6; x < w; x += 8) {
+      ctx.beginPath();
+      ctx.arc(x, y, 1.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 21px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(cap.text.split('').join(' '), w / 2, h / 2 + 1);
+}
+
+function refreshRecoverCaptcha() {
+  state.recoverCaptcha = makeRecoverCaptcha();
+  paintRecoverCaptcha();
+  const input = $('#fr-captcha-input');
+  if (input) { input.value = ''; input.focus(); }
 }
 
 /* ==================== Yordamchilar ==================== */
@@ -6105,6 +6291,10 @@ function logout() {
   state.search = '';
   state.pending2fa = null;
   state.resetCtx = null;
+  state.resetMode = 'password';
+  state.resetContact = '';
+  state.resetDone = '';
+  state.authStep = 'landing';
   closeModal();
   state.screen = 'login';
   render();
@@ -6282,28 +6472,15 @@ function submitTwoFA() {
 /* ==================== PAROLNI TIKLASH (telefon / Gmail / login) ==================== */
 function openForgotPwd() {
   state.resetCtx = null;
-  openModal(`
-    <div class="modal-head">
-      <h3>Parolni tiklash</h3>
-      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
-    </div>
-    <div class="muted small">Telefon raqami (+998...), Gmail manzili yoki loginni kiriting —
-      6 xonali kod ulangan Telegram va/yoki Gmail orqali yuboriladi. Kod 10 daqiqa amal qiladi.</div>
-    <label class="field-label" for="fp-contact" style="margin-top:10px">Telefon / Gmail / Login</label>
-    <input class="input" id="fp-contact" autocomplete="username" autocapitalize="none" autocorrect="off" placeholder="+998 90 123 45 67 yoki ism@gmail.com" />
-    <div class="field-error" id="fp-error"></div>
-    <button type="button" class="btn btn-primary btn-block" data-act="forgot-send">Kod yuborish</button>
-    <div id="fp-step2" hidden>
-      <label class="field-label" for="fp-code" style="margin-top:10px">Kod (6 xona)</label>
-      <input class="input" id="fp-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••" />
-      <label class="field-label" for="fp-new">Yangi parol</label>
-      <input class="input" id="fp-new" type="password" autocomplete="new-password" placeholder="••••" />
-      <button type="button" class="btn btn-primary btn-block" data-act="forgot-reset">Parolni yangilash</button>
-    </div>
-  `);
+  state.resetDone = '';
+  state.resetContact = '';
+  state.resetMode = 'password';
+  state.recoverCaptcha = makeRecoverCaptcha();
+  state.authStep = 'recover';
+  render();
 }
 
-/* Modal ichidagi xato matni */
+/* Tiklash ekranidagi xato matni */
 function resetError(m) {
   const err = $('#fp-error');
   if (!err) return;
@@ -6320,9 +6497,88 @@ async function adminPhoneLast9() {
   return d.length >= 9 ? d.slice(-9) : '';
 }
 
+/* Login esda yo'q: tasdiqlangan Telegram/Gmailga login yuboriladi */
+async function sendLoginReminder(raw) {
+  const mode = state.resetMode === 'both' ? 'both' : 'login';
+  const clean = String(raw || '').trim();
+  let chat = null;
+  let mail = '';
+  let login = '';
+  let name = '';
+
+  if (clean.toLowerCase() === TEACHER_LOGIN) {
+    login = TEACHER_LOGIN;
+    name = TEACHER_NAME;
+    chat = 'ADMIN';
+    mail = await teacherVerifiedEmail();
+  } else {
+    let row = null;
+    try { row = await CloudSync.lookupStudentByContact(raw); } catch (e) { row = null; }
+    if (!row) { resetError("Bunday telefon, Gmail yoki login topilmadi — qayta tekshirib ko'ring"); return; }
+    login = String(row.login || '');
+    name = String(row.name || '');
+    if (row.telegram_chat_id) chat = String(row.telegram_chat_id);
+    if (row.email && row.email_verified) mail = String(row.email).trim();
+    if (!chat && !mail) {
+      resetError('Bu raqamga Telegram bot ulanmagan va Gmail ham tasdiqlanmagan. Avval @uzbekspeakingcheckbot da /login qiling yoki ustozga murojaat qiling.');
+      toast('Bu raqamga Telegram bot ulanmagan. Avval @uzbekspeakingcheckbot da /login qiling', 'error');
+      return;
+    }
+  }
+  if (!login) { resetError("Login topilmadi — ustozga murojaat qiling"); return; }
+
+  const extra = mode === 'both'
+    ? "\n\nParolni ham eslay olmasangiz, «Parol yodimda yo'q» bo'limidan yangi parol oling yoki ustozga murojaat qiling: @uzbekspeakingcheckbot."
+    : '';
+  const tgText = '<b>Login ma’lumoti</b>\nAssalomu alaykum, ' + esc(name) + '!\nSizning loginingiz: <b>' + esc(login) + '</b>' + extra;
+  let sent = false;
+
+  if (chat) {
+    try {
+      const ids = await CloudSync.queueMessages([{ chat_id: chat, text: tgText }]);
+      if (ids && ids.length) sent = true;
+    } catch (e) {
+      resetError('Xatolik: ' + ((e && e.message) || e));
+      return;
+    }
+  }
+  if (mail) {
+    try {
+      await CloudSync.queueEmail([{
+        to_email: mail,
+        subject: 'English Teacher — login ma’lumoti',
+        body_html: buildEmailHtml('Login ma’lumoti', 'Hisobingizga kirish uchun login:', login, extra, 10)
+      }]);
+      sent = true;
+    } catch (e) {
+      console.warn('[mail] login reminder:', (e && e.message) || e);
+    }
+  }
+  if (!sent) { resetError("Yuborishda xatolik — keyinroq urinib ko'ring"); return; }
+  state.resetDone = "Login ma'lumoti yuborildi — tasdiqlangan Telegram/Gmailni tekshiring.";
+  resetError('');
+  render();
+  toast('Login yuborildi');
+}
+
 async function sendResetCode() {
   const raw = String(($('#fp-contact') || {}).value || '').trim();
   if (!raw) { resetError('Telefon, Gmail yoki loginni kiriting'); return; }
+
+  /* 1 va 3-tanlov: login eslatmasi (kod kerak emas) */
+  if (state.resetMode === 'login' || state.resetMode === 'both') {
+    await sendLoginReminder(raw);
+    return;
+  }
+
+  /* 2-tanlov: 5 xonali CAPTCHA majburiy */
+  const capExpected = String((state.recoverCaptcha && state.recoverCaptcha.answer) || '');
+  const capGiven = String((($('#fr-captcha-input') || {}).value || '')).trim();
+  if (!capExpected || capGiven !== capExpected) {
+    refreshRecoverCaptcha();
+    resetError("Tekshiruv kodi noto'g'ri — yangi kodni yeching");
+    return;
+  }
 
   const digits = raw.replace(/\D/g, '');
   const last9 = digits.length >= 9 ? digits.slice(-9) : '';
@@ -6456,6 +6712,8 @@ async function resetPassword() {
   }
 
   state.resetCtx = null;
+  state.resetDone = '';
+  state.authStep = 'login';
   closeModal();
   render();
   toast('Parol yangilandi ✓ — endi yangi parol bilan kiring');
@@ -6756,7 +7014,10 @@ function render() {
   renderTopNavTabs();
   renderTopNavControls();
   $('#screen').innerHTML = (SCREENS[scr] || loginScreen)();
-  if (scr === 'login') paintCaptcha();
+  if (scr === 'login') {
+    if (authStep() === 'recover') paintRecoverCaptcha();
+    else if (authStep() === 'login') paintCaptcha();
+  }
   if (scr === 'profile') ensureAdminContacts();
   if (scr === 'students') refreshStudentList();
   if (scr === 'grades') ensureGradeState();
@@ -7056,6 +7317,9 @@ document.addEventListener('click', function (e) {
     'do-login': doLogin,
     'captcha-refresh': function () { refreshCaptcha(); },
     'open-forgot': openForgotPwd,
+    'auth-login-open': function () { setAuthStep('login'); },
+    'auth-back': function () { setAuthStep(authStep() === 'recover' ? 'login' : 'landing'); },
+    'recover-captcha-refresh': function () { refreshRecoverCaptcha(); },
     'forgot-send': function () { sendResetCode(); },
     'forgot-reset': function () { resetPassword(); },
     'do-2fa': submitTwoFA,
@@ -7390,6 +7654,8 @@ document.addEventListener('input', function (e) {
   if (t.id === 's-search') {
     state.search = t.value;
     refreshStudentList();
+  } else if (t.id === 'fp-contact') {
+    state.resetContact = t.value;
   } else if (t.id === 'grade-note') {
     if (state.editor) {
       state.editor.note = t.value;
@@ -7401,6 +7667,15 @@ document.addEventListener('input', function (e) {
 document.addEventListener('change', function (e) {
   const t = e.target;
   if (!t) return;
+  /* Tiklash ekrani: tanlov o'zgardi → forma qayta chiziladi (kiritilgan matn saqlanadi) */
+  if (t.name === 'fr-mode') {
+    state.resetContact = String((($('#fp-contact') || {}).value || ''));
+    state.resetMode = t.value === 'login' || t.value === 'both' ? t.value : 'password';
+    state.resetDone = '';
+    state.recoverCaptcha = makeRecoverCaptcha();
+    render();
+    return;
+  }
   if (t.id === 'att-date' && t.value) { state.attDate = t.value; render(); }
   if (t.id === 'pay-month' && t.value) { state.payMonth = t.value; render(); }
   if (t.id === 'sp-date' && t.value) { state.speakDate = t.value; render(); }
