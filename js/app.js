@@ -382,12 +382,11 @@ const CloudSync = (function () {
   function payloadOf(s) {
     const g = groupById(s.groupId);
     const acc = accOfSid(s.id) || {};
-    return {
+    const out = {
       name: s.fullName,
       school_class: s.schoolClass,
       group_id: g && g.dbId != null ? g.dbId : null,
       login: acc.login || s.login || '',
-      password: acc.password || s.password || '',
       speaking_debt: Number(s.speakingDebt) || 0,
       payment_debt: Number(s.paymentDebt) || 0,
       fee_period: s.feePeriod || null,
@@ -395,6 +394,11 @@ const CloudSync = (function () {
       last_paid_month: s.lastPaidMonth || null,
       voice_allowed: s.voiceAllowed !== false
     };
+    /* Parol faqat ma'lum bo'lganda yoziladi: bo'sh satr bazadagi mavjud
+       parolni o'chirib yubormasligi kerak (ism/sinf/guruh tahririda). */
+    const pw = acc.password || s.password || '';
+    if (pw) out.password = pw;
+    return out;
   }
 
   /* --- Xabarlar (messages jadvali) --- */
@@ -1915,7 +1919,8 @@ function startSession(userObj) {
     studentId: (accounts[userObj] && accounts[userObj].studentId) || null
   };
   store.set(K.session, sess);
-  accounts[sess.login] = sess;
+  /* mavjud hisob yozuvidagi parol xeshi (faqat xotirada) yo'qolmasin */
+  accounts[sess.login] = Object.assign({}, accounts[sess.login] || {}, sess);
   state.screen = 'home';
   render();
   /* Boshqa qurilmadan kirgan bo'lsak — bulutdan ma'lumotni tiklandi (doLogin) */
@@ -2203,6 +2208,7 @@ window.onCloudNotifChange = onCloudNotifChange;
 const ICON = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.8 12 3l9 7.8"/><path d="M5.5 9.6V21h13V9.6"/><path d="M9.5 21v-6h5v6"/></svg>',
   students: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.4"/><circle cx="4.5" cy="12" r="1.4"/><circle cx="4.5" cy="18" r="1.4"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
   grades: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16"/><path d="M8 16v-4"/><path d="M12 16V8"/><path d="M16 16v-6"/></svg>',
   cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/><path d="M9 15l2 2 4-4"/></svg>',
   mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>',
@@ -3071,6 +3077,11 @@ function teacherHome() {
   const u = currentUser() || {};
   const name = u.name || TEACHER_NAME;
   const recent = students.slice(0, 3);
+  /* Berilgan uyga vazifalar (eng yangisi yuqorida) — ustoz shu yerda
+     tahrirlaydi/o'chiradi (hwRowHTML avval hech qayerda ishlatilmasdi) */
+  const hwList = getHomework().slice().sort(function (a, b) {
+    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+  });
 
   return `
   <section class="card hero-card">
@@ -3103,11 +3114,11 @@ function teacherHome() {
   <div class="screen-head" style="margin-top:6px">
     <div>
       <h2 class="screen-title">${ico('bookOpen', 20)} ${t('Uyga vazifalar')}</h2>
-      <div class="muted small">Vazifalar guruh sahifasida joylashadi</div>
+      <div class="muted small">${hwList.length ? "Berilgan vazifalar — tahrirlash yoki o'chirish mumkin" : 'Hozircha vazifa berilmagan'}</div>
     </div>
   </div>
+  ${hwList.length ? hwList.map(hwRowHTML).join('') : ''}
   <button type="button" class="btn btn-primary btn-block" data-act="open-hw">${ico('bookOpen', 16)} Uyga vazifa berish</button>
-  <div class="muted small" style="margin-top:6px">Berilgan vazifalar guruh sahifasida ko'rinadi.</div>
 
   <div class="section-title">So'nggi o'quvchilar</div>
   ${recent.length ? recent.map(studentCard).join('') : emptyState("Hozircha o'quvchi yo'q", 'students')}
@@ -3431,7 +3442,7 @@ function paymentsScreen() {
         <button type="button" class="btn btn-xs btn-primary" data-act="pay-student"
                 data-sid="${s.id}" data-period="${esc(period)}">💵 To'lov kiritish</button>
         <button type="button" class="btn btn-xs ghost" data-act="debt-add" data-sid="${s.id}">➕ Qarz qo'shish</button>
-        <button type="button" class="btn btn-xs ghost" data-act="remind-student" data-sid="${s.id}">🔔 Eslatma yuborish</button>
+        <button type="button" class="btn btn-xs ghost" data-act="remind-student" data-sid="${s.id}">${ico('bell', 13)} Eslatma yuborish</button>
         <button type="button" class="btn btn-xs ghost" data-act="fee-schedule" data-gid="${s.groupId}">🗓 Oylik jadval</button>
       </div>
     </div>`;
@@ -3633,7 +3644,7 @@ function studentCard(s) {
       <div class="pay-actions">
         <button type="button" class="btn btn-xs ghost" data-act="debt-add" data-sid="${s.id}">➕ Qarz qo'shish</button>
         <button type="button" class="btn btn-xs ghost pay-btn" data-act="pay-student" data-sid="${s.id}">💵 To'lov kiritish</button>
-        <button type="button" class="btn btn-xs ghost" data-act="remind-student" data-sid="${s.id}">🔔 Eslatma yuborish</button>
+        <button type="button" class="btn btn-xs ghost" data-act="remind-student" data-sid="${s.id}">${ico('bell', 13)} Eslatma yuborish</button>
       </div>` : ''}
     </div>
     <div class="st-actions">
@@ -4459,7 +4470,12 @@ function saveChangePwd() {
   if (!passwordMatches(oldP, u.password)) { toast("Joriy parol noto'g'ri", 'error'); return; }
   if (n1.length < 3) { toast("Yangi parol kamida 3 ta belgi bo'lsin", 'error'); return; }
   if (n1 !== n2) { toast("Parollar mos kelmadi", 'error'); return; }
-  u.password = u.role === 'student' ? hashPasswordSync(n1) : n1;
+  const newPw = u.role === 'student' ? hashPasswordSync(n1) : n1;
+  u.password = newPw;
+  /* currentUser() nusxa qaytaradi — haqiqiy hisob yozuvini ham yangilaymiz,
+     aks holda pushStudent eski parolni yuboradi */
+  const acc = accounts[u.login];
+  if (acc) acc.password = newPw;
   persistAccounts();
   if (u.role === 'student' && u.studentId) CloudSync.pushStudent(u.studentId);
   if (u.role === 'teacher') CloudSync.pushTeacherPassword(n1); /* bot_settings */
@@ -5637,6 +5653,10 @@ function doLogin() {
 
         /* O'quvchi ma'lumotlarini yuklash */
         await CloudSync.pullAll(login);
+        /* Tekshirilgan xesh faqat xotirada saqlanadi (localStorage'ga yozilmaydi):
+           parolni o'zgartirishda "joriy parol" shu bilan solishtiriladi. */
+        const accKey = String(studentRow.login || login).trim().toLowerCase();
+        if (accounts[accKey]) accounts[accKey].password = storedHash;
         loginEl.disabled = false;
         onSuccess({
           login: studentRow.login,

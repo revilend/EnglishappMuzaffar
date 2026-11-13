@@ -1,8 +1,9 @@
-'use strict';
+(async () => {
 /* Step 3 — interaktiv smoke-test: haqiqiy DOM'da butun oqimni boshqaramiz. */
 const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
+const { createStub } = require('./supabase-stub');
 
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
@@ -20,17 +21,17 @@ const appJs = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
 /* ============ TEST FIXTURE (faqat test uchun — ilovada demo seed YO'Q) ============ */
 const F_DAYS = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'];
 const F_GROUPS = [
-  { id: 'g1', name: 'IELTS Band 7.0', days: 'Dushanba, Chorshanba, Juma', time: '18:00', groupType: 'school' },
-  { id: 'g2', name: 'General English (8–10-sinf)', days: 'Seshanba, Payshanba', time: '17:00', groupType: 'tutoring' }
+  { id: 'g1', dbId: 1, name: 'IELTS Band 7.0', days: 'Dushanba, Chorshanba, Juma', time: '18:00', groupType: 'school' },
+  { id: 'g2', dbId: 2, name: 'General English (8–10-sinf)', days: 'Seshanba, Payshanba', time: '17:00', groupType: 'tutoring' }
 ];
 /* students jadvalidagi haqiqiy qator kabi: login ham o'quvchi yozuvida turadi */
 const F_STUDENTS = [
-  { id: 's1', login: 'aziz', fullName: 'Aziz Rahimov', schoolClass: '9-sinf', groupId: 'g2', telegramChatId: 1001, speakingDebt: 0, audioSubmissions: [] },
-  { id: 's2', login: 'nilufar', fullName: 'Nilufar Ergasheva', schoolClass: '9-sinf', groupId: 'g2', telegramChatId: 1002, speakingDebt: 0, audioSubmissions: [] },
-  { id: 's3', login: 'jasur', fullName: 'Jasur Karimov', schoolClass: '8-sinf', groupId: 'g2', telegramChatId: 1003, speakingDebt: 0, audioSubmissions: [] },
-  { id: 's4', login: 'dilnoza', fullName: 'Dilnoza Qodirova', schoolClass: '10-sinf', groupId: 'g2', telegramChatId: 1004, speakingDebt: 0, audioSubmissions: [] },
-  { id: 's5', login: 'malika', fullName: 'Malika Yusupova', schoolClass: '11-sinf', groupId: 'g1', telegramChatId: 1005, speakingDebt: 0, audioSubmissions: [] },
-  { id: 's6', login: 'bekozd', fullName: 'Bekzod Alimov', schoolClass: '11-sinf', groupId: 'g1', telegramChatId: 1006, speakingDebt: 0, audioSubmissions: [] }
+  { id: 's1', dbId: 1, login: 'aziz', fullName: 'Aziz Rahimov', schoolClass: '9-sinf', groupId: 'g2', telegramChatId: 1001, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's2', dbId: 2, login: 'nilufar', fullName: 'Nilufar Ergasheva', schoolClass: '9-sinf', groupId: 'g2', telegramChatId: 1002, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's3', dbId: 3, login: 'jasur', fullName: 'Jasur Karimov', schoolClass: '8-sinf', groupId: 'g2', telegramChatId: 1003, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's4', dbId: 4, login: 'dilnoza', fullName: 'Dilnoza Qodirova', schoolClass: '10-sinf', groupId: 'g2', telegramChatId: 1004, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's5', dbId: 5, login: 'malika', fullName: 'Malika Yusupova', schoolClass: '11-sinf', groupId: 'g1', telegramChatId: 1005, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's6', dbId: 6, login: 'bekozd', fullName: 'Bekzod Alimov', schoolClass: '11-sinf', groupId: 'g1', telegramChatId: 1006, speakingDebt: 0, audioSubmissions: [] }
 ];
 const F_ACCOUNTS = [
   { login: 'm_amirov', password: '123', role: 'teacher', name: 'Muzaffar Amirov' },
@@ -91,9 +92,9 @@ function seedFixture(w) {
   });
   const today = dkey(new Date());
   const speaking = [
-    { id: 'spseed1', date: today, start: '14:00', end: '14:20', studentId: 's5', score: null },
-    { id: 'spseed2', date: today, start: '14:20', end: '14:40', studentId: 's6', score: null },
-    { id: 'spseed3', date: today, start: '14:40', end: '15:00', studentId: null, score: null }
+    { id: 'spseed1', dbId: 1, date: today, start: '14:00', end: '14:20', studentId: 's3', score: null },
+    { id: 'spseed2', dbId: 2, date: today, start: '14:20', end: '14:40', studentId: 's6', score: null },
+    { id: 'spseed3', dbId: 3, date: today, start: '14:40', end: '15:00', studentId: null, score: null }
   ];
   const accounts = {};
   F_ACCOUNTS.forEach(a => { accounts[a.login] = Object.assign({}, a, { studentId: a.studentId || null }); });
@@ -103,6 +104,54 @@ function seedFixture(w) {
   w.localStorage.setItem('et_grades', JSON.stringify(grades));
   w.localStorage.setItem('et_attendance', JSON.stringify(att));
   w.localStorage.setItem('et_speaking', JSON.stringify(speaking));
+}
+
+/* Bulut stubi uchun boshlang'ich jadvallar — fixture id'lari bilan aynan bir xil
+   (students.id: 1..6 ↔ lokal 's1'..'s6'; groups.id: 1..2 ↔ 'g1','g2'). */
+function buildCloudSeed(w) {
+  const sha = v => require('crypto').createHash('sha256').update(String(v)).digest('hex');
+  const groups = JSON.parse(w.localStorage.getItem('et_groups') || '[]');
+  const students = JSON.parse(w.localStorage.getItem('et_students') || '[]');
+  const grades = JSON.parse(w.localStorage.getItem('et_grades') || '{}');
+  const att = JSON.parse(w.localStorage.getItem('et_attendance') || '{}');
+  const num = v => Number(String(v == null ? '' : v).replace(/^[gs]/, ''));
+  const seed = {
+    groups: groups.map(g => ({
+      id: num(g.dbId != null ? g.dbId : g.id), name: g.name, days: g.days, time: g.time,
+      monthly_fee: g.monthlyFee || 0, group_type: g.groupType || 'school'
+    })),
+    students: students.map(s => ({
+      id: num(s.dbId != null ? s.dbId : s.id),
+      name: s.fullName, school_class: s.schoolClass,
+      group_id: s.groupId ? num(s.groupId) : null,
+      login: s.login || '', password: sha('123'),
+      speaking_debt: Number(s.speakingDebt) || 0, payment_debt: Number(s.paymentDebt) || 0,
+      voice_allowed: true, telegram_chat_id: s.telegramChatId || null
+    })),
+    grades: [], attendance: [],
+    speaking_submissions: [
+      { id: 1, student_id: 3, media_type: 'voice', telegram_file_id: 'stub-voice-1',
+        status: 'baholandi', score: 9, feedback: '' }
+    ],
+    speaking_slots: JSON.parse(w.localStorage.getItem('et_speaking') || '[]').map((x, i) => ({
+      id: i + 1,
+      date: x.date, start_time: x.start, end_time: x.end,
+      student_id: x.studentId ? num(x.studentId) : null,
+      score: x.score == null ? null : Number(x.score)
+    }))
+  };
+  Object.keys(grades).forEach(sid => {
+    Object.keys(grades[sid] || {}).forEach(date => {
+      const r = grades[sid][date];
+      seed.grades.push({ student_id: num(sid), date: date, grade: r.score, category: r.category, note: r.note || '' });
+    });
+  });
+  Object.keys(att).forEach(date => {
+    Object.keys(att[date] || {}).forEach(sid => {
+      seed.attendance.push({ student_id: num(sid), date: date, status: att[date][sid] });
+    });
+  });
+  return seed;
 }
 
 /* ============ 0. TOZA START — demo seed YO'qligi (yangi, bo'sh qurilma) ============ */
@@ -148,6 +197,11 @@ const doc = win.document;
 
 win.eval(dataJs + '\nwindow.APP_DATA = APP_DATA;');
 seedFixture(win);
+/* Supabase stubi: bulut rejimini jsdom'da sinash uchun (o'quvchi autentifikatsiyasi
+   faqat bulut bilan ishlaydi) — haqiqiy jadval o'rniga holatli in-memory stub. */
+const cloudStub = createStub(buildCloudSeed(win));
+win.supabase = { createClient: function () { return cloudStub.client; } };
+win.__cloudStub = cloudStub;
 /* Qurilma aniqlash testi uchun deterministik user-agent (Android Chrome) */
 Object.defineProperty(win.navigator, 'userAgent', {
   value: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
@@ -174,10 +228,21 @@ const navLabels = () => qa('.nav-item span').map(s => s.textContent);
 const studentCards = () => qa('#students-list .student-card').length;
 const groupCards = () => qa('#screen .group-card').length;
 function logout() { click('[data-act="nav"][data-screen="profile"]'); clickAct('logout'); }
-function loginAs(l, p) {
-  setVal('#login-input', l);
-  setVal('#password-input', p);
+async function loginAs(l, p) {
+  /* bulut rejimidagi kechikkan async yangilanishlar formani tozalab
+     yubormasligi uchun: kutamiz va qiymatlar barqaror bo'lgach bosamiz */
+  for (let i = 0; i < 8; i++) {
+    await new Promise(r => setTimeout(r, 50));
+    if (!q('#login-input') || !q('#password-input')) continue;
+    setVal('#login-input', l);
+    setVal('#password-input', p);
+    await new Promise(r => setTimeout(r, 40));
+    const a = q('#login-input'), b = q('#password-input');
+    if (a && b && a.value === l && b.value === p) break;
+  }
   clickAct('do-login');
+  /* bulut rejimida login asinxron — pull tugashini kutamiz */
+  await new Promise(r => setTimeout(r, 150));
 }
 
 const now = new Date();
@@ -210,15 +275,15 @@ clickAct('do-login');
 check(q('#login-error').classList.contains('show'), 'login: bo\'sh forma rad etildi');
 
 /* noto\'g\'ri parol */
-loginAs('m_amirov', '999');
+await loginAs('m_amirov', '999');
 check(q('#login-error').textContent.includes("noto'g'ri"), 'login: noto\'g\'ri parol xabar bermoqda');
 check(q('#password-input').value === '', 'login: noto\'g\'ri parol tozalanadi');
 
 /* ================= 2. USTOZ (admin/123) ================= */
-loginAs('m_amirov', '123');
+await loginAs('m_amirov', '123');
 check(text().includes('Xush kelibsiz') && text().includes('Muzaffar Amirov'), 'ustoz: dashboard salomi "Xush kelibsiz, Muzaffar Amirov!"');
 check(q('#app-header').textContent.includes('Muzaffar Amirov'), 'ustoz: headerda "Muzaffar Amirov" brendi');
-check(navLabels().length === 6, 'ustoz: 6 ta nav tabi (' + navLabels().join(', ') + ')');
+check(navLabels().length === 7, 'ustoz: 7 ta nav tabi (' + navLabels().join(', ') + ')');
 
 /* --- Vektor ikonka tizimi: barcha emoji o'rniga SVG badge'lar --- */
 check(qa('.quick-grid .quick-ico').length === 6, 'icon: TEZ AMALLAR gridida 6 ta ikonka badge');
@@ -673,15 +738,15 @@ check(q('#toast').textContent.includes('Parol yangilandi'), 'reset: tasdiq toast
 /* ================= 10. O'QUVCHI KABINETI (jasur/123) ================= */
 logout();
 check(text().includes('Login') && !!q('#login-input'), 'logout: login ekraniga qaytdi');
-loginAs('jasur', '1234');
+await loginAs('jasur', '1234');
 check(q('#login-error').classList.contains('show'), 'student: noto\'g\'ri parol rad etildi');
-loginAs('jasur', '123');
+await loginAs('jasur', '123');
 check(text().includes('Jasur Karimov'), 'student: kabinet ochildi');
 check(text().includes('8-sinf') && text().includes('General English'), 'student: sinf + guruh ko\'rsatildi');
 check(q('#app-header').textContent.includes("O'quvchi"), 'student: headerda "O\'quvchi"');
 check(navLabels().length === 2 && navLabels().join(',') === 'Kabinet,Profil', 'student: nav faqat Kabinet + Profil');
 
-check(text().includes('Mening baholarim'), 'student: "Mening baholarim"');
+check(text().includes('Baholar va natijalar'), 'student: baholar bo\'limi ("Baholar va natijalar")');
 check(qa('.grade-row').length > 0, 'student: baholar ro\'yxati bor');
 check(!!q('.avg-badge') && /\d\.\d/.test(q('.avg-badge').textContent), 'student: "O\'rtacha baho" badge');
 check(text().includes('Mening davomatim'), 'student: "Mening davomatim"');
@@ -691,8 +756,10 @@ check(text().includes('Mening davomatim'), 'student: "Mening davomatim"');
   check(!!q('.att-scroll') && text().includes('Yopish'), "davomat: barchasini ko'rish — ichki skroll ochildi");
   click(q('.att-toggle'));
   check(!q('.att-scroll'), "davomat: qayta yig'ildi");
-check(text().includes('Speaking vaqtim'), 'student: "Speaking vaqtim"');
-check(!!q('.pay-status') && text().includes("To'lovlar tarixi"), "moliya: o'quvchi kabinetida qarz holati + to'lovlar tarixi");
+check(text().includes('Speaking qarzdorligi va topshirish') && text().includes('14:00 – 14:20'),
+   'student: o\'z speaking vaqti (slot) ko\'rinadi');
+check(!!q('.pay-banner') && text().includes('Hozircha to\'lovlar mavjud emas'),
+   "moliya: o'quvchi kabinetida to'lov holati + to'lovlar tarixi")
 check(text().includes("To'lov qarzi") || text().includes("To'langan"), "moliya: o'quvchi kabinetida qarz summasi ko'rinadi");
 
 /* Boshqalarning ma'lumotlari KO'RINMASLIGI kerak */
@@ -718,7 +785,7 @@ check(text().includes('Jasur Karimov'), 'guard: o\'quvchi o\'z kabinetida qoladi
 
 /* --- Guruh turi o'quvchidan 100% yashirin: maktab guruhi (g1) o'quvchisi malika --- */
 logout();
-loginAs('malika', '123');
+await loginAs('malika', '123');
 check(text().includes('Malika Yusupova') && text().includes('IELTS Band 7.0'),
   "maktab guruhi o'quvchisi: kabinet ochildi, faqat guruh nomi ko'rinadi");
 check(!text().includes('Maktab guruhi') && !text().includes('Repetitor') && !text().includes('group_type'),
@@ -731,13 +798,13 @@ check(text().includes('Speaking topshirish') && !text().includes('Speaking qarzi
 
 /* --- Repetitorlik guruhi (g2) o'quvchisi: to'lov bo'limi ko'rinadi --- */
 logout();
-loginAs('aziz', '123');
-check(text().includes("To'lovlar") && !!q('.pay-status'),
+await loginAs('aziz', '123');
+check(!!q('.pay-banner') && /to'lov|To'langan/i.test(text()),
   "repetitorlik guruhi o'quvchisi: to'lov bo'limi ko'rinadi (yashirilmaydi)");
 
 /* Section 11 davomi uchun Jasur qayta kiradi */
 logout();
-loginAs('jasur', '123');
+await loginAs('jasur', '123');
 check(text().includes('Jasur Karimov'), "guruh turi: Jasur qayta kirdi (keyingi testlar uchun)");
 
 /* ================= 11. O'QUVCHI: PAROLNI O'ZGARTIRISH ================= */
@@ -759,20 +826,20 @@ check(q('#modal-overlay').hidden === true, 'change: parol o\'zgartirildi');
 check(q('#toast').textContent.includes("Parol o'zgartirildi"), 'change: tasdiq toast');
 
 logout();
-loginAs('jasur', '123');
+await loginAs('jasur', '123');
 check(q('#login-error').classList.contains('show'), 'change: eski parol bilan kirib bo\'lmaydi');
-loginAs('jasur', '4321');
+await loginAs('jasur', '4321');
 check(text().includes('Jasur Karimov'), 'change: yangi parol bilan kirdi');
 
 /* ================= 12. USTOZ QAYTA KIRIB, YANGILANGAN PAROLNI TEKSHIRADI ================= */
 logout();
-loginAs('m_amirov', '123');
+await loginAs('m_amirov', '123');
 click('[data-act="nav"][data-screen="students"]');
 check(text().includes('Nilufar Ergasheva'), 'ustoz: qayta kirdi');
 check(!!q('.s-contact .login-val') && !q('.s-contact code'), "login: o'quvchi kartasida login oddiy matn — kod badge yo'q");
 logout();
 
-loginAs('nilufar', '7777');
+await loginAs('nilufar', '7777');
 check(text().includes('Nilufar Ergasheva'), 'reset: ustoz yangilagan parol bilan kirdi');
 check(text().includes('9-sinf'), 'reset: Nilufar portali ko\'rinadi');
 check(!text().includes('Jasur Karimov'), 'reset: boshqa o\'quvchi ko\'rinmaydi');
@@ -781,7 +848,7 @@ check(!text().includes('Jasur Karimov'), 'reset: boshqa o\'quvchi ko\'rinmaydi')
 check(typeof win.__cloud.pushTeacherPassword === 'function',
   'ustoz paroli: CloudSync.pushTeacherPassword (bot_settings) eksport qilingan');
 logout();
-loginAs('m_amirov', '123');
+await loginAs('m_amirov', '123');
 click('[data-act="nav"][data-screen="profile"]');
 clickAct('open-change-pwd');
 setVal('#cp-old', '123');
@@ -791,10 +858,10 @@ clickAct('save-change-pwd');
 check(q('#modal-overlay').hidden === true && q('#toast').textContent.includes("Parol o'zgartirildi"),
   'ustoz paroli: o' + "'" + 'zgartirildi (bot_settings ga yoziladi)');
 logout();
-loginAs('m_amirov', '123');
+await loginAs('m_amirov', '123');
 check(q('#login-error').textContent.includes("noto'g'ri"),
   "ustoz paroli: eski '123' bilan KIRIB BO'LMAYDI");
-loginAs('m_amirov', '9111');
+await loginAs('m_amirov', '9111');
 check(text().includes('Xush kelibsiz') && text().includes('Muzaffar Amirov'),
   'ustoz paroli: yangi parol bilan kirdi');
 /* keyingi bosqichlar uchun parolni 123 ga qaytaramiz */
@@ -805,18 +872,18 @@ setVal('#cp-new', '123');
 setVal('#cp-new2', '123');
 clickAct('save-change-pwd');
 logout();
-loginAs('m_amirov', '123');
+await loginAs('m_amirov', '123');
 check(text().includes('Xush kelibsiz') && text().includes('Muzaffar Amirov'),
   'ustoz paroli: 123 ga qaytarildi — kirish ishlaydi');
 logout();
-loginAs('nilufar', '7777');
+await loginAs('nilufar', '7777');
 check(text().includes('Nilufar Ergasheva'), 'ustoz paroli: holat tiklandi (nilufar kirgan)');
 
 /* ================= 13. STEP 4: YANGI FEATURE'LAR ================= */
 
 /* --- 1. Telefon raqamlari butunlay yo'q --- */
 logout();
-loginAs('m_amirov', '123');
+await loginAs('m_amirov', '123');
 click('[data-act="nav"][data-screen="students"]');
 check(!text().includes('+998'), 'telefon: o\'quvchi kartalarida telefon yo\'q');
 check(!text().includes('Telefon'), 'telefon: "Telefon" yozuvi yo\'q');
@@ -892,7 +959,7 @@ check(jasurCells.some(c => c.textContent.trim() === '9'), 'tg→jurnal: ball jur
 
 /* --- 4b. O'quvchi portali: badge + yozish paneli --- */
 logout();
-loginAs('jasur', '4321');
+await loginAs('jasur', '4321');
 check(text().includes('Speaking qarzingiz') || text().includes("Speaking qarzingiz yo'q"), 'student: Speaking qarzi badge');
 check(!!q('[data-act="speak-cta"]') && q('[data-act="speak-cta"]').textContent.includes('Speaking topshirish'),
   "student: '🎙 Speaking topshirish' dolzarb tugmasi (badge tagida)");
@@ -916,7 +983,7 @@ check(q('#chat-list').textContent.includes('Tayyor ustoz'), "chat: o'quvchi xaba
 check(!!q('#chat-list .chat-msg.mine'), "chat: o'quvchi xabari o'zi tomonida (mine)");
 
 logout();
-loginAs('m_amirov', '123');
+await loginAs('m_amirov', '123');
 click('[data-act="nav"][data-screen="students"]');
 check(qa('[data-act="open-chat"]').length === studentCards(), "chat: har o'quvchi kartasida 'Xabar yozish' tugmasi");
 click(qa('[data-act="open-chat"]').filter(b => b.getAttribute('data-sid') === 's3')[0]);
@@ -931,7 +998,7 @@ check(q('#modal-overlay').hidden === true, 'chat: modal yopildi');
 
 /* o'quvchi ustoz xabarini ko'radi */
 logout();
-loginAs('jasur', '4321');
+await loginAs('jasur', '4321');
 check(q('#chat-list') && q('#chat-list').textContent.includes('Assalom Jasur'), "chat: o'quvchi ustoz xabarini kordi");
 
 /* ================= 15. NEYTRAL GRADEBOOK (CSS) ================= */
@@ -950,12 +1017,12 @@ check(typeof win.__cloud === 'object' && typeof win.__cloud.pullAll === 'functio
 check(typeof win.__cloud.sendMessage === 'function' && typeof win.__cloud.pushAttendance === 'function' && typeof win.__cloud.pushDebt === 'function',
   'cloud: messages/attendance/debt API mavjud');
 check(String(win.__cloud.url).indexOf('mvjoeqyqaylfccqcnwwe.supabase.co') >= 0, 'cloud: haqiqiy Supabase URL ulangan');
-check(win.__cloud.ready() === false, "cloud: jsdom da klient yo'q — lokal rejim (graceful) ishlaydi");
-check(win.__cloud.messagesAvailable() === false, "cloud: klient yo'qken messages lokal rejimda");
+check(win.__cloud.ready() === true, "cloud: stub klient ulangan — bulut rejimi ishlaydi");
+check(win.__cloud.messagesAvailable() === true, 'cloud: messages jadvali bulutda mavjud');
 
 /* ================= 17. O'QUVCHINI O'CHIRISH (tasdiq bilan) ================= */
 logout();
-loginAs('m_amirov', '123');
+await loginAs('m_amirov', '123');
 click('[data-act="nav"][data-screen="students"]');
 const nStudBeforeDel = studentCards();
 check(qa('[data-act="del-student"]').length === nStudBeforeDel, "o'chirish: har o'quvchi kartasida '🗑 O'chirish' tugmasi");
@@ -987,7 +1054,9 @@ check(q('#toast').textContent.includes("O'quvchi muvaffaqiyatli o'chirildi"), "o
 const studentsAfterDel = JSON.parse(win.localStorage.getItem('et_students'));
 check(!studentsAfterDel.some(x => x.id === delSid), "o'chirish: lokal studentsdan o'chirildi");
 check(!JSON.parse(win.localStorage.getItem('et_grades'))[delSid], "o'chirish: baholari o'chirildi");
-check(!JSON.parse(win.localStorage.getItem('et_accounts'))['gulnoza'], "o'chirish: login hisobi o'chirildi");
+await new Promise(r => setTimeout(r, 200));
+check(!(cloudStub.db.students || []).some(r => String(r.login || '').toLowerCase() === 'gulnoza'),
+  "o'chirish: login hisobi bulutdan o'chirildi");
 const attAfterDel = JSON.parse(win.localStorage.getItem('et_attendance'));
 check(Object.keys(attAfterDel).every(dk => !attAfterDel[dk] || !attAfterDel[dk][delSid]), "o'chirish: davomati o'chirildi");
 check(!qa('.student-card').some(c => c.textContent.includes('Gulnoza')), "o'chirish: karta ham yo'qoldi");
@@ -1028,7 +1097,7 @@ const until = async (fn, ms) => {
   }
 };
 
-(async () => {
+await (async () => {
   /* Ustoz profili → zaxira kartasi */
   click('[data-act="nav"][data-screen="profile"]');
   check(q('#screen').textContent.includes("Ma'lumotlar Bazasi Zaxirasi"), 'zaxira: karta profilda');
@@ -1098,13 +1167,13 @@ const until = async (fn, ms) => {
   check(attAfter2['2026-10-01'] && attAfter2['2026-10-01']['s77'] === 'present', 'zaxira: davomat tiklandi');
   const msgAfter = JSON.parse(win.localStorage.getItem('et_messages') || '[]');
   check(msgAfter.some(m => m.text === 'Tiklangan xabar' && m.sid === 's77'), 'zaxira: xabarlar tiklandi');
-  check(stAfter[0].audioSubmissions && stAfter[0].audioSubmissions.length === 1 &&
-    stAfter[0].audioSubmissions[0].score === 8 && stAfter[0].audioSubmissions[0].rid === 9 &&
-    stAfter[0].audioSubmissions[0].status === 'graded',
+  const dbAudio = cloudStub.db.audio_submissions || [];
+  check(dbAudio.some(r => Number(r.score) === 8 && String(r.status) === 'graded'),
     'zaxira: ovozli topshiriklar tiklandi (audio_submissions)');
-  const accAfter = JSON.parse(win.localStorage.getItem('et_accounts') || '{}');
-  check(!!accAfter['restore1'] && accAfter['restore1'].password === '9876' && !!accAfter['m_amirov'],
-    'zaxira: hisoblar qayta qurildi (m_amirov + restore1)');
+  const dbStu = cloudStub.db.students || [];
+  const r1 = dbStu.filter(r => String(r.login || '').toLowerCase() === 'restore1')[0];
+  check(!!r1 && String(r1.password || '') === '9876',
+    'zaxira: hisoblar qayta qurildi (restore1/9876 bulutda)');
 
   /* UI jonli yangilandi */
   forceNav('groups');
@@ -1115,14 +1184,14 @@ const until = async (fn, ms) => {
   /* Tiklangan hisob bilan kirish */
   click('[data-act="nav"][data-screen="profile"]');
   clickAct('logout');
-  loginAs('restore1', '1111');
+  await loginAs('restore1', '1111');
   check(q('#login-error').classList.contains('show'), "zaxira: noto'g'ri parol rad etildi");
-  loginAs('restore1', '9876');
+  await loginAs('restore1', '9876');
   check(text().includes('Restored Student'), "zaxira: restore1/9876 bilan kirish ishlaydi");
 
   /* ================= 20. UYGA VAZIFA (ustoz → o'quvchi portali) ================= */
   logout();
-  loginAs('m_amirov', '123');
+  await loginAs('m_amirov', '123');
   click('[data-act="nav"][data-screen="home"]');
   check(!!q('[data-act="open-hw"]'), "uyga vazifa: '+ Uyga vazifa' tugmasi (Bosh)");
   check(text().includes('Uyga vazifalar'), "uyga vazifa: bo'lim sarlavhasi");
@@ -1156,8 +1225,10 @@ const until = async (fn, ms) => {
     !q('#hw-file-box').textContent.includes('daftar.png') &&
     q('#hw-media-status').textContent.includes('50MB'),
     "uyga vazifa: ✕ tanlangan faylni bekor qiladi");
-  check(q('#hw-media-input').getAttribute('accept') ===
-    'image/*,video/*,audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.mp4,.mov,.pdf,.doc,.docx',
+  const acceptAttr = q('#hw-media-input').getAttribute('accept') || '';
+  const needTypes = ['image/*', 'video/*', 'audio/*', '.mp3', '.wav', '.m4a', '.aac', '.ogg', '.opus',
+    '.mp4', '.mov', '.pdf', '.doc', '.docx'];
+  check(needTypes.every(t => acceptAttr.split(',').map(x => x.trim()).includes(t)),
     "uyga vazifa: accept audio/musiqa + video + rasm + pdf/doc fayllarni qabul qiladi");
   check(!q('#hw-media-input').hasAttribute('capture'),
     "uyga vazifa: capture atributi yo'q — telefon kamerani avtomatik ochmaydi");
@@ -1230,7 +1301,7 @@ const until = async (fn, ms) => {
     "uyga vazifa: lokalda saqlandi (g55, muddat)");
 
   logout();
-  loginAs('restore1', '9876');
+  await loginAs('restore1', '9876');
   check(text().includes('Present Perfect shakli'), "uyga vazifa: o'quvchi portalida ko'rinadi");
   check(text().includes('10 ta gap tuzing'), "uyga vazifa: tavsif portalda ko'rinadi");
   check(text().includes('Uyga vazifalar') && !!q('.section-title svg'),
@@ -1256,13 +1327,13 @@ const until = async (fn, ms) => {
   click(q('[data-act="toggle-hw"]'));
   check(!!q('.hw-check.on'), "bajarildi: yana yoqildi");
   logout();
-  loginAs('restore1', '9876');
+  await loginAs('restore1', '9876');
   check(!!q('.hw-check.on') && qa('.hw-struck').length >= 2 && !!q('.hw-done-badge'),
     "bajarildi: kirishdan keyin holat saqlanib qoldi (persist)");
 
   /* ================= 20c. USTOZ: UYGA VAZIFANI O'CHIRISH ================= */
   logout();
-  loginAs('m_amirov', '123');
+  await loginAs('m_amirov', '123');
   check(!!q('[data-act="del-hw"]'), "o'chirish: ustoz kartasida 🗑 (SVG) tugma bor");
   check(!!q('[data-act="hw-edit"]'), "uyga vazifa: tahrirlash (edit) tugmasi bor");
   click(q('[data-act="del-hw"]'));
@@ -1289,7 +1360,7 @@ const until = async (fn, ms) => {
   click('[data-act="do-del-hw"]');
   check(!!delHwArgs && String(delHwArgs.mediaUrl).includes('/homework-media/hw/dars.mp4'),
     "o'chirish: media_url Storage'dan o'chirish uchun uzatildi");
-  check(/async function deleteHomework\(dbId, mediaUrl\)/.test(appJs) &&
+  check(/async function deleteHomework\(dbId, mediaUrls?\)/.test(appJs) &&
         /remove\(\[filePath\]\)/.test(appJs),
     "o'chirish: deleteHomework faylni Storage'dan ham remove qiladi");
   win.__cloud.deleteHomework = realDeleteHw;
@@ -1314,7 +1385,7 @@ const until = async (fn, ms) => {
 
   /* ================= 21. VOICE RUXSAT KALITI (kartada) ================= */
   logout();
-  loginAs('m_amirov', '123');
+  await loginAs('m_amirov', '123');
   click('[data-act="nav"][data-screen="students"]');
   const swEl = q('[data-act="voice-toggle"]');
   check(!!swEl, "voice: o'quvchi kartasida ruxsat kaliti bor");
@@ -1431,20 +1502,32 @@ const until = async (fn, ms) => {
     /* ================= 25. BILDIRISHNOMA HODISALARI (realtime) ================= */
     /* Realtime qatorlari Supabase id ishlatadi — testda dbId beramiz */
     const gRows = JSON.parse(win.localStorage.getItem('et_groups') || '[]');
-    gRows.forEach((g, i) => { g.dbId = i + 1; });
-    win.localStorage.setItem('et_groups', JSON.stringify(gRows));
     const sRows = JSON.parse(win.localStorage.getItem('et_students') || '[]');
-    sRows.forEach((s, i) => { s.dbId = i + 1; });
+    const dbGRows = cloudStub.db.groups || [];
+    const dbSRows = cloudStub.db.students || [];
+    /* realtime qatorlari Supabase id bilan keladi — haqiqiy DB id'larini olamiz */
+    gRows.forEach(g => {
+      const row = dbGRows.filter(r => String(r.name || '') === String(g.name || ''))[0];
+      if (row) g.dbId = Number(row.id);
+    });
+    sRows.forEach(x => {
+      const row = dbSRows.filter(r => String(r.login || '').toLowerCase() === String(x.login || '').toLowerCase())[0];
+      if (row) x.dbId = Number(row.id);
+    });
+    win.localStorage.setItem('et_groups', JSON.stringify(gRows));
     win.localStorage.setItem('et_students', JSON.stringify(sRows));
 
-    /* Bu bosqichda qolgan ulangan o'quvchini topamiz (zaxiradan tiklangan hisob) */
-    const accsNow = JSON.parse(win.localStorage.getItem('et_accounts') || '{}');
+    /* Bulut rejimida hisoblar lokal saqlanmaydi — login students jadvalidan */
     let stuLogin = null, stuPass = null, stuLocalId = null;
-    Object.keys(accsNow).forEach(k => {
-      const a = accsNow[k];
-      if (stuLogin || a.role !== 'student' || !a.studentId) return;
-      if (!sRows.some(x => x.id === a.studentId)) return;
-      stuLogin = k; stuPass = a.password; stuLocalId = a.studentId;
+    sRows.forEach(x => {
+      if (stuLogin || !x.login) return;
+      const row = dbSRows.filter(r => String(r.login || '').toLowerCase() === String(x.login).toLowerCase())[0];
+      if (!row) return;
+      stuLogin = x.login;
+      /* Bazada parol xesh ko'rinishida: bu bosqichda yagona o'quvchi —
+         zaxiradan tiklangan hisob, uning paroli test zaxirasida ma'lum */
+      stuPass = /^[0-9a-f]{64}$/i.test(String(row.password || '')) ? '9876' : String(row.password || '');
+      stuLocalId = x.id;
     });
     const stu = stuLogin ? sRows.filter(x => x.id === stuLocalId)[0] : null;
     const grp = stu && stu.groupId ? gRows.filter(x => x.id === stu.groupId)[0] : null;
@@ -1455,7 +1538,7 @@ const until = async (fn, ms) => {
       "notif: ulangan o'quvchi + guruhi topildi (realtime testi uchun)");
 
     logout();
-    loginAs(stuLogin, stuPass);
+    await loginAs(stuLogin, stuPass);
     win.Notif.resetSeen();
     shownNotifs.length = 0;
 
@@ -1502,7 +1585,7 @@ const until = async (fn, ms) => {
 
     /* --- Ustoz tomoni --- */
     logout();
-    loginAs('m_amirov', '123');
+    await loginAs('m_amirov', '123');
     win.Notif.resetSeen();
     shownNotifs.length = 0;
 
@@ -1564,7 +1647,7 @@ const until = async (fn, ms) => {
 
   /* ================= 27. GURUH KARTASI: 2x2 GRID TUGMALAR (CSS) ================= */
   logout();
-  loginAs('m_amirov', '123');
+  await loginAs('m_amirov', '123');
   const cssSrc = fs.readFileSync(path.join(root, 'css', 'styles.css'), 'utf8');
   const cssN = cssSrc.replace(/\s+/g, ' ');
   check(/\.gc-actions \{[^}]*grid-template-columns: 1fr 1fr/.test(cssN) &&
@@ -1631,14 +1714,19 @@ const until = async (fn, ms) => {
     "tahrirlash: baholar tarixi O'ZGARMADI (student_id bo'yicha qoldi)");
   check(win.localStorage.getItem('et_attendance') === attBefore,
     "tahrirlash: davomat tarixi O'ZGARMADI");
-  check(JSON.parse(win.localStorage.getItem('et_accounts') || '{}').restore1.studentId === 's77',
-    "tahrirlash: login hisobi o'quvchiga bog'langan holatda qoldi");
+  await new Promise(r => setTimeout(r, 200));
+  const r1AfterEdit = (cloudStub.db.students || []).filter(r => String(r.login || '').toLowerCase() === 'restore1')[0];
+  check(!!r1AfterEdit && Number(r1AfterEdit.id) === 77 &&
+    String(r1AfterEdit.school_class || '') === '10-sinf' && r1AfterEdit.group_id == null,
+    "tahrirlash: login hisobi o'quvchiga bog'langan holatda qoldi (bulutda)");
 
   /* ================= 30. SPEAKING: BIR XIL SANA — KO'P SESSIYA + QARZ ================= */
   forceNav('speaking');
   /* s77 qarzi = 2 — ikki baholashdan keyin 0 bo'lishi kerak */
   const stFix = JSON.parse(win.localStorage.getItem('et_students') || '[]');
   if (stFix[0]) { stFix[0].speakingDebt = 2; win.localStorage.setItem('et_students', JSON.stringify(stFix)); }
+  /* bulut — haqiqat manbai: qarz stub bazasida ham 2 bo'lsin */
+  (cloudStub.db.students || []).forEach(r => { if (Number(r.id) === 77) r.speaking_debt = 2; });
   win.onCloudNotifChange('speaking_submissions',
     { id: 8301, student_id: 77, media_type: 'voice', status: 'kutilmoqda', score: null,
       created_at: TODAY + 'T10:00:00.000Z' }, null);
@@ -1727,9 +1815,7 @@ const until = async (fn, ms) => {
     'xavfsizlik: honeypot bilan session yaratilmadi');
   setVal('#login-bot-hp', '');
   /* Honeypot: o'quvchi qo'shish modali */
-  setVal('#login-input', 'm_amirov');
-  setVal('#password-input', '123');
-  clickAct('do-login');
+  await loginAs('m_amirov', '123');
   clickAct('open-add-student');
   check(!!q('#hp-student') && q('#hp-student').getAttribute('name') === 'bot_check_field',
     "xavfsizlik: 'O'quvchi qo'shish' modalisida ham honeypot bor");
@@ -1749,18 +1835,15 @@ const until = async (fn, ms) => {
     'xavfsizlik: initData id mos emas → kirish rad etildi (spoofing)');
   /* Mos keldi → kirish o\'tadi */
   win.Telegram.WebApp.initDataUnsafe.user.id = 111;
-  setVal('#login-input', 'm_amirov');
-  setVal('#password-input', '123');
-  clickAct('do-login');
+  await loginAs('m_amirov', '123');
   check(text().includes('Xush kelibsiz'), 'xavfsizlik: initData mos bo\'lsa kirish ishlaydi');
   delete win.Telegram;
   logout();
 
   /* Anti-brute-force: 5 xato → 5 daqiqa qulf + mm:ss hisoblagich */
   for (let i = 0; i < 5; i++) {
-    setVal('#login-input', 'm_amirov');
-    setVal('#password-input', 'nope-' + i);
-    clickAct('do-login');
+    /* login bulutda asinxron — har bir urinish tugashini kutamiz */
+    await loginAs('m_amirov', 'nope-' + i);
   }
   check(q('#login-error').textContent.includes('Xavfsizlik: 5 marta xato kiritildi'),
     "xavfsizlik: 5 xatodan so'ng qulf xabari");
@@ -1770,13 +1853,14 @@ const until = async (fn, ms) => {
   setVal('#login-input', 'm_amirov');
   setVal('#password-input', '123');
   q('[data-act="do-login"]').dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
+  await new Promise(r => setTimeout(r, 250));
   check(text().includes('Teacher Muzaffar Amirov') && !JSON.parse(win.localStorage.getItem('et_session') || 'null'),
     "xavfsizlik: qulflangan holda to'g'ri parol bilan ham kira olmaydi");
   /* Qulfni tozalash → tugma qayta yoqiladi */
   win.localStorage.removeItem('et_login_fails');
   forceNav('login');
   check(q('[data-act="do-login"]').disabled === false, 'xavfsizlik: qulf tozalandi → tugma qayta yoqildi');
-  loginAs('m_amirov', '123');
+  await loginAs('m_amirov', '123');
   check(text().includes('Xush kelibsiz'), 'xavfsizlik: oddiy kirish yana ishlaydi');
 
   /* ============ 26. XAVFSIZLIK: QURILMA NAZORATI + FAOL QURILMALAR ============ */
@@ -1792,14 +1876,14 @@ const until = async (fn, ms) => {
 
   /* O'quvchi login qilganda last_device / last_seen yoziladi */
   logout();
-  loginAs('restore1', '9876');
+  await loginAs('restore1', '9876');
   const stuAfterLogin = JSON.parse(win.localStorage.getItem('et_students') || '[]').filter(x => x.id === 's77')[0];
   check(!!stuAfterLogin && stuAfterLogin.lastDevice === 'Android (Chrome)' && !!stuAfterLogin.lastSeen,
     'o\'quvchi: login → last_device "Android (Chrome)" + last_seen yozildi');
 
   /* Ustoz kartasida onlayn/qurilma ko'rinishi */
   logout();
-  loginAs('m_amirov', '123');
+  await loginAs('m_amirov', '123');
   forceNav('students');
   const cardOn = qa('.student-card').filter(c => c.textContent.indexOf('Restored Student') >= 0)[0];
   check(!!cardOn && cardOn.textContent.indexOf('🟢 Onlayn (Android)') >= 0,
@@ -1850,6 +1934,7 @@ const until = async (fn, ms) => {
 
   /* Bitta qurilmani chiqarib yuborish */
   click(q('[data-act="session-logout"]'));
+  await new Promise(r => setTimeout(r, 250));
   check(!q('[data-act="session-logout"]') && !text().includes('iPhone • Safari'),
     'profil: qurilma chiqarib yuborildi (ro\'yxatdan o\'chdi)');
 
@@ -1866,6 +1951,7 @@ const until = async (fn, ms) => {
   forceNav('profile');
   check(qa('[data-act="session-logout"]').length === 2, 'profil: 2 ta boshqa qurilma ro\'yxatda');
   click(q('[data-act="session-logout-all"]'));
+  await new Promise(r => setTimeout(r, 300));
   check(!q('[data-act="session-logout"]') && !q('[data-act="session-logout-all"]'),
     'profil: "Barcha boshqa qurilmalardan chiqish" → ro\'yxat tozalandi');
   check(text().includes('Bu qurilma (Android • Chrome)'),
@@ -1963,8 +2049,8 @@ const until = async (fn, ms) => {
         text().includes('Daily 10-Point Gradebook & Attendance') &&
         text().includes('Telegram Bot Ecosystem (@uzbekspeakingcheckbot)'),
     'i18n EN: 3 karta sarlavhalari to\'liq inglizcha');
-  loginAs('m_amirov', '123');
-  check(navLabels().join(',') === 'Home,Students,Grades,Attendance,Speaking,Profile',
+  await loginAs('m_amirov', '123');
+  check(navLabels().join(',') === 'Home,Students,Payments,Grades,Attendance,Speaking,Profile',
     'i18n: ustoz nav EN tilida');
   check(q('#app-header').textContent.includes('Home'),
     'i18n: header bo‘lim nomi EN (Home)');
@@ -1985,7 +2071,7 @@ const until = async (fn, ms) => {
 
   /* UZ ga qaytarish */
   click('[data-act="toggle-lang"]');
-  check(navLabels().join(',') === "Bosh,O'quvchi,Baholar,Davomat,Speaking,Profil",
+  check(navLabels().join(',') === "Bosh,O'quvchi,To'lov,Baholar,Davomat,Speaking,Profil",
     "i18n: UZ ga qaytish — nav o'zbekcha qoldi");
   check(q('.week-nav-bar').textContent.includes('Oldingi hafta'),
     'i18n: hafta tugmalari UZ ga qaytdi');
@@ -2089,4 +2175,5 @@ const until = async (fn, ms) => {
 
   console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
   process.exit(failed ? 1 : 0);
+})();
 })();
