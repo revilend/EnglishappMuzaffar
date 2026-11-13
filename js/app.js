@@ -2153,6 +2153,7 @@ function forcedLogout() {
   closeModal();
   state.authStep = 'login';
   render();
+  scrollAuthTop();
   toast('Siz ushbu qurilmadan chiqarildingiz!', 'error');
 }
 
@@ -2748,6 +2749,27 @@ function renderTopNavControls() {
     box = document.getElementById('top-nav-controls');
   }
   box.innerHTML = headerControlsHTML();
+
+  /* Kirish ekranlarida desktop navigatsiyada ham "Kirish" ko'rinadi;
+     foydalanuvchi belgisi va chiqish (✕) yashiriladi. */
+  const auth = AUTH_SCREENS.indexOf(state.screen) >= 0;
+  const badge = document.getElementById('top-user-badge');
+  const outBtn = el.querySelector('[data-act="logout"]');
+  if (badge) badge.style.display = auth ? 'none' : '';
+  if (outBtn) outBtn.style.display = auth ? 'none' : '';
+
+  const showEnter = auth && authStep() === 'landing';
+  let enter = document.getElementById('top-auth-enter');
+  if (!enter) {
+    enter = document.createElement('button');
+    enter.type = 'button';
+    enter.id = 'top-auth-enter';
+    enter.className = 'btn btn-primary btn-sm auth-head-btn';
+    enter.setAttribute('data-act', 'auth-login-open');
+    el.appendChild(enter);
+  }
+  enter.textContent = t('Kirish');
+  enter.style.display = showEnter ? '' : 'none';
 }
 
 function scrLabel(s) {
@@ -2766,9 +2788,11 @@ function renderHeader() {
   const scr = state.screen;
   if (AUTH_SCREENS.indexOf(scr) >= 0) {
     const step = authStep();
+    /* Kirish sahifasida header'da "Kirish"; ichki oynalarda yagona "Orqaga"
+       karta ichida bo'ladi (header'da takrorlanmaydi). */
     const right = step === 'landing'
       ? `<button type="button" class="btn btn-primary btn-sm auth-head-btn" data-act="auth-login-open">${t('Kirish')}</button>`
-      : `<button type="button" class="btn btn-ghost btn-sm auth-head-btn" data-act="auth-back">${ico('arrowLeft', 15)} ${t('Orqaga')}</button>`;
+      : '';
     return '<div class="header-inner"><span class="brand"><img class="brand-logo" src="logo.png" alt="" width="36" height="36" />English Teacher</span>' + headerControlsHTML() + right + '</div>';
   }
   const u = currentUser() || {};
@@ -2857,9 +2881,10 @@ function paintCaptcha() {
   const w = box.width || 170;
   const h = box.height || 44;
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = '#eef2ff';
+  const dark = getTheme() === 'dark';   /* tungi rejimda canvas ham qorong'i */
+  ctx.fillStyle = dark ? '#1b2437' : '#eef2ff';
   ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = 'rgba(99,102,241,0.35)';
+  ctx.strokeStyle = dark ? 'rgba(129,140,248,0.30)' : 'rgba(99,102,241,0.35)';
   ctx.lineWidth = 1;
   for (let i = 0; i < 5; i++) {
     ctx.beginPath();
@@ -2870,7 +2895,7 @@ function paintCaptcha() {
   ctx.save();
   ctx.translate(w / 2, h / 2);
   ctx.rotate(-0.04);
-  ctx.fillStyle = '#1e293b';
+  ctx.fillStyle = dark ? '#e2e8f0' : '#1e293b';
   ctx.font = 'bold 22px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -2895,10 +2920,15 @@ function sixDigitCode() {
 }
 
 function authStep() { return state.authStep === 'login' || state.authStep === 'recover' ? state.authStep : 'landing'; }
+/* Har bir kirish bosqichiga o'tilganda sahifa tepasiga qaytadi
+   (aks holda karta qotib turgan header ostiga kirib qoladi) */
+function scrollAuthTop() { try { window.scrollTo(0, 0); } catch (e) {} }
+
 function setAuthStep(step) {
   state.authStep = step;
   if (step === 'landing') { state.resetDone = ''; state.resetCtx = null; }
   render();
+  scrollAuthTop();
 }
 
 /* --- 1-bosqich: Bosh sahifa (landing) --- */
@@ -3074,9 +3104,10 @@ function paintRecoverCaptcha() {
   const w = box.width || 150;
   const h = box.height || 44;
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = '#eef2ff';
+  const dark = getTheme() === 'dark';   /* tungi rejimda canvas ham qorong'i */
+  ctx.fillStyle = dark ? '#1b2437' : '#eef2ff';
   ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = 'rgba(79, 70, 229, 0.30)';
+  ctx.fillStyle = dark ? 'rgba(129, 140, 248, 0.32)' : 'rgba(79, 70, 229, 0.30)';
   for (let y = 6; y < h; y += 8) {
     for (let x = 6; x < w; x += 8) {
       ctx.beginPath();
@@ -3084,7 +3115,7 @@ function paintRecoverCaptcha() {
       ctx.fill();
     }
   }
-  ctx.fillStyle = '#1e293b';
+  ctx.fillStyle = dark ? '#e2e8f0' : '#1e293b';
   ctx.font = 'bold 21px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -6316,6 +6347,7 @@ function logout() {
   closeModal();
   state.screen = 'login';
   render();
+  scrollAuthTop();
   toast('Hisobdan chiqdingiz');
 }
 
@@ -6496,6 +6528,7 @@ function openForgotPwd() {
   state.recoverCaptcha = makeRecoverCaptcha();
   state.authStep = 'recover';
   render();
+  scrollAuthTop();
 }
 
 /* Tiklash ekranidagi xato matni */

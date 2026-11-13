@@ -1893,7 +1893,7 @@ html[data-theme="dark"] .st-inset {
 .auth-back:hover { color: var(--text); background: var(--bg); }
 .auth-back:active { transform: scale(0.95); }
 .auth-compact { margin-top: 0; padding: 18px; }
-.auth-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.auth-card-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
 .auth-card-ico {
   width: 38px; height: 38px; border-radius: 12px; flex: none;
   display: flex; align-items: center; justify-content: center;
@@ -1943,3 +1943,34 @@ html[data-theme="dark"] .st-inset {
 html[data-theme="dark"] .landing-kicker { background: rgba(99, 102, 241, 0.20); }
 html[data-theme="dark"] .recover-opt.active { background: rgba(99, 102, 241, 0.16); }
 html[data-theme="dark"] .auth-card-ico { background: rgba(99, 102, 241, 0.18); }
+
+/* ==================== MOSLASHUV: tor ekran (header 2 qator + landing) ==================== */
+.header-inner > .brand { white-space: nowrap; min-width: 0; }
+.landing-title { text-wrap: balance; }
+/* Grid ustuni min-content bilan kengayib ketmasin (uzun @handle kartani
+   chetga chiqarib yuborardi) */
+.landing-features { grid-template-columns: minmax(0, 1fr); }
+.landing-fbody b, .landing-fbody span { overflow-wrap: anywhere; }
+
+@media (max-width: 420px) {
+  .auth-card-title { font-size: 15px; letter-spacing: -0.025em; }
+  .app-header .header-inner {
+    flex-wrap: wrap; height: auto; row-gap: 6px;
+    padding: env(safe-area-inset-top) 12px 8px;
+  }
+  .app-header .header-inner > .brand { font-size: 15px; }
+  .app-header .header-inner > .brand .brand-logo { width: 30px; height: 30px; margin-right: 7px; }
+  .app-header .header-inner > .header-controls { order: 3; width: 100%; margin-left: 0; gap: 6px; }
+  .app-header .header-inner > .auth-head-btn { margin-left: auto; }
+  .app-content { padding-top: calc(96px + env(safe-area-inset-top)); }
+  .mode-btn { width: 30px; height: 30px; }
+  .lang-switch { height: 30px; padding: 0 8px; font-size: 11px; }
+  .landing { padding-left: 12px; padding-right: 12px; }
+  .landing-footer { flex-direction: column; gap: 3px; }
+  .landing-dot { display: none; }
+}
+
+/* Desktop/tablet yuqori navigatsiyasi: o'ng chetga yopishib qolmasin */
+@media (min-width: 768px) {
+  .top-nav .header-inner { padding-right: 16px; }
+}
