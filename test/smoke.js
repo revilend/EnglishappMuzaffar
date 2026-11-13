@@ -2331,6 +2331,30 @@ await (async () => {
   setVal('#login-captcha', solveCaptcha());
   clickAct('do-login');
   check(await until(() => !!q('#twofa-code'), 2000), "2fa: ustoz uchun kod modali ochildi");
+
+  /* "Kodni qayta yuborish" — 60 soniyalik jonli cooldown (2FA modal) */
+  const rs2 = q('[data-act="resend-2fa"]');
+  check(!!rs2 && rs2.disabled === true, 'cooldown: 2FA resend tugmasi darhol nofaol');
+  check(/^Kodni qayta yuborish \(\d{2}:\d{2}\)$/.test(String(rs2.textContent || '').trim()),
+    'cooldown: tugmada jonli mm:ss ko‘rsatilgan');
+  check(win.__resend.left() > 50000 && win.__resend.left() <= 60000,
+    'cooldown: state.resendUntil 60 soniyaga o‘rnatildi');
+  const codesBeforeCd = (cloudStub.db.auth_codes || []).filter(r => r.purpose === 'teacher_2fa').length;
+  rs2.click();
+  await new Promise(r => setTimeout(r, 80));
+  check((cloudStub.db.auth_codes || []).filter(r => r.purpose === 'teacher_2fa').length === codesBeforeCd,
+    'cooldown: nofaol tugma bosilganda yangi kod yuborilmaydi');
+  win.__resend.stop();     /* modal yopilganda taymer to‘xtaydi */
+  win.__resend.start();    /* qayta ochilganda qolgan vaqt tiklanadi */
+  const rs2b = q('[data-act="resend-2fa"]');
+  check(!!rs2b && rs2b.disabled === true && win.__resend.left() > 49000,
+    'cooldown: qayta ochilganda qolgan vaqt saqlanadi');
+  win.__resend.expire();
+  const rs2c = q('[data-act="resend-2fa"]');
+  check(!!rs2c && rs2c.disabled === false && String(rs2c.textContent || '').trim() === 'Kodni qayta yuborish',
+    'cooldown: 00:00 da tugma faollashadi va matn tiklanadi');
+  win.__resend.arm();      /* kodni o‘zgartirmasdan qayta qulf */
+
   const tf = (cloudStub.db.auth_codes || []).filter(r => r.purpose === 'teacher_2fa').pop();
   check(!!tf && /^\d{6}$/.test(String(tf.code)), '2fa: 6 xonali kod auth_codes ga yozildi');
   check(!JSON.parse(win.localStorage.getItem('et_session') || 'null'),
@@ -2431,6 +2455,9 @@ await (async () => {
   clickAct('forgot-send');
   check(await until(() => q('#fp-step2') && q('#fp-step2').hidden === false, 3000),
     'reset: telefon bo‘yicha topildi — kod/parol maydonlari ochildi');
+  const rrBtn = q('[data-act="resend-reset"]');
+  check(!!rrBtn && rrBtn.disabled === true && /\(00:\d{2}\)/.test(String(rrBtn.textContent || '')),
+    'cooldown: tiklash ekranida resend 60 s nofaol + mm:ss');
   const rc = (cloudStub.db.auth_codes || []).filter(r => r.purpose === 'reset').pop();
   check(!!rc && /^\d{6}$/.test(String(rc.code)) && Number(rc.student_id) === Number(resetRow.id),
     'reset: 6 xonali kod auth_codes (reset) ga student_id bilan yozildi');
@@ -2522,6 +2549,12 @@ await (async () => {
     'profil: tasdiqlanmagan Gmail uchun “Kod yuborish” tugmasi ko‘rinadi');
   clickAct('resend-verify-existing');
   check(await until(() => !!q('#ev-code'), 3000), 'profil: qayta tasdiqlash kodi yuborildi (modal)');
+  const rvBtn = q('[data-act="resend-verify-email"]');
+  check(!!rvBtn && rvBtn.disabled === true && /\(00:\d{2}\)/.test(String(rvBtn.textContent || '')),
+    'cooldown: Gmail tasdiqlash modalida resend 60 s nofaol + mm:ss');
+  win.__resend.expire();
+  check(!!q('[data-act="resend-verify-email"]') && q('[data-act="resend-verify-email"]').disabled === false,
+    'cooldown: Gmail modalida vaqt tugagach tugma faollashadi');
   const evc2 = (cloudStub.db.auth_codes || []).filter(r => r.purpose === 'verify_email').pop();
   check(!!evc2 && String(evc2.contact) === 'yangi.mail@gmail.com',
     'profil: kod saqlangan manzilga (contact) yozildi');

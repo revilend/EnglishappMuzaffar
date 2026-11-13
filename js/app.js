@@ -2693,6 +2693,7 @@ const I18N_EN = {
   '+998 90 123 45 67 yoki ism@gmail.com': '+998 90 123 45 67 or name@gmail.com',
   '5 xonali kod': '5-digit code',
   'Keyingi qadam': 'Next step', 'Yuborish': 'Send',
+  'Kodni qayta yuborish': 'Resend code',
   'Kod (6 xona)': 'Code (6 digits)', 'Yangi parol': 'New password', 'Parolni yangilash': 'Update password',
 };
 function getLang() { return store.get('app_lang', 'uz'); }
@@ -3069,6 +3070,7 @@ function recoverScreen() {
           <label class="field-label" for="fp-new">${t('Yangi parol')}</label>
           <input class="input" id="fp-new" type="password" autocomplete="new-password" placeholder="••••" />
           <button type="button" class="btn btn-primary btn-block" data-act="forgot-reset">${t('Parolni yangilash')}</button>
+          <button type="button" class="btn btn-ghost btn-block" data-act="resend-reset">${t(RESEND_TEXT)}</button>
         </div>
       </div>
     </div>
@@ -4653,6 +4655,7 @@ function openModal(html) {
   $('#modal-overlay').hidden = false;
 }
 function closeModal() {
+  stopResendTimer();
   revokeHwPreview();
   $('#modal-overlay').hidden = true;
   $('#modal-sheet').innerHTML = '';
@@ -6438,6 +6441,64 @@ async function beginTeacherLogin(userObj) {
   await startTeacher2FA(userObj);
 }
 
+/* ==================== "KODNI QAYTA YUBORISH" — 60 SONIYALIK COOLDOWN ==================== */
+/* state.resendUntil — kod yuborilgan paytdan boshlab 60 soniya.
+   Tugma shu vaqt ichida nofaol bo'lib, har soniyada (mm:ss) sanaydi. */
+const RESEND_TEXT = 'Kodni qayta yuborish';
+let resendTimer = null;
+
+function resendLeftMs() {
+  const left = Number(state.resendUntil || 0) - Date.now();
+  return left > 0 ? left : 0;
+}
+function resendClock(ms) {
+  /* 60 s dan boshlanadi, lekin ekranda darhol 00:59 ko'rinadi (mm:ss) */
+  let total = Math.floor(ms / 1000);
+  if (total > 59) total = 59;
+  if (total < 0) total = 0;
+  return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+}
+function resendButtons() {
+  return document.querySelectorAll(
+    '[data-act="resend-2fa"],[data-act="resend-verify-email"],[data-act="resend-reset"]');
+}
+/* Taymerni to'xtatadi (modal yopilganda / vaqt tugaganda) */
+function stopResendTimer() {
+  if (resendTimer) { clearInterval(resendTimer); resendTimer = null; }
+}
+/* Tugmalar matni va holatini joriy vaqtga moslaydi */
+function paintResendButtons() {
+  const left = resendLeftMs();
+  const label = left > 0 ? (t(RESEND_TEXT) + ' (' + resendClock(left) + ')') : t(RESEND_TEXT);
+  const list = resendButtons();
+  for (let i = 0; i < list.length; i++) {
+    list[i].textContent = label;
+    list[i].disabled = left > 0;
+    list[i].setAttribute('aria-disabled', left > 0 ? 'true' : 'false');
+  }
+  if (left <= 0) stopResendTimer();
+  return left;
+}
+function startResendTimer() {
+  paintResendButtons();
+  if (resendLeftMs() <= 0) { stopResendTimer(); return; }
+  if (resendTimer) clearInterval(resendTimer);
+  resendTimer = setInterval(paintResendButtons, 1000);
+}
+/* Kod yuborilishi bilanoq 60 soniya qulf yoqiladi (qayta yuborishda yangilanadi) */
+function armResendCooldown() {
+  state.resendUntil = Date.now() + 60000;
+  startResendTimer();
+}
+/* Test/diagnostika uchun (smoke testlar vaqtni tezlashtiradi) */
+window.__resend = {
+  left: resendLeftMs,
+  arm: armResendCooldown,
+  start: startResendTimer,
+  expire: function () { state.resendUntil = Date.now() - 1; paintResendButtons(); },
+  stop: stopResendTimer
+};
+
 /* ==================== USTOZ 2-BOSQICHLI HIMOYA (2FA) ==================== */
 async function startTeacher2FA(userObj) {
   await resolveDeviceModel();
@@ -6472,6 +6533,7 @@ async function startTeacher2FA(userObj) {
     }]);
   })();
 
+  armResendCooldown();   /* kod yuborildi — 60 soniya qulf */
   openTwoFA();
 }
 
@@ -6491,8 +6553,10 @@ async function openTwoFA() {
     <input class="input" id="twofa-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••" />
     <div class="field-error" id="twofa-error"></div>
     <button type="button" class="btn btn-primary btn-block" data-act="do-2fa">Tasdiqlash</button>
-    <button type="button" class="btn btn-ghost btn-block" data-act="resend-2fa">Kodni qayta yuborish</button>
+    <button type="button" class="btn btn-ghost btn-block" data-act="resend-2fa">${t(RESEND_TEXT)}</button>
   `);
+  /* Modal qayta ochilganda qolgan vaqt saqlanadi */
+  startResendTimer();
   setTimeout(function () { const el = $('#twofa-code'); if (el) el.focus(); }, 30);
 }
 
@@ -6718,6 +6782,7 @@ async function sendResetCode() {
   };
   const step2 = $('#fp-step2');
   if (step2) step2.hidden = false;
+  armResendCooldown();   /* kod yuborildi — 60 soniya qulf */
   resetError('');
   const codeEl = $('#fp-code');
   if (codeEl) codeEl.focus();
@@ -6857,8 +6922,9 @@ async function sendEmailVerifyCode(newEmail, kind) {
     <input class="input" id="ev-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••" />
     <div class="field-error" id="ev-error"></div>
     <button type="button" class="btn btn-primary btn-block" data-act="do-verify-email">Tasdiqlash</button>
-    <button type="button" class="btn btn-ghost btn-block" data-act="resend-verify-email">Kodni qayta yuborish</button>
+    <button type="button" class="btn btn-ghost btn-block" data-act="resend-verify-email">${t(RESEND_TEXT)}</button>
   `);
+  armResendCooldown();   /* kod yuborildi — 60 soniya qulf */
   setTimeout(function () { const el = $('#ev-code'); if (el) el.focus(); }, 30);
   toast(mailQueued ? 'Kod Gmailga yuborildi' : "Gmail yuborish navbati ishlamadi — kod yetib bormasligi mumkin", mailQueued ? undefined : 'error');
   return true;
@@ -7070,7 +7136,7 @@ function render() {
   renderTopNavControls();
   $('#screen').innerHTML = (SCREENS[scr] || loginScreen)();
   if (scr === 'login') {
-    if (authStep() === 'recover') paintRecoverCaptcha();
+    if (authStep() === 'recover') { paintRecoverCaptcha(); startResendTimer(); }
     else if (authStep() === 'login') paintCaptcha();
   }
   if (scr === 'profile') ensureAdminContacts();
@@ -7377,6 +7443,7 @@ document.addEventListener('click', function (e) {
     'recover-captcha-refresh': function () { refreshRecoverCaptcha(); },
     'forgot-send': function () { sendResetCode(); },
     'forgot-reset': function () { resetPassword(); },
+    'resend-reset': function () { sendResetCode(); },
     'do-2fa': submitTwoFA,
     'resend-2fa': function () { if (state.pending2fa) startTeacher2FA(state.pending2fa.user); },
     'save-student-contact': saveStudentContact,

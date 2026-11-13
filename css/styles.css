@@ -1974,3 +1974,6 @@ html[data-theme="dark"] .auth-card-ico { background: rgba(99, 102, 241, 0.18); }
 @media (min-width: 768px) {
   .top-nav .header-inner { padding-right: 16px; }
 }
+
+/* Nofaol (cooldown) tugmalar */
+.btn:disabled, .btn[disabled] { opacity: 0.55; cursor: default; box-shadow: none; }
