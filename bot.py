@@ -417,11 +417,52 @@ async def cmd_login(message: types.Message):
     await attempt_login(message, parts[1], parts[2])
 
 
+def get_teacher_password() -> str:
+    """Ustoz paroli: Supabase bot_settings (key='teacher_password').
+
+    Qator bo'sh yoki topilmasa — eski standart "123" qaytadi.
+    Har chaqiriqda bazadan o'qiladi: saytda parol o'zgarsa bot ham darhol
+    yangi parolni qabul qiladi.
+    """
+    value = ""
+    try:
+        res = (supabase.table("bot_settings").select("value")
+               .eq("key", "teacher_password").limit(1).execute().data or [])
+        value = str(res[0].get("value") or "").strip() if res else ""
+    except Exception as e:
+        msg = str(e)
+        if "PGRST205" not in msg and "bot_settings" not in msg:
+            logging.warning(f"teacher_password o'qishda xato: {e}")
+    if not value:
+        value = str(getattr(config, "TEACHER_PASSWORD", "") or "").strip() or "123"
+    return value
+
+
+def is_admin_user(user) -> bool:
+    """Faqat ustozning shaxsiy Telegram akkaunti (config.ADMIN_ID) ustoz bo'la oladi."""
+    try:
+        return user is not None and int(user.id) == int(config.ADMIN_ID)
+    except Exception:
+        return False
+
+
 async def attempt_login(message: types.Message, login: str, password: str):
     """Login/parolni tekshirib, students.telegram_chat_id ni ulaydi."""
     try:
-        # Ustoz tekshiruvi
-        if login.lower() == "m_amirov" and password == "123":
+        # Ustoz tekshiruvi — parol Supabase bot_settings.teacher_password dan olinadi
+        if login.lower() == "m_amirov":
+            if not is_admin_user(message.from_user):
+                logging.warning(
+                    f"login: m_amirov urinishi begona akkauntdan "
+                    f"({getattr(message.from_user, 'id', None)})"
+                )
+                await message.answer(
+                    "⛔ Bu hisob faqat ustozning shaxsiy Telegram akkauntiga ulanadi."
+                )
+                return
+            if not check_password_match(password, get_teacher_password()):
+                await message.answer("❌ Kiritilgan parol noto'g'ri. Qayta urinib ko'ring.", parse_mode="HTML")
+                return
             await message.answer("👑 <b>Xush kelibsiz, Muzaffar Amirov!</b>\n\nUstoz hisobingiz ulandi.", reply_markup=admin_reply_keyboard(), parse_mode="HTML")
             return
         # O'quvchini bazadan qidirish
@@ -486,7 +527,16 @@ async def _finish_login_password(message: types.Message, uid: int, login: str, p
     '''2-qadam: parolni tekshirib, hisobni ulaydi yoki qayta so'raydi.'''
     pwd = str(password).strip()
     if str(login).lower() == "m_amirov":
-        if pwd == "123":
+        if not is_admin_user(message.from_user):
+            pending_logins.pop(uid, None)
+            logging.warning(
+                f"login(2-qadam): m_amirov urinishi begona akkauntdan ({uid})"
+            )
+            await message.answer(
+                "⛔ Bu hisob faqat ustozning shaxsiy Telegram akkauntiga ulanadi."
+            )
+            return
+        if check_password_match(pwd, get_teacher_password()):
             pending_logins.pop(uid, None)
             try:
                 await message.answer(
