@@ -1,5 +1,5 @@
 -- ============================================================
--- English Tutor — Supabase jadvallari (Step 5: chat + audio)
+-- English Teacher — Supabase jadvallari (Step 5: chat + audio)
 -- Supabase Dashboard → SQL Editor → "New query" → shu faylni
 -- joylashtirib → "Run" bosing.
 --

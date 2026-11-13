@@ -1,4 +1,4 @@
-# English Tutor — Telegram Mini App
+# English Teacher — Telegram Mini App
 
 Ingliz tili offline ustozlari uchun boshqaruv paneli va o'quvchi kabineti.
 **Butun interfeys o'zbek tilida.** Moliyaviy ma'lumotlar (narx, to'lov) butunlay yo'q — faqat o'quv jarayoni.
