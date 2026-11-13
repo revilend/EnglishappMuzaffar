@@ -601,6 +601,43 @@ const CloudSync = (function () {
     }
   }
 
+  /* --- bot_settings: umumiy kalit/qiymat (admin_email, admin_phone) --- */
+  async function getSetting(key) {
+    if (!ready() || !hasSettings || !key) return null;
+    try {
+      const res = await client.from('bot_settings').select('value').eq('key', key).limit(1);
+      if (res.error) {
+        if (missing(res.error)) hasSettings = false;
+        return null;
+      }
+      return res.data && res.data.length ? (res.data[0].value || null) : null;
+    } catch (e) { return null; }
+  }
+
+  async function setSetting(key, value) {
+    if (!ready() || !hasSettings || !key) return false;
+    try {
+      let res = await client.from('bot_settings')
+        .update({ value: value }).eq('key', key).select('key');
+      if (res.error) {
+        if (missing(res.error)) { hasSettings = false; return false; }
+        throw res.error;
+      }
+      if (!res.data || !res.data.length) {
+        /* qator hali yo'q — yangi qator sifatida qo'shamiz */
+        res = await client.from('bot_settings').insert({ key: key, value: value }).select('key');
+        if (res.error) {
+          if (missing(res.error)) { hasSettings = false; return false; }
+          throw res.error;
+        }
+      }
+      return true;
+    } catch (e) {
+      console.warn('[cloud] bot_settings ' + key + ':', (e && e.message) || e);
+      return false;
+    }
+  }
+
   /* --- Bulutdan tortib olish ---
      Ustoz: barcha jadvallar. O'quvchi: FAQAT o'z ma'lumotlari —
      boshqa o'quvchilarning parollari/ma'lumotlari brauzerga tushmaydi. --- */
@@ -1213,56 +1250,6 @@ const CloudSync = (function () {
     return hit;
   }
 
-  /* Login bo'yicha bitta o'quvchi qatorini oladi (parolni tiklash uchun) */
-  async function findStudentByLogin(login) {
-    if (!ready()) return null;
-    const value = String(login || '').trim();
-    if (!value) return null;
-    const res = await client.from('students').select('*').ilike('login', value);
-    if (res.error) throw res.error;
-    return (res.data || [])[0] || null;
-  }
-
-  /* --- password_resets: parolni tiklash OTP kodlari (5 daqiqa) --- */
-  async function savePasswordReset(row) {
-    if (!ready() || !row) return null;
-    try {
-      const res = await client.from('password_resets').insert({
-        login: String(row.login || '').toLowerCase(),
-        student_id: row.studentId == null ? null : Number(row.studentId),
-        code: String(row.code || ''),
-        expires_at: row.expiresAt || new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-        used: false
-      }).select('*');
-      if (res.error) throw res.error;
-      return (res.data || [])[0] || null;
-    } catch (e) {
-      console.warn('[cloud] password_resets insert:', (e && e.message) || e);
-      return null;
-    }
-  }
-
-  /* Kodni tekshiradi va bir marta ishlatilgan deb belgilaydi */
-  async function consumePasswordReset(login, code) {
-    if (!ready()) return null;
-    try {
-      const res = await client.from('password_resets').select('*')
-        .eq('login', String(login || '').trim().toLowerCase())
-        .eq('code', String(code || ''))
-        .eq('used', false);
-      if (res.error) throw res.error;
-      const row = (res.data || []).slice().sort(function (a, b) { return Number(b.id) - Number(a.id); })[0];
-      if (!row) return null;
-      if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) return null;
-      const upd = await client.from('password_resets').update({ used: true }).eq('id', row.id);
-      if (upd.error) throw upd.error;
-      return row;
-    } catch (e) {
-      console.warn('[cloud] password_resets check:', (e && e.message) || e);
-      return null;
-    }
-  }
-
   /* Telefon/Gmail maydonlarini yangilaydi (students.email / students.phone) */
   async function updateStudentContact(sid, fields) {
     if (!ready() || !fields) return false;
@@ -1669,9 +1656,8 @@ const CloudSync = (function () {
     queueEmail: queueEmail,
     lookupStudentByContact: lookupStudentByContact,
     updateStudentContact: updateStudentContact,
-    findStudentByLogin: findStudentByLogin,
-    savePasswordReset: savePasswordReset,
-    consumePasswordReset: consumePasswordReset,
+    getSetting: getSetting,
+    setSetting: setSetting,
     addPayment: addPayment,
     pullMonthlyFees: pullMonthlyFees,
     saveMonthlyFee: saveMonthlyFee,
@@ -4229,12 +4215,25 @@ function profileScreen() {
   <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">${ico('key', 16)} ${t("Parolni o'zgartirish")}</button>
 
   ${(!isTeacher() && st) ? `
-  <div class="section-title">${t("Aloqa ma'lumotlari")}</div>
+  <div class="section-title">📱 ${t("Aloqa va tiklash ma'lumotlari")}</div>
   <div class="card">
-    <label class="field-label" for="st-email">${t('Gmail manzili')}</label>
+    <label class="field-label" for="st-phone">${t('Telefon raqam')}</label>
+    <input class="input" id="st-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="+998 90 123 45 67" value="${esc(st.phone || '')}" />
+    <label class="field-label" for="st-email" style="margin-top:6px">${t('Gmail manzili')}</label>
     <input class="input" id="st-email" type="email" autocomplete="email" placeholder="ism@gmail.com" value="${esc(st.email || '')}" />
-    <div class="muted small" style="margin-top:6px">${t('Parolni tiklash kodi shu manzilga yuboriladi.')}</div>
-    <button type="button" class="btn btn-primary btn-block" data-act="save-student-email" style="margin-top:8px">${t('Saqlash')}</button>
+    <div class="muted small" style="margin-top:6px">${t("Parolni tiklash kodi shu telefon (Telegram) yoki Gmail manzilga yuboriladi.")}</div>
+    <button type="button" class="btn btn-primary btn-block" data-act="save-student-contact" style="margin-top:8px">💾 ${t('Saqlash')}</button>
+  </div>` : ''}
+
+  ${isTeacher() ? `
+  <div class="section-title">🔐 ${t('2FA va tiklash sozlamalari')}</div>
+  <div class="card">
+    <div class="muted small" style="margin-bottom:8px">${t("Kirishdagi 2 bosqichli kod va parolni tiklash kodi shu manzillarga yuboriladi.")}</div>
+    <label class="field-label" for="tc-email">${t('Ustoz Gmail manzili')}</label>
+    <input class="input" id="tc-email" type="email" autocomplete="email" placeholder="ustoz@gmail.com" value="${esc(adminContacts.email || '')}" />
+    <label class="field-label" for="tc-phone" style="margin-top:6px">${t('Telefon raqam')}</label>
+    <input class="input" id="tc-phone" type="tel" inputmode="tel" maxlength="20" placeholder="+998 90 123 45 67" value="${esc(adminContacts.phone || '')}" />
+    <button type="button" class="btn btn-primary btn-block" data-act="save-teacher-contact" style="margin-top:10px">💾 ${t('Saqlash')}</button>
   </div>` : ''}
 
   ${isTeacher() ? `
@@ -6047,7 +6046,7 @@ function submitTwoFA() {
   toast('Xush kelibsiz!');
 }
 
-/* ==================== PAROLNI TIKLASH (Telegram OTP) ==================== */
+/* ==================== PAROLNI TIKLASH (telefon / Gmail / login) ==================== */
 function openForgotPwd() {
   state.resetCtx = null;
   openModal(`
@@ -6055,14 +6054,14 @@ function openForgotPwd() {
       <h3>Parolni tiklash</h3>
       <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
     </div>
-    <div class="muted small">Parolni unutgan bo'lsangiz, hisobingizga ulangan Telegram orqali
-      6 xonali tasdiqlash kodi yuboriladi. Kod 5 daqiqa amal qiladi.</div>
-    <label class="field-label" for="fp-login" style="margin-top:10px">Login</label>
-    <input class="input" id="fp-login" autocomplete="username" autocapitalize="none" autocorrect="off" placeholder="masalan: jasur" />
+    <div class="muted small">Telefon raqami (+998...), Gmail manzili yoki loginni kiriting —
+      6 xonali kod ulangan Telegram va/yoki Gmail orqali yuboriladi. Kod 10 daqiqa amal qiladi.</div>
+    <label class="field-label" for="fp-contact" style="margin-top:10px">Telefon / Gmail / Login</label>
+    <input class="input" id="fp-contact" autocomplete="username" autocapitalize="none" autocorrect="off" placeholder="+998 90 123 45 67 yoki ism@gmail.com" />
     <div class="field-error" id="fp-error"></div>
     <button type="button" class="btn btn-primary btn-block" data-act="forgot-send">Kod yuborish</button>
     <div id="fp-step2" hidden>
-      <label class="field-label" for="fp-code" style="margin-top:10px">Telegramdan kelgan kod (6 xona)</label>
+      <label class="field-label" for="fp-code" style="margin-top:10px">Kod (6 xona)</label>
       <input class="input" id="fp-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••" />
       <label class="field-label" for="fp-new">Yangi parol</label>
       <input class="input" id="fp-new" type="password" autocomplete="new-password" placeholder="••••" />
@@ -6071,7 +6070,7 @@ function openForgotPwd() {
   `);
 }
 
-/* Modal ichidagi xato matni (login/OTP/parol) */
+/* Modal ichidagi xato matni */
 function resetError(m) {
   const err = $('#fp-error');
   if (!err) return;
@@ -6080,53 +6079,74 @@ function resetError(m) {
 }
 
 async function sendResetCode() {
-  const login = String(($('#fp-login') || {}).value || '').trim().toLowerCase();
-  if (!login) { resetError('Loginni kiriting'); return; }
+  const raw = String(($('#fp-contact') || {}).value || '').trim();
+  if (!raw) { resetError('Telefon, Gmail yoki loginni kiriting'); return; }
 
-  const isTeacher = login === TEACHER_LOGIN;
+  const isTeacher = raw.toLowerCase() === TEACHER_LOGIN;
   let row = null;
-  if (!isTeacher) {
-    try { row = await CloudSync.findStudentByLogin(login); }
+  let telegramChat = null;
+  let emailTo = '';
+
+  if (isTeacher) {
+    /* Ustoz: kod ADMIN kanallariga (bot_settings.admin_email yoki config.ADMIN_EMAIL) */
+    telegramChat = 'ADMIN';
+    emailTo = String(adminContacts.email || (await CloudSync.getSetting('admin_email')) || 'ADMIN').trim();
+  } else {
+    try { row = await CloudSync.lookupStudentByContact(raw); }
     catch (e) { row = null; }
-    if (!row) { resetError("Bunday login topilmadi — loginni tekshirib qayta urinib ko'ring"); return; }
-    /* Telegram ulanmagan bo'lsa kod yuborishning iloji yo'q */
-    if (!row.telegram_chat_id) {
-      resetError("Telegram botga ulanmagansiz, parolni tiklash uchun ustozga murojaat qiling");
+    if (!row) { resetError("Bunday telefon, Gmail yoki login topilmadi — qayta tekshirib ko'ring"); return; }
+    if (row.telegram_chat_id) telegramChat = String(row.telegram_chat_id);
+    if (row.email) emailTo = String(row.email).trim();
+    if (!telegramChat && !emailTo) {
+      resetError("Telegram va Gmail ulanmagan — parolni tiklash uchun ustozga murojaat qiling");
       return;
     }
   }
 
   const code = sixDigitCode();
-  const until = Date.now() + 5 * 60 * 1000;   /* 5 daqiqa */
-  const saved = await CloudSync.savePasswordReset({
-    login: (row && row.login ? String(row.login) : login).toLowerCase(),
-    studentId: isTeacher ? null : row.id,
+  const until = Date.now() + 10 * 60 * 1000;   /* 10 daqiqa */
+  const saved = await CloudSync.saveAuthCode({
+    purpose: 'reset',
+    studentId: row ? row.id : null,
+    contact: raw,
     code: code,
     expiresAt: new Date(until).toISOString()
   });
   if (!saved) { resetError("Kodni yozishda xatolik — keyinroq urinib ko'ring"); return; }
 
-  /* Kod foydalanuvchining Telegramiga (ustoz bo'lsa — ADMIN ga) yuboriladi */
-  CloudSync.queueMessages([{
-    chat_id: isTeacher ? 'ADMIN' : String(row.telegram_chat_id),
-    student_id: isTeacher ? null : row.id,
-    text: '🔑 <b>Parolni tiklash kodi</b>\nKod: <b>' + code + '</b>\n5 daqiqa amal qiladi.' +
-          "\n\nAgar bu so'rovni siz yubormagan bo'lsangiz, parolni o'zgartirmang."
-  }]);
+  /* Ulangan kanallarga yuboramiz */
+  if (telegramChat) {
+    CloudSync.queueMessages([{
+      chat_id: telegramChat,
+      student_id: row ? row.id : null,
+      text: '🔑 <b>Parolni tiklash kodi</b>\nKod: <b>' + code + '</b>\n10 daqiqa amal qiladi.' +
+            "\n\nAgar bu so'rovni siz yubormagan bo'lsangiz, kodni hech kimga bermang."
+    }]);
+  }
+  if (emailTo) {
+    CloudSync.queueEmail([{
+      to_email: emailTo,
+      subject: 'English Tutor — parolni tiklash kodi',
+      body_html: '<div style="font-family:Arial,sans-serif;line-height:1.5">' +
+        '<h2>Parolni tiklash</h2><p>Tasdiqlash kodi:</p>' +
+        '<p style="font-size:26px;letter-spacing:5px"><b>' + code + '</b></p>' +
+        '<p>Kod 10 daqiqa amal qiladi. Agar so\'rovni siz yubormagan bo\'lsangiz, xatni e\'tiborsiz qoldiring.</p></div>'
+    }]);
+  }
 
   state.resetCtx = {
-    login: login,
     code: code,
     until: until,
-    studentId: isTeacher ? null : row.id,
-    isTeacher: isTeacher
+    isTeacher: isTeacher,
+    studentId: row ? row.id : null,
+    contact: raw
   };
   const step2 = $('#fp-step2');
   if (step2) step2.hidden = false;
   resetError('');
   const codeEl = $('#fp-code');
   if (codeEl) codeEl.focus();
-  toast(isTeacher ? 'Kod Telegram orqali yuborildi' : 'Kod Telegramingizga yuborildi');
+  toast(isTeacher ? 'Kod ustoz kanallariga yuborildi' : 'Kod yuborildi — Telegram/Gmailni tekshiring');
 }
 
 async function resetPassword() {
@@ -6140,9 +6160,16 @@ async function resetPassword() {
   if (code !== ctx.code) { resetError("Kod noto'g'ri"); return; }
   if (n1.length < 3) { resetError("Yangi parol kamida 3 ta belgi bo'lsin"); return; }
 
-  /* Kod bazada bir marta ishlaydi */
-  const used = await CloudSync.consumePasswordReset(ctx.login, code);
+  /* Kod bazada bir marta ishlaydi (purpose: 'reset') */
+  const used = await CloudSync.consumeAuthCode('reset', code);
   if (!used) { resetError('Kod eskirgan yoki allaqachon ishlatilgan'); return; }
+  /* Kod aynan shu hisob uchun so'ralgan bo'lishi shart */
+  if (used.contact && String(used.contact).toLowerCase() !== String(ctx.contact).toLowerCase()) {
+    resetError('Kod boshqa hisob uchun berilgan'); return;
+  }
+  if (used.student_id != null && ctx.studentId != null && Number(used.student_id) !== Number(ctx.studentId)) {
+    resetError('Kod boshqa hisob uchun berilgan'); return;
+  }
 
   if (ctx.isTeacher) {
     /* bot_settings.teacher_password yangilanadi */
@@ -6164,21 +6191,69 @@ async function resetPassword() {
   render();
   toast('Parol yangilandi ✓ — endi yangi parol bilan kiring');
 }
-/* ==================== O'QUVCHI: GMAIL MANZILI ==================== */
-function saveStudentEmail() {
+
+/* ==================== ALOQA MA'LUMOTLARI (o'quvchi / ustoz) ==================== */
+let adminContacts = { email: '', phone: '', loaded: false };
+
+/* Telefonni +998XXXXXXXXX ko'rinishida normallashtiradi */
+function normPhone(raw) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.length === 9) return '+998' + digits;
+  if (digits.length === 12 && digits.indexOf('998') === 0) return '+' + digits;
+  if (digits.length === 13 && digits.indexOf('998') === 1) return digits;
+  return String(raw || '').trim();
+}
+
+function validEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+function validPhone(v) { return /^\+\d{9,15}$/.test(v); }
+
+/* O'quvchi: telefon + Gmail (students.phone / students.email) */
+function saveStudentContact() {
   const st = linkedStudent();
   if (!st) return;
-  const el = $('#st-email');
-  const v = String((el && el.value) || '').trim();
-  if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { toast("Gmail manzil noto'g'ri", 'error'); return; }
-  CloudSync.updateStudentContact(st.id, { email: v })
+  const phone = normPhone(String(($('#st-phone') || {}).value || '').trim());
+  const email = String(($('#st-email') || {}).value || '').trim();
+  if (phone && !validPhone(phone)) { toast("Telefon raqam noto'g'ri: +998 90 123 45 67", 'error'); return; }
+  if (email && !validEmail(email)) { toast("Gmail manzil noto'g'ri", 'error'); return; }
+  CloudSync.updateStudentContact(st.id, { phone: phone, email: email })
     .then(function (ok) {
       render();
-      if (ok) toast('Gmail manzil saqlandi ✓');
+      if (ok) toast("Aloqa ma'lumotlari saqlandi ✓");
       else toast("Bulut bilan aloqa yo'q", 'error');
     })
     .catch(function () { toast('Saqlashda xatolik', 'error'); });
 }
+
+/* Ustoz: bot_settings.admin_email / admin_phone (2FA va tiklash kanallari) */
+async function ensureAdminContacts() {
+  if (!isTeacher() || adminContacts.loaded) return;
+  adminContacts.loaded = true;
+  const email = await CloudSync.getSetting('admin_email');
+  const phone = await CloudSync.getSetting('admin_phone');
+  adminContacts.email = email || '';
+  adminContacts.phone = phone || '';
+  if (state.screen === 'profile') render();
+}
+
+function saveTeacherContact() {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const email = String(($('#tc-email') || {}).value || '').trim();
+  const phone = normPhone(String(($('#tc-phone') || {}).value || '').trim());
+  if (email && !validEmail(email)) { toast("Gmail manzil noto'g'ri", 'error'); return; }
+  if (phone && !validPhone(phone)) { toast("Telefon raqam noto'g'ri: +998 90 123 45 67", 'error'); return; }
+  Promise.all([
+    CloudSync.setSetting('admin_email', email),
+    CloudSync.setSetting('admin_phone', phone)
+  ]).then(function (res) {
+    adminContacts.email = email;
+    adminContacts.phone = phone;
+    render();
+    if (res[0] && res[1]) toast('2FA sozlamalari saqlandi ✓');
+    else toast("Bulut bilan aloqa yo'q", 'error');
+  }).catch(function () { toast('Saqlashda xatolik', 'error'); });
+}
+
 /* ==================== Render ==================== */
 const SCREENS = {
   'login': loginScreen,
@@ -6214,6 +6289,7 @@ function render() {
   renderTopNavControls();
   $('#screen').innerHTML = (SCREENS[scr] || loginScreen)();
   if (scr === 'login') paintCaptcha();
+  if (scr === 'profile') ensureAdminContacts();
   if (scr === 'students') refreshStudentList();
   if (scr === 'grades') ensureGradeState();
   if (scr === 'attendance') ensureAttState();
@@ -6516,7 +6592,8 @@ document.addEventListener('click', function (e) {
     'forgot-reset': function () { resetPassword(); },
     'do-2fa': submitTwoFA,
     'resend-2fa': function () { if (state.pending2fa) startTeacher2FA(state.pending2fa.user); },
-    'save-student-email': saveStudentEmail,
+    'save-student-contact': saveStudentContact,
+    'save-teacher-contact': saveTeacherContact,
     'logout': logout,
     'nav': function () { go(btn.getAttribute('data-screen')); },
 

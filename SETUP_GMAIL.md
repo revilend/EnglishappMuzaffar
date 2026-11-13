@@ -48,14 +48,13 @@ Migratsiya **idempotent** — qayta yurgizish xavfsiz (mavjud ma'lumot o'chmaydi
 5. Faylning oxirgi qatoridagi `notify pgrst, 'reload schema';` PostgREST keshini yangilaydi —
    yangi jadvallar saytga darhol ko'rinadi (ba'zan 5–10 soniya kerak bo'ladi).
 
-Bu migratsiya quyidagilarni qo'shadi (15- va 16-bo'limlar):
+Bu migratsiya quyidagilarni qo'shadi (15-bo'lim):
 
 | Obyekt | Nima uchun |
 |---|---|
 | `students.phone`, `students.email` | o'quvchi telefoni / Gmail manzili |
-| `auth_codes` | ustoz 2FA va eski usul parol tiklash kodlari (3 daqiqa) |
+| `auth_codes` | ustoz 2FA kodi (3 daqiqa) va parol tiklash kodi (10 daqiqa) — `purpose` ustuni bilan |
 | `email_outbox` | sayt yozadigan xatlar navbati (`status = 'pending'`) |
-| `password_resets` | Telegram orqali parol tiklash OTP kodlari (5 daqiqa) |
 
 ### Tekshirish (SQL Editor'da)
 
@@ -64,7 +63,7 @@ Bu migratsiya quyidagilarni qo'shadi (15- va 16-bo'limlar):
 select table_name
 from information_schema.tables
 where table_schema = 'public'
-  and table_name in ('auth_codes', 'email_outbox', 'password_resets');
+  and table_name in ('auth_codes', 'email_outbox');
 
 -- 2) ustunlar qo'shilganmi?
 select column_name, data_type
@@ -75,13 +74,13 @@ where table_schema = 'public' and table_name = 'students'
 -- 3) RLS yoqilganmi? (rowsecurity = true bo'lishi kerak)
 select relname, relrowsecurity
 from pg_class
-where relname in ('auth_codes', 'email_outbox', 'password_resets');
+where relname in ('auth_codes', 'email_outbox');
 
 -- 4) xatlar navbati bo'shmi?
 select count(*) as pending from public.email_outbox where status = 'pending';
 ```
 
-1-so'rovda **3 qator**, 2-so'rovda **2 qator** qaytishi kerak.
+1-so'rovda **2 qator**, 2-so'rovda **2 qator** qaytishi kerak.
 
 ---
 

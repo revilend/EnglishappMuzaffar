@@ -8,6 +8,7 @@ import os
 import re
 import smtplib
 import ssl
+import time
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from aiohttp import web
@@ -2122,6 +2123,32 @@ async def outbox_watcher():
 # ============================================================
 # Gmail (smtplib) — email_outbox orqali xat yuborish
 # ============================================================
+# Ustozning Gmail manzili keshi (bot_settings.admin_email — 60 soniya)
+_admin_email_cache = {"value": "", "ts": 0.0}
+
+
+def get_admin_email() -> str:
+    """Ustoz Gmail manzili: avval bot_settings.admin_email, keyin config.ADMIN_EMAIL."""
+    now = time.monotonic()
+    if now - _admin_email_cache["ts"] < 60:
+        return _admin_email_cache["value"]
+    value = ""
+    try:
+        res = (supabase.table("bot_settings").select("value")
+               .eq("key", "admin_email").limit(1).execute().data or [])
+        value = str(res[0].get("value") or "").strip() if res else ""
+    except Exception as e:
+        msg = str(e)
+        if "PGRST205" not in msg and "bot_settings" not in msg:
+            logging.warning(f"admin_email o'qishda xato: {e}")
+    if not value:
+        value = (getattr(config, "ADMIN_EMAIL", "")
+                 or getattr(config, "GMAIL_USER", "") or "").strip()
+    _admin_email_cache["value"] = value
+    _admin_email_cache["ts"] = now
+    return value
+
+
 async def send_gmail(to_email: str, subject: str, body_html: str) -> bool:
     """Gmail SMTP (SSL, 465) orqali HTML xat yuboradi.
 
@@ -2167,7 +2194,7 @@ async def email_outbox_tick() -> int:
         target = str(r.get("to_email") or "").strip()
         # 'ADMIN' — ustozning Gmail manzili (config.ADMIN_EMAIL)
         if target.upper() == "ADMIN":
-            target = (getattr(config, "ADMIN_EMAIL", "") or getattr(config, "GMAIL_USER", "") or "").strip()
+            target = get_admin_email()
         try:
             if not target or "@" not in target:
                 raise ValueError(f"noto'g'ri manzil: {target!r}")

@@ -334,29 +334,3 @@ grant all on all sequences in schema public to anon, authenticated, service_role
 
 -- PostgREST sxema keshini yangilash (yangi jadvallar darhol ko'rinadi)
 notify pgrst, 'reload schema';
-
--- ============================================================
--- 16) Parolni tiklash OTP kodlari (password_resets)
---     Sayt kodni yozadi, bot Telegram orqali yuboradi (5 daqiqa amal qiladi)
--- ============================================================
-create table if not exists public.password_resets (
-  id          bigint generated always as identity primary key,
-  login       text not null,
-  student_id  bigint references public.students (id) on delete cascade,
-  code        text not null,
-  expires_at  timestamptz not null,
-  used        boolean not null default false,
-  created_at  timestamptz not null default now()
-);
-create index if not exists password_resets_login_idx on public.password_resets (login, code, used);
-create index if not exists password_resets_created_idx on public.password_resets (created_at);
-
-alter table public.password_resets enable row level security;
-
-drop policy if exists "demo password_resets all" on public.password_resets;
-create policy "demo password_resets all" on public.password_resets
-  for all using (true) with check (true);
-
-grant all on public.password_resets to anon, authenticated, service_role;
-
-notify pgrst, 'reload schema';

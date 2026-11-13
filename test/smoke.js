@@ -2263,89 +2263,118 @@ await (async () => {
   await new Promise(r => setTimeout(r, 250));
   check(text().includes('Xush kelibsiz'), "2fa: to'g'ri kod bilan sessiya ochildi");
 
-  /* (c) parolni tiklash: Telegram OTP (password_resets) → yangi parol xeshi */
+  /* (c) parolni tiklash: telefon/Gmail → auth_codes (reset) → yangi parol xeshi */
   const resetRow = (cloudStub.db.students || []).filter(r => r.login)[0];
   const resetLogin = String(resetRow.login);
-  const resetChat = 777001;
-  resetRow.telegram_chat_id = resetChat;
+  const resetPhone = '+998901234567';
+  const resetMail = 'reset.test@gmail.com';
+  resetRow.phone = resetPhone;
+  resetRow.email = resetMail;
+  resetRow.telegram_chat_id = 777001;
   logout();
   clickAct('open-forgot');
-  check(!!q('#fp-login') && !!q('#fp-step2'), 'reset: parolni tiklash modali (login) ochildi');
+  check(!!q('#fp-contact') && !!q('#fp-step2'), 'reset: parolni tiklash modali ochildi');
 
-  /* (c1) Telegram ulanmagan bo'lsa — kod yuborilmaydi, ustozga murojaat */
+  /* (c1) na Telegram, na Gmail ulangan → kod yuborilmaydi, ustozga murojaat */
+  const tgKeep = resetRow.telegram_chat_id;
   resetRow.telegram_chat_id = null;
-  setVal('#fp-login', resetLogin);
+  resetRow.email = '';
+  setVal('#fp-contact', resetPhone);
   clickAct('forgot-send');
-  await new Promise(r => setTimeout(r, 250));
+  await new Promise(r => setTimeout(r, 350));
   check(q('#fp-error').classList.contains('show') &&
-        q('#fp-error').textContent.includes('Telegram botga ulanmagansiz') &&
-        !(cloudStub.db.password_resets || []).length,
-    "reset: Telegram ulanmagan bo'lsa kod yuborilmaydi (ustozga murojaat)");
+        q('#fp-error').textContent.includes('ulanmagan') &&
+        !(cloudStub.db.auth_codes || []).some(r => r.purpose === 'reset'),
+    "reset: kanal yo'q bo'lsa kod yuborilmaydi (ustozga murojaat)");
   check(q('#fp-step2').hidden === true, 'reset: kod yuborilmagani uchun 2-qadam yopiq');
-  resetRow.telegram_chat_id = resetChat;
+  resetRow.telegram_chat_id = tgKeep;
+  resetRow.email = resetMail;
 
-  /* (c2) Telegram ulangan → 6 xonali OTP bazaga va outbox'ga yoziladi */
-  setVal('#fp-login', resetLogin);
+  /* (c2) telefon (oxirgi 9 raqam) bo'yicha topib, Telegram + Gmail kanallariga kod */
+  setVal('#fp-contact', '+998 90 123 45 67');
   clickAct('forgot-send');
-  check(await until(() => q('#fp-step2') && q('#fp-step2').hidden === false, 2000),
-    'reset: kod yuborildi — kod/parol maydonlari ochildi');
-  const pr = (cloudStub.db.password_resets || []).filter(r => String(r.login) === resetLogin.toLowerCase()).pop();
-  check(!!pr && /^\d{6}$/.test(String(pr.code)), 'reset: 6 xonali OTP password_resets ga yozildi');
-  check((cloudStub.db.telegram_outbox || []).some(r => String(r.chat_id) === String(resetChat) &&
-      String(r.text || '').includes(String(pr.code))),
-    "reset: kod o'quvchining Telegram outbox'iga qo'yildi");
-  const hashBefore = String(resetRow.password || '');
+  check(await until(() => q('#fp-step2') && q('#fp-step2').hidden === false, 3000),
+    'reset: telefon bo‘yicha topildi — kod/parol maydonlari ochildi');
+  const rc = (cloudStub.db.auth_codes || []).filter(r => r.purpose === 'reset').pop();
+  check(!!rc && /^\d{6}$/.test(String(rc.code)) && Number(rc.student_id) === Number(resetRow.id),
+    'reset: 6 xonali kod auth_codes (reset) ga student_id bilan yozildi');
+  check((cloudStub.db.telegram_outbox || []).some(r => String(r.chat_id) === '777001' &&
+      String(r.text || '').includes(String(rc.code))),
+    'reset: kod Telegram outbox ga qo‘yildi');
+  check((cloudStub.db.email_outbox || []).some(r => String(r.to_email) === resetMail &&
+      String(r.body_html || '').includes(String(rc.code))),
+    'reset: kod Gmail outbox ga qo‘yildi');
 
-  /* noto'g'ri kod parolni o'zgartirmaydi */
+  const hashBefore = String(resetRow.password || '');
   setVal('#fp-code', '000000');
   setVal('#fp-new', 'yangi456');
   clickAct('forgot-reset');
-  await new Promise(r => setTimeout(r, 200));
-  const hashBad = String((cloudStub.db.students || []).filter(r => r.id === resetRow.id)[0].password || '');
-  check(hashBad === hashBefore, "reset: noto'g'ri kod parolni o'zgartirmaydi");
+  await new Promise(r => setTimeout(r, 300));
+  check(String((cloudStub.db.students || []).filter(r => r.id === resetRow.id)[0].password || '') === hashBefore,
+    "reset: noto'g'ri kod parolni o'zgartirmaydi");
 
-  setVal('#fp-code', String(pr.code));
+  setVal('#fp-code', String(rc.code));
   setVal('#fp-new', 'yangi456');
   clickAct('forgot-reset');
   check(await until(() => q('#modal-overlay').hidden === true, 2500), 'reset: modal yopildi');
   const hashAfter = String((cloudStub.db.students || []).filter(r => r.id === resetRow.id)[0].password || '');
   check(/^[0-9a-f]{64}$/.test(hashAfter) && hashAfter !== hashBefore,
     'reset: yangi parol SHA-256 xesh ko‘rinishida saqlandi');
-  check((cloudStub.db.password_resets || []).filter(r => r.id === pr.id)[0].used === true,
-    'reset: OTP bir marta ishlatilgan deb belgilandi');
+  check((cloudStub.db.auth_codes || []).filter(r => r.id === rc.id)[0].used === true,
+    'reset: kod bir marta ishlatilgan deb belgilandi');
 
   await loginAs(resetLogin, 'yangi456');
   check(!!JSON.parse(win.localStorage.getItem('et_session') || 'null'),
     'reset: yangi parol bilan kirish ishlaydi');
-  /* (d) o'quvchi profilida Gmail maydoni */
+
+  /* (d) o'quvchi profilida telefon + Gmail */
   forceNav('profile');
-  check(!!q('#st-email'), "profil: o'quvchida Gmail maydoni bor");
+  check(!!q('#st-phone') && !!q('#st-email'), "profil: o'quvchida telefon va Gmail maydonlari bor");
+  setVal('#st-phone', '+998 93 555 44 33');
   setVal('#st-email', 'yangi.mail@gmail.com');
-  clickAct('save-student-email');
-  check(await until(() => (cloudStub.db.students || []).some(r => String(r.email || '') === 'yangi.mail@gmail.com'), 2000),
-    "profil: Gmail manzil students.email ga saqlandi");
+  clickAct('save-student-contact');
+  check(await until(() => (cloudStub.db.students || []).some(r =>
+      String(r.phone || '') === '+998935554433' && String(r.email || '') === 'yangi.mail@gmail.com'), 3000),
+    'profil: telefon normallashtirilib students.phone va students.email saqlandi');
 
   /* (e) ustoz (m_amirov) uchun OTP → bot_settings.teacher_password */
   logout();
   clickAct('open-forgot');
-  setVal('#fp-login', 'm_amirov');
+  setVal('#fp-contact', 'm_amirov');
   clickAct('forgot-send');
-  check(await until(() => q('#fp-step2') && q('#fp-step2').hidden === false, 2000),
-    'reset: ustoz uchun ham kod so‘raladi');
-  const tpr = (cloudStub.db.password_resets || []).filter(r => String(r.login) === 'm_amirov').pop();
+  check(await until(() => q('#fp-step2') && q('#fp-step2').hidden === false, 3000),
+    'reset: ustoz uchun ham kod yuboriladi');
+  const tpr = (cloudStub.db.auth_codes || []).filter(r => r.purpose === 'reset' && r.student_id == null).pop();
   check(!!tpr && (cloudStub.db.telegram_outbox || []).some(r => String(r.chat_id) === 'ADMIN' &&
       String(r.text || '').includes(String(tpr.code))),
     'reset: ustoz kodi telegram_outbox (ADMIN) ga qo‘yildi');
+  check((cloudStub.db.email_outbox || []).some(r => String(r.to_email).toUpperCase() === 'ADMIN' &&
+      String(r.body_html || '').includes(String(tpr.code))),
+    'reset: ustoz kodi email_outbox (ADMIN) ga qo‘yildi');
   setVal('#fp-code', String(tpr.code));
   setVal('#fp-new', '12345');
   clickAct('forgot-reset');
   check(await until(() => q('#modal-overlay').hidden === true, 2500), 'reset: ustoz paroli saqlandi (modal yopildi)');
   const bs = (cloudStub.db.bot_settings || []).filter(r => r.key === 'teacher_password')[0];
   check(!!bs && String(bs.value) === '12345', 'reset: bot_settings.teacher_password yangilandi');
-  await new Promise(r => setTimeout(r, 250));
+  await new Promise(r => setTimeout(r, 300));
   await loginAs('m_amirov', '12345');
   check(!!JSON.parse(win.localStorage.getItem('et_session') || 'null'),
     'reset: ustoz yangi parol bilan kiradi');
+
+  /* (f) ustoz profili: 2FA/tiklash uchun Gmail va telefon (bot_settings) */
+  forceNav('profile');
+  check(await until(() => !!q('#tc-email') && !!q('#tc-phone'), 3000),
+    'profil: ustozda “2FA va tiklash sozlamalari” bloki bor');
+  setVal('#tc-email', 'ustoz.2fa@gmail.com');
+  setVal('#tc-phone', '+998 90 111 22 33');
+  clickAct('save-teacher-contact');
+  check(await until(() => (cloudStub.db.bot_settings || []).some(r => String(r.key) === 'admin_email' &&
+      String(r.value) === 'ustoz.2fa@gmail.com') &&
+      (cloudStub.db.bot_settings || []).some(r => String(r.key) === 'admin_phone' &&
+      String(r.value) === '+998901112233'), 3000),
+    'profil: ustoz Gmail va telefoni bot_settings (admin_email/admin_phone) ga saqlandi');
+
   console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
   process.exit(failed ? 1 : 0);
 })();
