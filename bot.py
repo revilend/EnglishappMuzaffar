@@ -11,6 +11,7 @@ import ssl
 import time
 from datetime import datetime, timezone
 from email.message import EmailMessage
+import aiohttp
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.fsm.context import FSMContext
@@ -2249,11 +2250,33 @@ def get_admin_email() -> str:
 
 
 async def send_gmail(to_email: str, subject: str, body_html: str) -> bool:
-    """Gmail SMTP (SSL, 465) orqali HTML xat yuboradi.
+    """HTML xat yuboradi.
 
-    SMTP bloklovchi (sync) kutubxona bo'lgani uchun butun ish
-    asyncio.to_thread ichida bajariladi — event loop qotmaydi.
+    1) GMAIL_WEBHOOK_URL berilgan bo'lsa — xat o'sha manzilga JSON
+       ({"to", "subject", "html"}) ko'rinishida POST qilinadi.
+       200 OK → True, aks holda xato (qator 'failed' bo'lib qoladi).
+    2) Aks holda — eski Gmail SMTP (SSL, 465) usuli ishlaydi.
     """
+    webhook_url = (os.getenv("GMAIL_WEBHOOK_URL") or "").strip()
+    if webhook_url:
+        payload = {
+            "to": str(to_email).strip(),
+            "subject": subject or "Bildirishnoma",
+            "html": body_html or "",
+        }
+        timeout = aiohttp.ClientTimeout(total=30)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(webhook_url, json=payload) as resp:
+                    text = (await resp.text())[:300]
+                    if resp.status == 200:
+                        logging.info(f"Email webhook OK -> {payload['to']}")
+                        return True
+                    raise RuntimeError(f"webhook {resp.status}: {text}")
+        except Exception as e:
+            logging.error(f"email webhook error -> {payload['to']}: {e}")
+            raise
+
     user = (getattr(config, "GMAIL_USER", "") or "").strip()
     app_pw = (getattr(config, "GMAIL_APP_PASSWORD", "") or "").strip()
     if not user or not app_pw:
