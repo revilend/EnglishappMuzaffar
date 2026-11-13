@@ -3466,11 +3466,6 @@ function teacherHome() {
   const u = currentUser() || {};
   const name = u.name || TEACHER_NAME;
   const recent = students.slice(0, 3);
-  /* Berilgan uyga vazifalar (eng yangisi yuqorida) — ustoz shu yerda
-     tahrirlaydi/o'chiradi (hwRowHTML avval hech qayerda ishlatilmasdi) */
-  const hwList = getHomework().slice().sort(function (a, b) {
-    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
-  });
 
   return `
   <section class="card hero-card">
@@ -3500,14 +3495,8 @@ function teacherHome() {
     <button type="button" class="card quick" data-act="open-add-student"><span class="quick-ico tint-slate">${ICON.userPlus}</span><span>O'quvchi qo'shish</span></button>
   </div>
 
-  <div class="screen-head" style="margin-top:6px">
-    <div>
-      <h2 class="screen-title">${ico('bookOpen', 20)} ${t('Uyga vazifalar')}</h2>
-      <div class="muted small">${hwList.length ? "Berilgan vazifalar — tahrirlash yoki o'chirish mumkin" : 'Hozircha vazifa berilmagan'}</div>
-    </div>
-  </div>
-  ${hwList.length ? hwList.map(hwRowHTML).join('') : ''}
   <button type="button" class="btn btn-primary btn-block" data-act="open-hw">${ico('bookOpen', 16)} Uyga vazifa berish</button>
+  <div class="muted small" style="margin-top:6px;text-align:center">Berilgan vazifalar guruh sahifasida ko'rinadi.</div>
 
   <div class="section-title">So'nggi o'quvchilar</div>
   ${recent.length ? recent.map(studentCard).join('') : emptyState("Hozircha o'quvchi yo'q", 'students')}
