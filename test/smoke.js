@@ -23,13 +23,14 @@ const F_GROUPS = [
   { id: 'g1', name: 'IELTS Band 7.0', days: 'Dushanba, Chorshanba, Juma', time: '18:00', groupType: 'school' },
   { id: 'g2', name: 'General English (8–10-sinf)', days: 'Seshanba, Payshanba', time: '17:00', groupType: 'tutoring' }
 ];
+/* students jadvalidagi haqiqiy qator kabi: login ham o'quvchi yozuvida turadi */
 const F_STUDENTS = [
-  { id: 's1', fullName: 'Aziz Rahimov', schoolClass: '9-sinf', groupId: 'g2', telegramChatId: 1001, speakingDebt: 0, audioSubmissions: [] },
-  { id: 's2', fullName: 'Nilufar Ergasheva', schoolClass: '9-sinf', groupId: 'g2', telegramChatId: 1002, speakingDebt: 0, audioSubmissions: [] },
-  { id: 's3', fullName: 'Jasur Karimov', schoolClass: '8-sinf', groupId: 'g2', telegramChatId: 1003, speakingDebt: 0, audioSubmissions: [] },
-  { id: 's4', fullName: 'Dilnoza Qodirova', schoolClass: '10-sinf', groupId: 'g2', telegramChatId: 1004, speakingDebt: 0, audioSubmissions: [] },
-  { id: 's5', fullName: 'Malika Yusupova', schoolClass: '11-sinf', groupId: 'g1', telegramChatId: 1005, speakingDebt: 0, audioSubmissions: [] },
-  { id: 's6', fullName: 'Bekzod Alimov', schoolClass: '11-sinf', groupId: 'g1', telegramChatId: 1006, speakingDebt: 0, audioSubmissions: [] }
+  { id: 's1', login: 'aziz', fullName: 'Aziz Rahimov', schoolClass: '9-sinf', groupId: 'g2', telegramChatId: 1001, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's2', login: 'nilufar', fullName: 'Nilufar Ergasheva', schoolClass: '9-sinf', groupId: 'g2', telegramChatId: 1002, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's3', login: 'jasur', fullName: 'Jasur Karimov', schoolClass: '8-sinf', groupId: 'g2', telegramChatId: 1003, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's4', login: 'dilnoza', fullName: 'Dilnoza Qodirova', schoolClass: '10-sinf', groupId: 'g2', telegramChatId: 1004, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's5', login: 'malika', fullName: 'Malika Yusupova', schoolClass: '11-sinf', groupId: 'g1', telegramChatId: 1005, speakingDebt: 0, audioSubmissions: [] },
+  { id: 's6', login: 'bekozd', fullName: 'Bekzod Alimov', schoolClass: '11-sinf', groupId: 'g1', telegramChatId: 1006, speakingDebt: 0, audioSubmissions: [] }
 ];
 const F_ACCOUNTS = [
   { login: 'm_amirov', password: '123', role: 'teacher', name: 'Muzaffar Amirov' },

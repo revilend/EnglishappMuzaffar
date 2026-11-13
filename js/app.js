@@ -224,6 +224,25 @@ function getTgSubs() { return store.get(K.tgsubs, []) || []; }
 function studentById(id) { return getStudents().filter(s => s.id === id)[0] || null; }
 function groupById(id) { return getGroups().filter(g => g.id === id)[0] || null; }
 
+/* O'quvchining logini: avval o'quvchi qatoridan (students.login), keyin xotiradagi hisobdan */
+function loginOfStudent(sid, st) {
+  const s = st || studentById(sid);
+  if (!s) return '';
+  if (s.login) return String(s.login);
+  const acc = Object.keys(accounts).map(function (k) { return accounts[k]; })
+    .filter(function (a) { return a.studentId === s.id; })[0];
+  return acc && acc.login ? String(acc.login) : '';
+}
+/* Login bandligi: xotiradagi hisoblar + o'quvchi qatorlaridagi loginlar bo'yicha */
+function loginTaken(login, exceptSid) {
+  const l = String(login == null ? '' : login).trim().toLowerCase();
+  if (!l) return false;
+  if (accounts[l] && accounts[l].studentId !== exceptSid) return true;
+  return getStudents().some(function (s) {
+    return String(s.login || '').toLowerCase() === l && s.id !== exceptSid;
+  });
+}
+
 /* ---- Sana yordamchilari ---- */
 function dateKey(d) {
   const y = d.getFullYear();
@@ -1910,8 +1929,8 @@ function startSession(userObj) {
   /* Analitika: kirish (faqat rozilik berilgan bo'lsa) — hisob logini yuborilmaydi */
   const anon = linkedStudent();
   analyticsCall('onLogin', {
-    account: login,
-    role: accounts[login].role,
+    account: sess.login,
+    role: (accounts[sess.login] && accounts[sess.login].role) || sess.role,
     hasGroup: !!(anon && anon.groupId),
     surface: tg ? 'telegram' : 'browser'
   });
@@ -3580,7 +3599,7 @@ function studentCard(s) {
   const debt = Math.max(0, Number(s.paymentDebt) || 0);
   /* Pul/to'lov faqat repetitorlik guruhlarida (maktab guruhi — bepul) */
   const showMoney = !!g && !isSchoolGroup(g);
-  const sLogin = s.login || "";
+  const sLogin = loginOfStudent(s.id, s);
   return `<div class="card student-card">
     <div class="st-head">
       <div class="avatar st-avatar">${esc(initials(s.fullName))}</div>
@@ -4250,12 +4269,12 @@ function saveStudent() {
   if (!cls) { toast("Maktab sinfini tanlang", 'error'); return; }
   if (!gid) { toast("Guruhni tanlang", 'error'); return; }
   if (!/^[a-z0-9_.]{3,20}$/.test(login)) { toast("Login 3–20 ta: harf, raqam, _ yoki .", 'error'); $('#f-slogin').focus(); return; }
-  if (accounts[login]) { toast("Bu login allaqachon band", 'error'); $('#f-slogin').focus(); return; }
+  if (loginTaken(login)) { toast("Bu login allaqachon band", 'error'); $('#f-slogin').focus(); return; }
   if (pass.length < 3) { toast("Dastlabki parol kamida 3 ta belgi bo'lsin", 'error'); $('#f-spass').focus(); return; }
 
   const id = 's' + Date.now();
   const students = getStudents();
-  students.push({ id, fullName: name, schoolClass: cls, groupId: gid, speakingDebt: 0, paymentDebt: 0, feePeriod: '', audioSubmissions: [] });
+  students.push({ id, login: login, fullName: name, schoolClass: cls, groupId: gid, speakingDebt: 0, paymentDebt: 0, feePeriod: '', audioSubmissions: [] });
   store.set(K.students, students);
 
   accounts[login] = { login, password: hashPasswordSync(pass), role: 'student', studentId: id, name };
@@ -4272,7 +4291,7 @@ function openResetPwd(sid) {
   if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
   const st = studentById(sid);
   if (!st) return;
-  const sLogin = st.login || "";
+  const sLogin = loginOfStudent(st.id, st);
   openModal(`
     <div class="modal-head">
       <h3>Parolni yangilash</h3>
@@ -4303,14 +4322,24 @@ function saveResetPwd(sid) {
   if (pass.length < 3) { toast("Parol kamida 3 ta belgi bo'lsin", 'error'); return; }
 
   let acc = Object.keys(accounts).map(k => accounts[k]).filter(a => a.studentId === sid)[0];
+  let finalLogin = acc ? acc.login : '';
   if (acc) {
     acc.password = hashPasswordSync(pass);
   } else {
     const loginEl = $('#rp-login');
-    const login = loginEl ? loginEl.value.trim().toLowerCase() : suggestLogin(st.fullName);
+    /* mavjud login (o'quvchi qatoridagi) ustuvor — ikkinchi hisob yaratilmaydi */
+    const login = String(
+      (loginEl ? loginEl.value : '') || st.login || suggestLogin(st.fullName)
+    ).trim().toLowerCase();
     if (!/^[a-z0-9_.]{3,20}$/.test(login)) { toast("Login noto'g'ri", 'error'); return; }
-    if (accounts[login]) { toast("Bu login band", 'error'); return; }
+    if (loginTaken(login, sid)) { toast("Bu login band", 'error'); return; }
     accounts[login] = { login, password: hashPasswordSync(pass), role: 'student', studentId: sid, name: st.fullName };
+    finalLogin = login;
+  }
+  /* login o'quvchi qatoriga ham yoziladi (ro'yxat va kartada ko'rinishi uchun) */
+  if (finalLogin && !st.login) {
+    const rows = getStudents().map(x => x.id === sid ? Object.assign({}, x, { login: finalLogin }) : x);
+    store.set(K.students, rows);
   }
   persistAccounts();
   CloudSync.pushStudent(sid);
