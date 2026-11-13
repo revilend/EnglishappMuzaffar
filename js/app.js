@@ -2653,11 +2653,12 @@ const I18N_EN = {
   "Video, audio va hujjatlarni saytning o'zida tezlikni boshqarib o'rganish.":
     'Study video, audio, and documents right on the site with playback speed control.',
   '10 ballik jurnal va davomat': '10-point gradebook & attendance',
-  "Har bir darsdagi baholar, o'rtacha reyting va qatnashish nazorati.":
-    'Grades for every lesson, average rating, and attendance tracking.',
+  "Har bir darsdagi baholar, o'rtacha reyting va qatnashish statistikasi.":
+    'Grades for every lesson, average rating, and attendance statistics.',
   'Telegram bot (@uzbekspeakingcheckbot)': 'Telegram bot (@uzbekspeakingcheckbot)',
   'Ovozli va video speaking topshirish hamda baho/xabarlarni tezkor olish.':
     'Submit voice and video speaking tasks and receive grades and messages instantly.',
+  'Kirish — English Teacher': 'Sign In — English Teacher',
   'Login va parolingizni kiriting': 'Enter your login and password',
   'Login yoki parolni unutdingizmi?': 'Forgot your login or password?',
   'Kirishni tiklash': 'Recover access',
@@ -2905,7 +2906,7 @@ function landingScreen() {
         <span class="landing-fico tint-emerald">${ico('grades', 20)}</span>
         <div class="landing-fbody">
           <b>${t('10 ballik jurnal va davomat')}</b>
-          <span>${t("Har bir darsdagi baholar, o'rtacha reyting va qatnashish nazorati.")}</span>
+          <span>${t("Har bir darsdagi baholar, o'rtacha reyting va qatnashish statistikasi.")}</span>
         </div>
       </article>
       <article class="landing-feature">
@@ -2934,7 +2935,7 @@ function loginFormScreen() {
         <div class="auth-card-head">
           <span class="auth-card-ico">${ico('lock', 18)}</span>
           <div>
-            <div class="auth-card-title">${t('Kirish')}</div>
+            <div class="auth-card-title">${t('Kirish — English Teacher')}</div>
             <div class="muted small">${t('Login va parolingizni kiriting')}</div>
           </div>
         </div>
