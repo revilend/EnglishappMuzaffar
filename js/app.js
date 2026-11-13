@@ -685,6 +685,7 @@ const CloudSync = (function () {
           lastPaidMonth: r.last_paid_month || '',
           phone: r.phone || '',
           email: r.email || '',
+          emailVerified: !!r.email_verified,
           audioSubmissions: (audioByOld[oldIdByDb[r.id]] || []).slice()
         };
       });
@@ -804,6 +805,7 @@ const CloudSync = (function () {
       lastSeen: row.last_seen || null,
       phone: row.phone || '',
       email: row.email || '',
+      emailVerified: !!row.email_verified,
       audioSubmissions: prevSt && prevSt.audioSubmissions ? prevSt.audioSubmissions.slice() : []
     }];
 
@@ -1258,6 +1260,7 @@ const CloudSync = (function () {
     const payload = {};
     if ('email' in fields) payload.email = fields.email ? String(fields.email) : null;
     if ('phone' in fields) payload.phone = fields.phone ? String(fields.phone) : null;
+    if ('emailVerified' in fields) payload.email_verified = !!fields.emailVerified;
     if (!Object.keys(payload).length) return false;
     const res = await client.from('students').update(payload).eq('id', st.dbId);
     if (res.error) throw res.error;
@@ -1266,6 +1269,7 @@ const CloudSync = (function () {
     if (t) {
       if ('email' in payload) t.email = payload.email || '';
       if ('phone' in payload) t.phone = payload.phone || '';
+      if ('email_verified' in payload) t.emailVerified = !!payload.email_verified;
       store.set(K.students, list);
     }
     return true;
@@ -4221,6 +4225,7 @@ function profileScreen() {
     <input class="input" id="st-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="+998 90 123 45 67" value="${esc(st.phone || '')}" />
     <label class="field-label" for="st-email" style="margin-top:6px">${t('Gmail manzili')}</label>
     <input class="input" id="st-email" type="email" autocomplete="email" placeholder="ism@gmail.com" value="${esc(st.email || '')}" />
+    <div class="muted small" style="margin-top:4px">${st.email ? (st.emailVerified ? '✅ ' + t('Tasdiqlangan') : '⚠️ ' + t('Tasdiqlanmagan')) : ''}</div>
     <div class="muted small" style="margin-top:6px">${t("Parolni tiklash kodi shu telefon (Telegram) yoki Gmail manzilga yuboriladi.")}</div>
     <button type="button" class="btn btn-primary btn-block" data-act="save-student-contact" style="margin-top:8px">💾 ${t('Saqlash')}</button>
   </div>` : ''}
@@ -4231,6 +4236,7 @@ function profileScreen() {
     <div class="muted small" style="margin-bottom:8px">${t("Kirishdagi 2 bosqichli kod va parolni tiklash kodi shu manzillarga yuboriladi.")}</div>
     <label class="field-label" for="tc-email">${t('Ustoz Gmail manzili')}</label>
     <input class="input" id="tc-email" type="email" autocomplete="email" placeholder="ustoz@gmail.com" value="${esc(adminContacts.email || '')}" />
+    <div class="muted small" style="margin-top:4px">${adminContacts.email ? (adminContacts.verified ? '✅ ' + t('Tasdiqlangan') : '⚠️ ' + t('Tasdiqlanmagan')) : ''}</div>
     <label class="field-label" for="tc-phone" style="margin-top:6px">${t('Telefon raqam')}</label>
     <input class="input" id="tc-phone" type="tel" inputmode="tel" maxlength="20" placeholder="+998 90 123 45 67" value="${esc(adminContacts.phone || '')}" />
     <button type="button" class="btn btn-primary btn-block" data-act="save-teacher-contact" style="margin-top:10px">💾 ${t('Saqlash')}</button>
@@ -6072,14 +6078,19 @@ function startTeacher2FA(userObj) {
     text: '🔐 <b>2-bosqichli tasdiqlash</b>\nQurilma: ' + esc(dev) +
           '\nKod: <b>' + code + '</b>\nKod 3 daqiqa amal qiladi.'
   }]);
-  CloudSync.queueEmail([{
-    to_email: 'ADMIN',
-    subject: 'Kirish kodi (2FA) — ' + dev,
-    body_html: "<p><b>Yangi qurilmadan kirish so'rovi</b></p>" +
-      '<p>Qurilma: <b>' + esc(dev) + '</b></p>' +
-      '<p>Kod: <b style="font-size:24px;letter-spacing:4px">' + code + '</b></p>' +
-      '<p>Kod 3 daqiqa amal qiladi.</p>'
-  }]);
+  /* Xat faqat TASDIQLANGAN ustoz Gmailiga yuboriladi */
+  (async function () {
+    const addr = await teacherVerifiedEmail();
+    if (!addr) return;
+    CloudSync.queueEmail([{
+      to_email: addr,
+      subject: 'Kirish kodi (2FA) — ' + dev,
+      body_html: "<p><b>Yangi qurilmadan kirish so'rovi</b></p>" +
+        '<p>Qurilma: <b>' + esc(dev) + '</b></p>' +
+        '<p>Kod: <b style="font-size:24px;letter-spacing:4px">' + code + '</b></p>' +
+        '<p>Kod 3 daqiqa amal qiladi.</p>'
+    }]);
+  })();
 
   openTwoFA();
 }
@@ -6171,15 +6182,15 @@ async function sendResetCode() {
   if (isTeacher) {
     /* Ustoz: kod ADMIN kanallariga (bot_settings.admin_email yoki config.ADMIN_EMAIL) */
     telegramChat = 'ADMIN';
-    emailTo = String(adminContacts.email || (await CloudSync.getSetting('admin_email')) || 'ADMIN').trim();
+    emailTo = await teacherVerifiedEmail();   /* faqat tasdiqlangan Gmail */
   } else {
     try { row = await CloudSync.lookupStudentByContact(raw); }
     catch (e) { row = null; }
     if (!row) { resetError("Bunday telefon, Gmail yoki login topilmadi — qayta tekshirib ko'ring"); return; }
     if (row.telegram_chat_id) telegramChat = String(row.telegram_chat_id);
-    if (row.email) emailTo = String(row.email).trim();
+    if (row.email && row.email_verified) emailTo = String(row.email).trim();   /* faqat tasdiqlangan */
     if (!telegramChat && !emailTo) {
-      resetError("Telegram va Gmail ulanmagan — parolni tiklash uchun ustozga murojaat qiling");
+      resetError("Telegram ulanmagan va Gmail tasdiqlanmagan — parolni tiklash uchun ustozga murojaat qiling");
       return;
     }
   }
@@ -6274,8 +6285,97 @@ async function resetPassword() {
   toast('Parol yangilandi ✓ — endi yangi parol bilan kiring');
 }
 
+/* ==================== GMAILNI 6 XONALI KOD BILAN TASDIQLASH ==================== */
+/* Xat faqat TASDIQLANGAN manzilga ketadi (parol tiklash, ustoz 2FA) */
+async function teacherVerifiedEmail() {
+  const email = String((await CloudSync.getSetting('admin_email')) || '').trim();
+  const ver = String((await CloudSync.getSetting('admin_email_verified')) || '').trim().toLowerCase();
+  return (email && validEmail(email) && ver === 'true') ? email : '';
+}
+
+async function sendEmailVerifyCode(newEmail, kind) {
+  const code = sixDigitCode();
+  const until = Date.now() + 10 * 60 * 1000;   /* 10 daqiqa */
+  const saved = await CloudSync.saveAuthCode({
+    purpose: 'verify_email',
+    contact: newEmail,
+    code: code,
+    expiresAt: new Date(until).toISOString()
+  });
+  if (!saved) { toast('Kod yaratishda xatolik — keyinroq urinib ko\'ring', 'error'); return false; }
+
+  CloudSync.queueEmail([{
+    to_email: newEmail,
+    subject: 'English Tutor — Gmailni tasdiqlash kodi',
+    body_html: '<div style="font-family:Arial,sans-serif;line-height:1.5">' +
+      '<h2>Gmail manzilni tasdiqlash</h2><p>6 xonali tasdiqlash kodi:</p>' +
+      '<p style="font-size:26px;letter-spacing:5px"><b>' + code + '</b></p>' +
+      '<p>Kod 10 daqiqa amal qiladi. Agar bu so\'rovni siz yubormagan bo\'lsangiz, xatni e\'tiborsiz qoldiring.</p></div>'
+  }]);
+
+  state.verifyEmail = { email: newEmail, code: code, until: until, kind: kind };
+  openModal(`
+    <div class="modal-head">
+      <h3>✉️ Gmailni tasdiqlash</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+    <div class="muted small">Gmailingizga yuborilgan 6 xonali kodni kiriting:
+      <b>${esc(newEmail)}</b></div>
+    <label class="field-label" for="ev-code" style="margin-top:10px">Tasdiqlash kodi</label>
+    <input class="input" id="ev-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••" />
+    <div class="field-error" id="ev-error"></div>
+    <button type="button" class="btn btn-primary btn-block" data-act="do-verify-email">Tasdiqlash</button>
+    <button type="button" class="btn btn-ghost btn-block" data-act="resend-verify-email">Kodni qayta yuborish</button>
+  `);
+  setTimeout(function () { const el = $('#ev-code'); if (el) el.focus(); }, 30);
+  toast('Kod Gmailga yuborildi');
+  return true;
+}
+
+function verifyEmailError(m) {
+  const el = $('#ev-error');
+  if (!el) return;
+  el.textContent = m || '';
+  el.classList.toggle('show', !!m);
+}
+
+async function submitEmailVerify() {
+  const ctx = state.verifyEmail;
+  const val = String(($('#ev-code') || {}).value || '').trim();
+  if (!ctx) { verifyEmailError("So'rov eskirgan — qaytadan so'rang"); return; }
+  if (Date.now() > ctx.until) { verifyEmailError('Kod muddati tugadi — qayta yuboring'); return; }
+  if (!/^\d{6}$/.test(val)) { verifyEmailError("Kod 6 xonali bo'lishi kerak"); return; }
+  if (val !== ctx.code) { verifyEmailError("Kod noto'g'ri"); return; }
+
+  const used = await CloudSync.consumeAuthCode('verify_email', val);
+  if (!used || String(used.contact || '').toLowerCase() !== String(ctx.email).toLowerCase()) {
+    verifyEmailError('Kod eskirgan yoki boshqa manzil uchun'); return;
+  }
+
+  if (ctx.kind === 'teacher') {
+    /* bot_settings.admin_email + admin_email_verified */
+    const ok1 = await CloudSync.setSetting('admin_email', ctx.email);
+    const ok2 = await CloudSync.setSetting('admin_email_verified', 'true');
+    if (!ok1 || !ok2) { verifyEmailError("Saqlashda xatolik — keyinroq urinib ko'ring"); return; }
+    adminContacts.email = ctx.email;
+    adminContacts.verified = true;
+  } else {
+    const st = linkedStudent();
+    if (!st) { verifyEmailError("O'quvchi topilmadi"); return; }
+    let ok = false;
+    try { ok = await CloudSync.updateStudentContact(st.id, { email: ctx.email, emailVerified: true }); }
+    catch (e) { ok = false; }
+    if (!ok) { verifyEmailError("Saqlashda xatolik — keyinroq urinib ko'ring"); return; }
+  }
+
+  state.verifyEmail = null;
+  closeModal();
+  render();
+  toast('Gmail tasdiqlandi ✓');
+}
+
 /* ==================== ALOQA MA'LUMOTLARI (o'quvchi / ustoz) ==================== */
-let adminContacts = { email: '', phone: '', loaded: false };
+let adminContacts = { email: '', phone: '', loaded: false, verified: false };
 let adminTrusted = { list: [], loaded: false };
 
 /* Telefonni +998XXXXXXXXX ko'rinishida normallashtiradi */
@@ -6299,13 +6399,31 @@ function saveStudentContact() {
   const email = String(($('#st-email') || {}).value || '').trim();
   if (phone && !validPhone(phone)) { toast("Telefon raqam noto'g'ri: +998 90 123 45 67", 'error'); return; }
   if (email && !validEmail(email)) { toast("Gmail manzil noto'g'ri", 'error'); return; }
-  CloudSync.updateStudentContact(st.id, { phone: phone, email: email })
-    .then(function (ok) {
-      render();
-      if (ok) toast("Aloqa ma'lumotlari saqlandi ✓");
-      else toast("Bulut bilan aloqa yo'q", 'error');
-    })
-    .catch(function () { toast('Saqlashda xatolik', 'error'); });
+
+  const currentEmail = String(st.email || '').trim();
+  const emailChanged = email.toLowerCase() !== currentEmail.toLowerCase();
+
+  /* Telefon tasdiqlash talab qilmaydi — darhol saqlanadi */
+  if (phone !== String(st.phone || '')) {
+    CloudSync.updateStudentContact(st.id, { phone: phone }).catch(function () {});
+  }
+  if (!emailChanged) {
+    render();
+    toast(phone !== String(st.phone || '') ? 'Telefon saqlandi ✓' : "Aloqa ma'lumotlari saqlandi ✓");
+    return;
+  }
+  if (!email) {
+    /* Gmailni olib tashlash — tasdiqlash shart emas */
+    CloudSync.updateStudentContact(st.id, { email: '', emailVerified: false })
+      .then(function (ok) {
+        render();
+        toast(ok ? 'Gmail olib tashlandi' : "Bulut bilan aloqa yo'q", ok ? undefined : 'error');
+      })
+      .catch(function () { toast('Saqlashda xatolik', 'error'); });
+    return;
+  }
+  /* Yangi Gmail — 6 xonali kod bilan MAJBURIY tasdiqlanadi */
+  sendEmailVerifyCode(email, 'student');
 }
 
 /* Ustoz: bot_settings.admin_email / admin_phone (2FA va tiklash kanallari) */
@@ -6316,6 +6434,8 @@ async function ensureAdminContacts() {
   const phone = await CloudSync.getSetting('admin_phone');
   adminContacts.email = email || '';
   adminContacts.phone = phone || '';
+  const verRaw = await CloudSync.getSetting('admin_email_verified');
+  adminContacts.verified = String(verRaw || '').trim().toLowerCase() === 'true';
   const trustedRaw = await CloudSync.getSetting('trusted_devices');
   adminTrusted.list = parseTrustedList(trustedRaw);
   adminTrusted.loaded = true;
@@ -6328,16 +6448,37 @@ function saveTeacherContact() {
   const phone = normPhone(String(($('#tc-phone') || {}).value || '').trim());
   if (email && !validEmail(email)) { toast("Gmail manzil noto'g'ri", 'error'); return; }
   if (phone && !validPhone(phone)) { toast("Telefon raqam noto'g'ri: +998 90 123 45 67", 'error'); return; }
-  Promise.all([
-    CloudSync.setSetting('admin_email', email),
-    CloudSync.setSetting('admin_phone', phone)
-  ]).then(function (res) {
-    adminContacts.email = email;
+
+  const currentEmail = String(adminContacts.email || '').trim();
+  const emailChanged = email.toLowerCase() !== currentEmail.toLowerCase();
+  const phoneChanged = phone !== String(adminContacts.phone || '');
+
+  /* Telefon darhol saqlanadi */
+  if (phoneChanged) {
     adminContacts.phone = phone;
+    CloudSync.setSetting('admin_phone', phone).then(function (ok) {
+      if (ok && state.screen === 'profile') render();
+    });
+  }
+  if (!emailChanged) {
     render();
-    if (res[0] && res[1]) toast('2FA sozlamalari saqlandi ✓');
-    else toast("Bulut bilan aloqa yo'q", 'error');
-  }).catch(function () { toast('Saqlashda xatolik', 'error'); });
+    toast(phoneChanged ? 'Telefon saqlandi ✓' : "Aloqa ma'lumotlari saqlandi ✓");
+    return;
+  }
+  if (!email) {
+    Promise.all([
+      CloudSync.setSetting('admin_email', ''),
+      CloudSync.setSetting('admin_email_verified', 'false')
+    ]).then(function () {
+      adminContacts.email = '';
+      adminContacts.verified = false;
+      render();
+      toast('Gmail olib tashlandi');
+    }).catch(function () { toast('Saqlashda xatolik', 'error'); });
+    return;
+  }
+  /* Yangi ustoz Gmaili — 6 xonali kod bilan MAJBURIY tasdiqlanadi */
+  sendEmailVerifyCode(email, 'teacher');
 }
 
 /* ==================== Render ==================== */
@@ -6681,6 +6822,11 @@ document.addEventListener('click', function (e) {
     'save-student-contact': saveStudentContact,
     'save-teacher-contact': saveTeacherContact,
     'clear-trusted': function () { forgetTrustedDevices(); },
+    'do-verify-email': submitEmailVerify,
+    'resend-verify-email': function () {
+      const c = state.verifyEmail;
+      if (c) sendEmailVerifyCode(c.email, c.kind);
+    },
     'logout': logout,
     'nav': function () { go(btn.getAttribute('data-screen')); },
 

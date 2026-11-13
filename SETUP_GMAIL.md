@@ -52,8 +52,8 @@ Bu migratsiya quyidagilarni qo'shadi (15-bo'lim):
 
 | Obyekt | Nima uchun |
 |---|---|
-| `students.phone`, `students.email` | o'quvchi telefoni / Gmail manzili |
-| `auth_codes` | ustoz 2FA kodi (3 daqiqa) va parol tiklash kodi (10 daqiqa) — `purpose` ustuni bilan |
+| `students.phone`, `students.email`, `students.email_verified` | o'quvchi telefoni / Gmail manzili va uning tasdiqlanganlik holati |
+| `auth_codes` | ustoz 2FA kodi (3 daqiqa), parol tiklash kodi (10 daqiqa) va Gmail tasdiqlash kodi (10 daqiqa) — `purpose` = `teacher_2fa` / `reset` / `verify_email` |
 | `email_outbox` | sayt yozadigan xatlar navbati (`status = 'pending'`) |
 
 ### Tekshirish (SQL Editor'da)
@@ -69,7 +69,7 @@ where table_schema = 'public'
 select column_name, data_type
 from information_schema.columns
 where table_schema = 'public' and table_name = 'students'
-  and column_name in ('phone', 'email');
+  and column_name in ('phone', 'email', 'email_verified');
 
 -- 3) RLS yoqilganmi? (rowsecurity = true bo'lishi kerak)
 select relname, relrowsecurity
@@ -80,7 +80,7 @@ where relname in ('auth_codes', 'email_outbox');
 select count(*) as pending from public.email_outbox where status = 'pending';
 ```
 
-1-so'rovda **2 qator**, 2-so'rovda **2 qator** qaytishi kerak.
+1-so'rovda **2 qator**, 2-so'rovda **3 qator** qaytishi kerak.
 
 ---
 

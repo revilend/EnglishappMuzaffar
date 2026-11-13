@@ -288,11 +288,13 @@ on conflict (key) do nothing;
 -- O'quvchining telefon raqami va Gmail manzili (parolni tiklash uchun)
 alter table public.students add column if not exists phone text;
 alter table public.students add column if not exists email text;
+-- Gmail manzil 6 xonali kod bilan tasdiqlanmaguncha false qoladi
+alter table public.students add column if not exists email_verified boolean not null default false;
 
 -- Bir martalik kodlar: 'reset' (parolni tiklash) yoki 'teacher_2fa' (ustoz 2-bosqichi)
 create table if not exists public.auth_codes (
   id          bigint generated always as identity primary key,
-  purpose     text not null default 'reset' check (purpose in ('reset', 'teacher_2fa')),
+  purpose     text not null default 'reset' check (purpose in ('reset', 'teacher_2fa', 'verify_email')),
   student_id  bigint references public.students (id) on delete cascade,
   contact     text,
   code        text not null,
@@ -300,6 +302,11 @@ create table if not exists public.auth_codes (
   used        boolean not null default false,
   created_at  timestamptz not null default now()
 );
+-- Eski bazalarda CHECK'ni 'verify_email' bilan yangilaymiz
+alter table public.auth_codes drop constraint if exists auth_codes_purpose_check;
+alter table public.auth_codes add constraint auth_codes_purpose_check
+  check (purpose in ('reset', 'teacher_2fa', 'verify_email'));
+
 create index if not exists auth_codes_code_idx on public.auth_codes (purpose, code, used);
 create index if not exists auth_codes_student_idx on public.auth_codes (student_id, created_at);
 

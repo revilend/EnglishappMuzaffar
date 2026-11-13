@@ -2234,6 +2234,11 @@ await (async () => {
   logout();
   /* Yangi (notanish) qurilma sifatida boshlaymiz — 2FA majburiy bo'lsin */
   win.localStorage.removeItem('et_teacher_trusted_device');
+  /* 2FA xati faqat TASDIQLANGAN ustoz Gmailiga ketadi */
+  cloudStub.db.bot_settings = (cloudStub.db.bot_settings || [])
+    .filter(r => String(r.key) !== 'admin_email' && String(r.key) !== 'admin_email_verified');
+  cloudStub.db.bot_settings.push({ key: 'admin_email', value: 'ustoz@test.uz' });
+  cloudStub.db.bot_settings.push({ key: 'admin_email_verified', value: 'true' });
 
   /* (a) noto'g'ri CAPTCHA → kirish bloklanadi va yangi misol beriladi */
   setVal('#login-input', 'm_amirov');
@@ -2259,9 +2264,9 @@ await (async () => {
   check((cloudStub.db.telegram_outbox || []).some(r => String(r.chat_id) === 'ADMIN' &&
       String(r.text || '').includes(String(tf.code))),
     '2fa: kod telegram_outbox (ADMIN) ga qo‘yildi');
-  check((cloudStub.db.email_outbox || []).some(r => String(r.to_email) === 'ADMIN' &&
+  check((cloudStub.db.email_outbox || []).some(r => String(r.to_email) === 'ustoz@test.uz' &&
       String(r.body_html || '').includes(String(tf.code))),
-    '2fa: kod email_outbox (ADMIN) ga qo‘yildi');
+    '2fa: kod faqat tasdiqlangan ustoz Gmailiga (email_outbox) qo‘yildi');
 
   setVal('#twofa-code', '000000');
   clickAct('do-2fa');
@@ -2282,27 +2287,30 @@ await (async () => {
   const resetMail = 'reset.test@gmail.com';
   resetRow.phone = resetPhone;
   resetRow.email = resetMail;
+  resetRow.email_verified = true;
   resetRow.telegram_chat_id = 777001;
   logout();
   clickAct('open-forgot');
   check(!!q('#fp-contact') && !!q('#fp-step2'), 'reset: parolni tiklash modali ochildi');
 
-  /* (c1) na Telegram, na Gmail ulangan → kod yuborilmaydi, ustozga murojaat */
+  /* (c1) tasdiqlanmagan Gmail va Telegram yo'q → kod yuborilmaydi */
   const tgKeep = resetRow.telegram_chat_id;
+  const verKeep = resetRow.email_verified;
   resetRow.telegram_chat_id = null;
-  resetRow.email = '';
+  resetRow.email_verified = false;
   setVal('#fp-contact', resetPhone);
   clickAct('forgot-send');
-  await new Promise(r => setTimeout(r, 350));
+  await new Promise(r => setTimeout(r, 400));
   check(q('#fp-error').classList.contains('show') &&
-        q('#fp-error').textContent.includes('ulanmagan') &&
-        !(cloudStub.db.auth_codes || []).some(r => r.purpose === 'reset'),
-    "reset: kanal yo'q bo'lsa kod yuborilmaydi (ustozga murojaat)");
+        q('#fp-error').textContent.includes('tasdiqlanmagan') &&
+        !(cloudStub.db.auth_codes || []).some(r => r.purpose === 'reset') &&
+        !(cloudStub.db.email_outbox || []).some(r => String(r.to_email) === resetMail),
+    'reset: tasdiqlanmagan Gmailga kod yuborilmaydi (ustozga murojaat)');
   check(q('#fp-step2').hidden === true, 'reset: kod yuborilmagani uchun 2-qadam yopiq');
   resetRow.telegram_chat_id = tgKeep;
-  resetRow.email = resetMail;
+  resetRow.email_verified = verKeep;
 
-  /* (c2) telefon (oxirgi 9 raqam) bo'yicha topib, Telegram + Gmail kanallariga kod */
+  /* (c2) telefon (oxirgi 9 raqam) bo'yicha topib, Telegram + tasdiqlangan Gmailga kod */
   setVal('#fp-contact', '+998 90 123 45 67');
   clickAct('forgot-send');
   check(await until(() => q('#fp-step2') && q('#fp-step2').hidden === false, 3000),
@@ -2315,7 +2323,7 @@ await (async () => {
     'reset: kod Telegram outbox ga qo‘yildi');
   check((cloudStub.db.email_outbox || []).some(r => String(r.to_email) === resetMail &&
       String(r.body_html || '').includes(String(rc.code))),
-    'reset: kod Gmail outbox ga qo‘yildi');
+    'reset: kod tasdiqlangan Gmail outbox ga qo‘yildi');
 
   const hashBefore = String(resetRow.password || '');
   setVal('#fp-code', '000000');
@@ -2339,15 +2347,39 @@ await (async () => {
   check(!!JSON.parse(win.localStorage.getItem('et_session') || 'null'),
     'reset: yangi parol bilan kirish ishlaydi');
 
-  /* (d) o'quvchi profilida telefon + Gmail */
+  /* (d) o'quvchi profili: telefon darhol, yangi Gmail — 6 xonali kod bilan */
   forceNav('profile');
   check(!!q('#st-phone') && !!q('#st-email'), "profil: o'quvchida telefon va Gmail maydonlari bor");
   setVal('#st-phone', '+998 93 555 44 33');
   setVal('#st-email', 'yangi.mail@gmail.com');
   clickAct('save-student-contact');
-  check(await until(() => (cloudStub.db.students || []).some(r =>
-      String(r.phone || '') === '+998935554433' && String(r.email || '') === 'yangi.mail@gmail.com'), 3000),
-    'profil: telefon normallashtirilib students.phone va students.email saqlandi');
+  check(await until(() => !!q('#ev-code'), 3000), 'profil: Gmail tasdiqlash modali ochildi');
+  check(await until(() => String((cloudStub.db.students || []).filter(r => r.id === resetRow.id)[0].phone || '') === '+998935554433', 2500),
+    'profil: telefon normallashtirilib darhol saqlandi');
+  const evc = (cloudStub.db.auth_codes || []).filter(r => r.purpose === 'verify_email').pop();
+  check(!!evc && String(evc.contact) === 'yangi.mail@gmail.com' && /^\d{6}$/.test(String(evc.code)),
+    'profil: verify_email kodi (contact: yangi Gmail) auth_codes ga yozildi');
+  check((cloudStub.db.email_outbox || []).some(r => String(r.to_email) === 'yangi.mail@gmail.com' &&
+      String(r.subject || '').includes('Gmailni tasdiqlash') && String(r.body_html || '').includes(String(evc.code))),
+    'profil: kod “English Tutor — Gmailni tasdiqlash kodi” mavzusi bilan yuborildi');
+  check(String((cloudStub.db.students || []).filter(r => r.id === resetRow.id)[0].email || '') === resetMail,
+    'profil: kod tasdiqlanmaguncha students.email o‘zgarmaydi');
+
+  setVal('#ev-code', '000000');
+  clickAct('do-verify-email');
+  await new Promise(r => setTimeout(r, 300));
+  check(q('#ev-error').classList.contains('show') &&
+        String((cloudStub.db.students || []).filter(r => r.id === resetRow.id)[0].email || '') === resetMail,
+    "profil: noto'g'ri kod Gmailni saqlamaydi");
+  setVal('#ev-code', String(evc.code));
+  clickAct('do-verify-email');
+  check(await until(() => {
+    const row = (cloudStub.db.students || []).filter(r => r.id === resetRow.id)[0];
+    return String(row.email || '') === 'yangi.mail@gmail.com' && row.email_verified === true;
+  }, 3000), 'profil: to‘g‘ri kod bilan students.email + email_verified = true saqlandi');
+  check(q('#modal-overlay').hidden === true, 'profil: tasdiqlangach modal yopildi');
+  check(await until(() => q('#screen').textContent.includes('Tasdiqlangan'), 2000),
+    'profil: Gmail yonida ✅ Tasdiqlangan holati ko‘rinadi');
 
   /* (e) ustoz (m_amirov) uchun OTP → bot_settings.teacher_password */
   logout();
@@ -2360,9 +2392,9 @@ await (async () => {
   check(!!tpr && (cloudStub.db.telegram_outbox || []).some(r => String(r.chat_id) === 'ADMIN' &&
       String(r.text || '').includes(String(tpr.code))),
     'reset: ustoz kodi telegram_outbox (ADMIN) ga qo‘yildi');
-  check((cloudStub.db.email_outbox || []).some(r => String(r.to_email).toUpperCase() === 'ADMIN' &&
+  check((cloudStub.db.email_outbox || []).some(r => String(r.to_email) === 'ustoz@test.uz' &&
       String(r.body_html || '').includes(String(tpr.code))),
-    'reset: ustoz kodi email_outbox (ADMIN) ga qo‘yildi');
+    'reset: ustoz kodi faqat tasdiqlangan Gmailga qo‘yildi');
   setVal('#fp-code', String(tpr.code));
   setVal('#fp-new', '12345');
   clickAct('forgot-reset');
@@ -2374,19 +2406,29 @@ await (async () => {
   check(!!JSON.parse(win.localStorage.getItem('et_session') || 'null'),
     'reset: ustoz yangi parol bilan kiradi');
 
-  /* (f) ustoz profili: 2FA/tiklash uchun Gmail va telefon (bot_settings) */
+  /* (f) ustoz profili: telefon darhol, yangi Gmail — kod bilan tasdiqlash */
   forceNav('profile');
   check(await until(() => !!q('#tc-email') && !!q('#tc-phone'), 3000),
     'profil: ustozda “2FA va tiklash sozlamalari” bloki bor');
   setVal('#tc-email', 'ustoz.2fa@gmail.com');
   setVal('#tc-phone', '+998 90 111 22 33');
   clickAct('save-teacher-contact');
-  check(await until(() => (cloudStub.db.bot_settings || []).some(r => String(r.key) === 'admin_email' &&
-      String(r.value) === 'ustoz.2fa@gmail.com') &&
-      (cloudStub.db.bot_settings || []).some(r => String(r.key) === 'admin_phone' &&
-      String(r.value) === '+998901112233'), 3000),
-    'profil: ustoz Gmail va telefoni bot_settings (admin_email/admin_phone) ga saqlandi');
-
+  check(await until(() => !!q('#ev-code'), 3000), 'profil: ustoz Gmaili uchun tasdiqlash modali ochildi');
+  const tev = (cloudStub.db.auth_codes || []).filter(r => r.purpose === 'verify_email').pop();
+  check(!!tev && String(tev.contact) === 'ustoz.2fa@gmail.com',
+    'profil: ustoz uchun verify_email kodi yozildi');
+  const adminEmailBefore = (cloudStub.db.bot_settings || []).filter(r => r.key === 'admin_email')[0];
+  check(!!adminEmailBefore && String(adminEmailBefore.value) === 'ustoz@test.uz',
+    'profil: kod tasdiqlanmaguncha admin_email o‘zgarmaydi');
+  setVal('#ev-code', String(tev.code));
+  clickAct('do-verify-email');
+  check(await until(() => {
+    const em = (cloudStub.db.bot_settings || []).filter(r => r.key === 'admin_email')[0];
+    const vf = (cloudStub.db.bot_settings || []).filter(r => r.key === 'admin_email_verified')[0];
+    return !!em && String(em.value) === 'ustoz.2fa@gmail.com' && !!vf && String(vf.value) === 'true';
+  }, 3000), 'profil: tasdiqlangach bot_settings.admin_email + admin_email_verified = true');
+  check(await until(() => ((cloudStub.db.bot_settings || []).filter(r => r.key === 'admin_phone')[0] || {}).value === '+998901112233', 2500),
+    'profil: ustoz telefoni bot_settings.admin_phone ga saqlandi');
 
   /* (g) tanilgan qurilma: 2FA o'tkazib yuboriladi */
   check(!!win.localStorage.getItem('et_teacher_trusted_device'),
