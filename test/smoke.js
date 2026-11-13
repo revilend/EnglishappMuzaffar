@@ -163,7 +163,17 @@ function buildCloudSeed(w) {
   const fqa = s => Array.from(fdoc.querySelectorAll(s));
   const ftext = () => fq('#screen').textContent;
   fwin.eval(dataJs + '\nwindow.APP_DATA = APP_DATA;');
+  /* Bo'sh bulut stubi: CAPTCHA va ustoz 2FA kodlari shu yerga yoziladi */
+  const fstub = createStub({});
+  fwin.supabase = { createClient: function () { return fstub.client; } };
   fwin.eval(appJs);
+  const fsolve = () => {
+    const box = fq('#captcha-canvas');
+    const m = String((box && box.getAttribute('data-q')) || '').match(/^(\d+)\s*([+−×])\s*(\d+)$/);
+    if (!m) return '';
+    const a = Number(m[1]), b = Number(m[3]);
+    return m[2] === '+' ? String(a + b) : (m[2] === '−' ? String(a - b) : String(a * b));
+  };
   const fclick = el => el.dispatchEvent(new fwin.MouseEvent('click', { bubbles: true, cancelable: true }));
   const fset = (s, v) => { const el = fq(s); el.value = v; el.dispatchEvent(new fwin.Event('input', { bubbles: true })); };
   const fnav = scr => {
@@ -179,7 +189,14 @@ function buildCloudSeed(w) {
     'toza start: login ekranida demo kart/chiplar YO\'Q');
   fset('#login-input', 'm_amirov');
   fset('#password-input', '123');
+  fset('#login-captcha', fsolve());
   fclick(fq('[data-act="do-login"]'));
+  await new Promise(r => setTimeout(r, 200));
+  check(!!fq('#twofa-code'), "toza start: ustoz uchun 2-bosqichli kod modali ochildi");
+  const fcode = (fstub.db.auth_codes || []).filter(r => r.purpose === 'teacher_2fa').pop();
+  if (fcode) fset('#twofa-code', String(fcode.code));
+  fclick(fq('[data-act="do-2fa"]'));
+  await new Promise(r => setTimeout(r, 200));
   check(ftext().includes('Xush kelibsiz') && ftext().includes('Muzaffar Amirov'),
     'toza start: "Xush kelibsiz, Muzaffar Amirov!" salomi');
   fnav('groups');
@@ -228,6 +245,26 @@ const navLabels = () => qa('.nav-item span').map(s => s.textContent);
 const studentCards = () => qa('#students-list .student-card').length;
 const groupCards = () => qa('#screen .group-card').length;
 function logout() { click('[data-act="nav"][data-screen="profile"]'); clickAct('logout'); }
+/* CAPTCHA misolini yechadi: 7 + 3 / 9 − 4 / 4 × 3 */
+function solveCaptcha() {
+  const box = q('#captcha-canvas');
+  const expr = String((box && box.getAttribute('data-q')) || '').trim();
+  const m = expr.match(/^(\d+)\s*([+−×])\s*(\d+)$/);
+  if (!m) return '';
+  const a = Number(m[1]), b = Number(m[3]), op = m[2];
+  if (op === '+') return String(a + b);
+  if (op === '−') return String(a - b);
+  return String(a * b);
+}
+
+/* Stub bazadan oxirgi bir martalik kodni oladi (2FA / reset) */
+function lastAuthCode(purpose) {
+  const rows = (cloudStub.db.auth_codes || []).filter(r => r.purpose === purpose && !r.used);
+  if (!rows.length) return null;
+  rows.sort((a, b) => Number(a.id) - Number(b.id));
+  return String(rows[rows.length - 1].code);
+}
+
 async function loginAs(l, p) {
   /* bulut rejimidagi kechikkan async yangilanishlar formani tozalab
      yubormasligi uchun: kutamiz va qiymatlar barqaror bo'lgach bosamiz */
@@ -236,6 +273,7 @@ async function loginAs(l, p) {
     if (!q('#login-input') || !q('#password-input')) continue;
     setVal('#login-input', l);
     setVal('#password-input', p);
+    if (q('#login-captcha')) setVal('#login-captcha', solveCaptcha());
     await new Promise(r => setTimeout(r, 40));
     const a = q('#login-input'), b = q('#password-input');
     if (a && b && a.value === l && b.value === p) break;
@@ -243,6 +281,14 @@ async function loginAs(l, p) {
   clickAct('do-login');
   /* bulut rejimida login asinxron — pull tugashini kutamiz */
   await new Promise(r => setTimeout(r, 150));
+
+  /* Ustoz uchun 2-bosqichli tasdiqlash modali */
+  if (q('#twofa-code')) {
+    const code = lastAuthCode('teacher_2fa');
+    setVal('#twofa-code', code || '');
+    clickAct('do-2fa');
+    await new Promise(r => setTimeout(r, 200));
+  }
 }
 
 const now = new Date();
@@ -2173,6 +2219,89 @@ await (async () => {
   check(text().includes('Faol qurilmalar'),
     'i18n UZ: profil qayta o\'zbekcha');
 
+
+  /* ================= 32. CAPTCHA + USTOZ 2FA + PAROLNI TIKLASH ================= */
+  logout();
+
+  /* (a) noto'g'ri CAPTCHA → kirish bloklanadi va yangi misol beriladi */
+  setVal('#login-input', 'm_amirov');
+  setVal('#password-input', '123');
+  setVal('#login-captcha', '999999');
+  clickAct('do-login');
+  check(!JSON.parse(win.localStorage.getItem('et_session') || 'null') &&
+        q('#login-error').textContent.includes('Tekshiruv'),
+    "captcha: noto'g'ri javob kirishni bloklaydi");
+  check(!!q('#login-captcha') && q('#login-captcha').value === '',
+    'captcha: xatodan keyin javob maydoni tozalanadi (yangi misol)');
+
+  /* (b) to'g'ri CAPTCHA → ustoz uchun 2FA modal va kod 3 joyga yoziladi */
+  setVal('#login-input', 'm_amirov');
+  setVal('#password-input', '123');
+  setVal('#login-captcha', solveCaptcha());
+  clickAct('do-login');
+  check(await until(() => !!q('#twofa-code'), 2000), "2fa: ustoz uchun kod modali ochildi");
+  const tf = (cloudStub.db.auth_codes || []).filter(r => r.purpose === 'teacher_2fa').pop();
+  check(!!tf && /^\d{6}$/.test(String(tf.code)), '2fa: 6 xonali kod auth_codes ga yozildi');
+  check(!JSON.parse(win.localStorage.getItem('et_session') || 'null'),
+    "2fa: kod tasdiqlanmaguncha sessiya yaratilmaydi");
+  check((cloudStub.db.telegram_outbox || []).some(r => String(r.chat_id) === 'ADMIN' &&
+      String(r.text || '').includes(String(tf.code))),
+    '2fa: kod telegram_outbox (ADMIN) ga qo‘yildi');
+  check((cloudStub.db.email_outbox || []).some(r => String(r.to_email) === 'ADMIN' &&
+      String(r.body_html || '').includes(String(tf.code))),
+    '2fa: kod email_outbox (ADMIN) ga qo‘yildi');
+
+  setVal('#twofa-code', '000000');
+  clickAct('do-2fa');
+  await new Promise(r => setTimeout(r, 120));
+  check(!JSON.parse(win.localStorage.getItem('et_session') || 'null') &&
+        q('#twofa-error').classList.contains('show'),
+    "2fa: noto'g'ri kod rad etildi");
+
+  setVal('#twofa-code', String(tf.code));
+  clickAct('do-2fa');
+  await new Promise(r => setTimeout(r, 250));
+  check(text().includes('Xush kelibsiz'), "2fa: to'g'ri kod bilan sessiya ochildi");
+
+  /* (c) parolni tiklash: Gmail orqali kod → yangi parol xeshi */
+  const resetRow = (cloudStub.db.students || []).filter(r => r.login)[0];
+  resetRow.email = 'test.reset@gmail.com';
+  const resetLogin = String(resetRow.login);
+  logout();
+  clickAct('open-forgot');
+  check(!!q('#fp-contact') && !!q('#fp-step2'), 'reset: parolni tiklash modali ochildi');
+  setVal('#fp-contact', 'test.reset@gmail.com');
+  clickAct('forgot-send');
+  check(await until(() => q('#fp-step2') && q('#fp-step2').hidden === false, 2000),
+    'reset: kod yuborildi — kod/parol qadamlari ochildi');
+  const rc = (cloudStub.db.auth_codes || []).filter(r => r.purpose === 'reset').pop();
+  check(!!rc && String(rc.code).length === 6, 'reset: kod auth_codes ga yozildi');
+  check((cloudStub.db.email_outbox || []).some(r => String(r.to_email) === 'test.reset@gmail.com'),
+    'reset: kod Gmail manziliga email_outbox ga qo‘yildi');
+
+  const hashBefore = String(resetRow.password || '');
+  setVal('#fp-code', String(rc.code));
+  setVal('#fp-new', 'yangi456');
+  setVal('#fp-new2', 'yangi456');
+  clickAct('forgot-reset');
+  check(await until(() => q('#modal-overlay').hidden === true, 2500), 'reset: modal yopildi');
+  const hashAfter = String((cloudStub.db.students || []).filter(r => r.id === resetRow.id)[0].password || '');
+  check(/^[0-9a-f]{64}$/.test(hashAfter) && hashAfter !== hashBefore,
+    'reset: yangi parol SHA-256 xesh ko‘rinishida saqlandi');
+  check((cloudStub.db.auth_codes || []).filter(r => r.purpose === 'reset').pop().used === true,
+    'reset: kod bir marta ishlatilgan deb belgilandi');
+
+  await loginAs(resetLogin, 'yangi456');
+  check(!!JSON.parse(win.localStorage.getItem('et_session') || 'null'),
+    'reset: yangi parol bilan kirish ishlaydi');
+
+  /* (d) o'quvchi profilida Gmail maydoni */
+  forceNav('profile');
+  check(!!q('#st-email'), "profil: o'quvchida Gmail maydoni bor");
+  setVal('#st-email', 'yangi.mail@gmail.com');
+  clickAct('save-student-email');
+  check(await until(() => (cloudStub.db.students || []).some(r => String(r.email || '') === 'yangi.mail@gmail.com'), 2000),
+    "profil: Gmail manzil students.email ga saqlandi");
   console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
   process.exit(failed ? 1 : 0);
 })();

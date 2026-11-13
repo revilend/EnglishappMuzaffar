@@ -172,7 +172,10 @@ const state = {
   loginTimer: null,
   hwNewFiles: [],
   hwAttachments: [],
-  payMonth: ''
+  payMonth: '',
+  captcha: null,
+  pending2fa: null,
+  resetCtx: null
 };
 
 const AUTH_SCREENS = ['login'];
@@ -394,6 +397,9 @@ const CloudSync = (function () {
       last_paid_month: s.lastPaidMonth || null,
       voice_allowed: s.voiceAllowed !== false
     };
+    /* Kontaktlar ham faqat mavjud bo'lsa yoziladi — eski qiymat o'chmasin */
+    if (s.phone) out.phone = String(s.phone);
+    if (s.email) out.email = String(s.email);
     /* Parol faqat ma'lum bo'lganda yoziladi: bo'sh satr bazadagi mavjud
        parolni o'chirib yubormasligi kerak (ism/sinf/guruh tahririda). */
     const pw = acc.password || s.password || '';
@@ -640,6 +646,8 @@ const CloudSync = (function () {
           lastSeen: r.last_seen || null,
           lastPaymentInfo: r.last_payment_info || '',
           lastPaidMonth: r.last_paid_month || '',
+          phone: r.phone || '',
+          email: r.email || '',
           audioSubmissions: (audioByOld[oldIdByDb[r.id]] || []).slice()
         };
       });
@@ -757,6 +765,8 @@ const CloudSync = (function () {
       voiceAllowed: row.voice_allowed !== false,
       lastDevice: row.last_device || '',
       lastSeen: row.last_seen || null,
+      phone: row.phone || '',
+      email: row.email || '',
       audioSubmissions: prevSt && prevSt.audioSubmissions ? prevSt.audioSubmissions.slice() : []
     }];
 
@@ -1105,6 +1115,123 @@ const CloudSync = (function () {
     const res = await client.from('telegram_outbox').select('id, status').in('id', ids);
     if (res.error) throw res.error;
     return res.data || [];
+  }
+
+  /* --- auth_codes: bir martalik kodlar (ustoz 2FA, parolni tiklash) --- */
+  async function saveAuthCode(row) {
+    if (!ready() || !row) return null;
+    try {
+      const res = await client.from('auth_codes').insert({
+        purpose: row.purpose || 'reset',
+        student_id: row.studentId == null ? null : Number(row.studentId),
+        contact: row.contact == null ? null : String(row.contact),
+        code: String(row.code || ''),
+        expires_at: row.expiresAt || new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        used: false
+      }).select('*');
+      if (res.error) throw res.error;
+      return (res.data || [])[0] || null;
+    } catch (e) {
+      console.warn('[cloud] auth_codes insert:', (e && e.message) || e);
+      return null;
+    }
+  }
+
+  /* Kodni tekshiradi va ishlatilgan deb belgilaydi (bir marta amal qiladi) */
+  async function consumeAuthCode(purpose, code) {
+    if (!ready()) return null;
+    const value = String(code || '').trim();
+    if (!value) return null;
+    try {
+      const res = await client.from('auth_codes').select('*')
+        .eq('purpose', purpose).eq('code', value).eq('used', false);
+      if (res.error) throw res.error;
+      const row = (res.data || []).slice().sort(function (a, b) { return Number(b.id) - Number(a.id); })[0];
+      if (!row) return null;
+      if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) return null;
+      const upd = await client.from('auth_codes').update({ used: true }).eq('id', row.id);
+      if (upd.error) throw upd.error;
+      return row;
+    } catch (e) {
+      console.warn('[cloud] auth_codes check:', (e && e.message) || e);
+      return null;
+    }
+  }
+
+  /* --- email_outbox: sayt yozadi, bot Gmail (smtplib) orqali yuboradi --- */
+  async function queueEmail(rows) {
+    if (!ready() || !rows) return [];
+    const list = (Array.isArray(rows) ? rows : [rows]).filter(Boolean).map(function (r) {
+      return {
+        to_email: String(r.to_email || r.to || ''),
+        subject: String(r.subject || 'Bildirishnoma'),
+        body_html: String(r.body_html || r.html || ''),
+        status: 'pending'
+      };
+    }).filter(function (r) { return !!r.to_email; });
+    if (!list.length) return [];
+    try {
+      const res = await client.from('email_outbox').insert(list).select('id');
+      if (res.error) throw res.error;
+      return (res.data || []).map(function (r) { return r.id; });
+    } catch (e) {
+      console.warn('[cloud] email_outbox:', (e && e.message) || e);
+      return [];
+    }
+  }
+
+  /* Telefon (oxirgi 9 raqam), Gmail yoki login bo'yicha o'quvchini topadi */
+  async function lookupStudentByContact(value) {
+    if (!ready()) return null;
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    let rows = [];
+    try {
+      const res = await client.from('students').select('*');
+      if (res.error) throw res.error;
+      rows = res.data || [];
+    } catch (e) {
+      console.warn('[cloud] students lookup:', (e && e.message) || e);
+      return null;
+    }
+    const lower = raw.toLowerCase();
+    const digits = raw.replace(/\D/g, '');
+    const last9 = digits.length >= 9 ? digits.slice(-9) : '';
+    let hit = null;
+    if (last9) {
+      hit = rows.filter(function (r) {
+        const d = String(r.phone || '').replace(/\D/g, '');
+        return d.length >= 9 && d.slice(-9) === last9;
+      })[0] || null;
+    }
+    if (!hit && lower.indexOf('@') > 0) {
+      hit = rows.filter(function (r) { return String(r.email || '').trim().toLowerCase() === lower; })[0] || null;
+    }
+    if (!hit) {
+      hit = rows.filter(function (r) { return String(r.login || '').trim().toLowerCase() === lower; })[0] || null;
+    }
+    return hit;
+  }
+
+  /* Telefon/Gmail maydonlarini yangilaydi (students.email / students.phone) */
+  async function updateStudentContact(sid, fields) {
+    if (!ready() || !fields) return false;
+    const st = studentById(sid);
+    if (!st || st.dbId == null) return false;
+    const payload = {};
+    if ('email' in fields) payload.email = fields.email ? String(fields.email) : null;
+    if ('phone' in fields) payload.phone = fields.phone ? String(fields.phone) : null;
+    if (!Object.keys(payload).length) return false;
+    const res = await client.from('students').update(payload).eq('id', st.dbId);
+    if (res.error) throw res.error;
+    const list = getStudents();
+    const t = list.filter(function (x) { return x.id === sid; })[0];
+    if (t) {
+      if ('email' in payload) t.email = payload.email || '';
+      if ('phone' in payload) t.phone = payload.phone || '';
+      store.set(K.students, list);
+    }
+    return true;
   }
 
   /* --- monthly_fees: guruh uchun oyiga alohida to'lov summasi --- */
@@ -1487,6 +1614,11 @@ const CloudSync = (function () {
     removeHomeworkMedia: removeHomeworkMedia,
     queueMessages: queueMessages,
     messageStatus: messageStatus,
+    saveAuthCode: saveAuthCode,
+    consumeAuthCode: consumeAuthCode,
+    queueEmail: queueEmail,
+    lookupStudentByContact: lookupStudentByContact,
+    updateStudentContact: updateStudentContact,
     addPayment: addPayment,
     pullMonthlyFees: pullMonthlyFees,
     saveMonthlyFee: saveMonthlyFee,
@@ -2451,6 +2583,74 @@ function renderTopNavTabs() {
 }
 
 /* ==================== KIRISH EKRANI (login / parol) ==================== */
+/* ==================== CAPTCHA (matematik + Canvas) ==================== */
+function makeCaptcha() {
+  if (Math.random() < 0.5) {
+    const c = 2 + Math.floor(Math.random() * 4);
+    const d = 2 + Math.floor(Math.random() * 4);
+    return { text: c + ' × ' + d, answer: String(c * d) };
+  }
+  const a = 3 + Math.floor(Math.random() * 8);
+  const b = 1 + Math.floor(Math.random() * (a - 1));
+  if (Math.random() < 0.5) return { text: a + ' + ' + b, answer: String(a + b) };
+  return { text: a + ' − ' + b, answer: String(a - b) };
+}
+
+/* Canvas mavjud bo'lsa misol rasmga chiziladi, aks holda matn ko'rinadi.
+   Ikkala holatda ham savol canvas'ning data-q atributida turadi. */
+function paintCaptcha() {
+  const box = $('#captcha-canvas');
+  const fallback = $('#captcha-text');
+  const cap = state.captcha || (state.captcha = makeCaptcha());
+  if (fallback) fallback.textContent = cap.text + ' = ?';
+  if (!box) return;
+  box.setAttribute('data-q', cap.text);
+  box.setAttribute('aria-label', 'Tekshiruv misoli: ' + cap.text);
+  let ctx = null;
+  try { ctx = box.getContext ? box.getContext('2d') : null; } catch (e) { ctx = null; }
+  if (!ctx) { if (fallback) fallback.style.display = ''; return; }
+  if (typeof ctx.clearRect !== 'function') { if (fallback) fallback.style.display = ''; return; }
+  if (fallback) fallback.style.display = 'none';
+  const w = box.width || 170;
+  const h = box.height || 44;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#eef2ff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(99,102,241,0.35)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 5; i++) {
+    ctx.beginPath();
+    ctx.moveTo(Math.random() * w, Math.random() * h);
+    ctx.lineTo(Math.random() * w, Math.random() * h);
+    ctx.stroke();
+  }
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(-0.04);
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 22px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(cap.text + ' = ?', 0, 0);
+  ctx.restore();
+}
+
+function refreshCaptcha(silent) {
+  state.captcha = makeCaptcha();
+  paintCaptcha();
+  const input = $('#login-captcha');
+  if (input) {
+    input.value = '';
+    if (!silent) input.focus();
+  }
+}
+
+function sixDigitCode() {
+  let code = '';
+  for (let i = 0; i < 6; i++) code += String(Math.floor(Math.random() * 10));
+  return code;
+}
+
 function loginScreen() {
   return `<div class="auth">
     <section class="hero">
@@ -2499,8 +2699,17 @@ function loginScreen() {
       </div>
       <input type="text" name="bot_check_field" id="login-bot-hp" style="display:none !important; position:absolute; left:-9999px;" tabindex="-1" autocomplete="off" aria-hidden="true" />
 
+      <label class="field-label" for="login-captcha">${t('Tekshiruv (CAPTCHA)')}</label>
+      <div class="captcha-row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <canvas id="captcha-canvas" width="170" height="44" data-q="" aria-label="Tekshiruv misoli" style="border-radius:10px;flex:0 0 auto"></canvas>
+        <span class="captcha-text" id="captcha-text" style="font-weight:700;letter-spacing:1px">—</span>
+        <button type="button" class="icon-btn" data-act="captcha-refresh" aria-label="CAPTCHA yangilash" title="Yangi misol">🔄</button>
+      </div>
+      <input class="input" id="login-captcha" inputmode="numeric" autocomplete="off" placeholder="${t('Javob')}" />
+
       <div class="field-error${state.forcedOut ? ' show' : ''}" id="login-error">${state.forcedOut ? 'Siz ushbu qurilmadan chiqarildingiz!' : ''}</div>
       <button type="button" class="btn btn-primary btn-block" data-act="do-login">${t('Kirish')}</button>
+      <button type="button" class="btn btn-ghost btn-block" data-act="open-forgot" style="margin-top:8px">${t('Parolni unutdingizmi?')}</button>
     </div>
   </div>`;
 }
@@ -3965,6 +4174,15 @@ function profileScreen() {
     <div class="list-row"><span>${t("Ko'rinish")}</span><span class="muted">${isTeacher() ? 'Muzaffar Amirov' : t("O'quvchi")}</span></div>
   </div>
   <button type="button" class="btn btn-ghost btn-block" data-act="open-change-pwd">${ico('key', 16)} ${t("Parolni o'zgartirish")}</button>
+
+  ${(!isTeacher() && st) ? `
+  <div class="section-title">${t("Aloqa ma'lumotlari")}</div>
+  <div class="card">
+    <label class="field-label" for="st-email">${t('Gmail manzili')}</label>
+    <input class="input" id="st-email" type="email" autocomplete="email" placeholder="ism@gmail.com" value="${esc(st.email || '')}" />
+    <div class="muted small" style="margin-top:6px">${t('Parolni tiklash kodi shu manzilga yuboriladi.')}</div>
+    <button type="button" class="btn btn-primary btn-block" data-act="save-student-email" style="margin-top:8px">${t('Saqlash')}</button>
+  </div>` : ''}
 
   ${isTeacher() ? `
   <div class="section-title">${t("Ma'lumotlar Bazasi Zaxirasi")}</div>
@@ -5582,6 +5800,17 @@ function doLogin() {
   if (!telegramInitDataOK()) { fail("Telegram kirishi tekshiruvi majburiy — kirish rad etildi"); return; }
 
   if (!login || !pass) { fail("Login va parolni kiriting"); return; }
+
+  /* CAPTCHA: noto'g'ri javobda kirish bloklanadi va yangi misol beriladi */
+  const capEl = $('#login-captcha');
+  const capExpected = String((state.captcha && state.captcha.answer) || '');
+  const capGiven = String((capEl && capEl.value) || '').trim();
+  if (!capExpected || capGiven !== capExpected) {
+    refreshCaptcha(true);
+    fail("Tekshiruv javobi noto'g'ri — yangi misolni yeching");
+    if (capEl) capEl.focus();
+    return;
+  }
   if (err) { err.textContent = ''; err.classList.remove('show'); }
 
   const onFail = () => {
@@ -5620,11 +5849,11 @@ function doLogin() {
         }
         if (!teachPw) teachPw = TEACHER_PASSWORD;
         if (!passwordMatches(pass, teachPw)) { onFail(); return; }
-        onSuccess({ login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, studentId: null });
+        startTeacher2FA({ login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, studentId: null });
       }).catch(() => { loginEl.disabled = false; onFail(); });
     } else {
       if (!passwordMatches(pass, TEACHER_PASSWORD)) { onFail(); return; }
-      onSuccess({ login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, studentId: null });
+      startTeacher2FA({ login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, studentId: null });
     }
     return;
   }
@@ -5685,12 +5914,230 @@ function logout() {
   state.filterGroup = null;
   state.filterClass = 'Barchasi';
   state.search = '';
+  state.pending2fa = null;
+  state.resetCtx = null;
   closeModal();
   state.screen = 'login';
   render();
   toast('Hisobdan chiqdingiz');
 }
 
+/* ==================== USTOZ 2-BOSQICHLI HIMOYA (2FA) ==================== */
+function startTeacher2FA(userObj) {
+  const code = sixDigitCode();
+  const dev = (detectDevice() || {}).name || "Noma'lum qurilma";
+  const until = Date.now() + 3 * 60 * 1000;   /* 3 daqiqa */
+  state.pending2fa = { user: userObj, code: code, until: until };
+
+  /* Kod bazaga (3 daqiqa) va bir vaqtda Telegram + Gmail outbox'ga yoziladi */
+  CloudSync.saveAuthCode({
+    purpose: 'teacher_2fa',
+    code: code,
+    contact: 'ADMIN',
+    expiresAt: new Date(until).toISOString()
+  });
+  CloudSync.queueMessages([{
+    chat_id: 'ADMIN',
+    text: '🔐 <b>2-bosqichli tasdiqlash</b>\nQurilma: ' + esc(dev) +
+          '\nKod: <b>' + code + '</b>\nKod 3 daqiqa amal qiladi.'
+  }]);
+  CloudSync.queueEmail([{
+    to_email: 'ADMIN',
+    subject: 'Kirish kodi (2FA) — ' + dev,
+    body_html: "<p><b>Yangi qurilmadan kirish so'rovi</b></p>" +
+      '<p>Qurilma: <b>' + esc(dev) + '</b></p>' +
+      '<p>Kod: <b style="font-size:24px;letter-spacing:4px">' + code + '</b></p>' +
+      '<p>Kod 3 daqiqa amal qiladi.</p>'
+  }]);
+
+  openTwoFA();
+}
+
+function openTwoFA() {
+  const p = state.pending2fa;
+  if (!p) return;
+  const dev = (detectDevice() || {}).name || '';
+  openModal(`
+    <div class="modal-head">
+      <h3>🔐 2-bosqichli tasdiqlash</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+    <div class="muted small">6 xonali kod Telegram (ustoz) va Gmail orqali yuborildi.
+      Qurilma: <b>${esc(dev)}</b></div>
+    <label class="field-label" for="twofa-code" style="margin-top:10px">Tasdiqlash kodi</label>
+    <input class="input" id="twofa-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••" />
+    <div class="field-error" id="twofa-error"></div>
+    <button type="button" class="btn btn-primary btn-block" data-act="do-2fa">Tasdiqlash</button>
+    <button type="button" class="btn btn-ghost btn-block" data-act="resend-2fa">Kodni qayta yuborish</button>
+  `);
+  setTimeout(function () { const el = $('#twofa-code'); if (el) el.focus(); }, 30);
+}
+
+function submitTwoFA() {
+  const p = state.pending2fa;
+  const err = $('#twofa-error');
+  const showErr = function (m) { if (err) { err.textContent = m; err.classList.add('show'); } };
+  const val = String(($('#twofa-code') || {}).value || '').trim();
+  if (!p) { showErr("So'rov eskirgan — qaytadan kiring"); return; }
+  if (Date.now() > p.until) { showErr('Kod muddati tugadi — qayta yuboring'); return; }
+  if (val !== p.code) {
+    showErr("Kod noto'g'ri");
+    const el = $('#twofa-code');
+    if (el) { el.value = ''; el.focus(); }
+    return;
+  }
+  CloudSync.consumeAuthCode('teacher_2fa', val);
+  state.pending2fa = null;
+  closeModal();
+  store.del(K.loginFails);
+  startSession(p.user);
+  toast('Xush kelibsiz!');
+}
+
+/* ==================== PAROLNI TIKLASH (telefon / Gmail) ==================== */
+function openForgotPwd() {
+  state.resetCtx = null;
+  openModal(`
+    <div class="modal-head">
+      <h3>Parolni tiklash</h3>
+      <button type="button" class="icon-btn" data-act="close-modal" aria-label="Yopish">✕</button>
+    </div>
+    <div class="muted small">Telefon raqami (+998...), Gmail manzili yoki loginni kiriting —
+      6 xonali kod Telegram va/yoki Gmail orqali yuboriladi.</div>
+    <label class="field-label" for="fp-contact" style="margin-top:10px">Telefon / Gmail / Login</label>
+    <input class="input" id="fp-contact" autocomplete="username" placeholder="+998 90 123 45 67 yoki ism@gmail.com" />
+    <div class="field-error" id="fp-error"></div>
+    <button type="button" class="btn btn-primary btn-block" data-act="forgot-send">Kod yuborish</button>
+    <div id="fp-step2" hidden>
+      <label class="field-label" for="fp-code" style="margin-top:10px">Kod (6 xona)</label>
+      <input class="input" id="fp-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••" />
+      <label class="field-label" for="fp-new">Yangi parol</label>
+      <input class="input" id="fp-new" type="password" autocomplete="new-password" placeholder="••••" />
+      <label class="field-label" for="fp-new2">Yangi parolni tasdiqlang</label>
+      <input class="input" id="fp-new2" type="password" autocomplete="new-password" placeholder="••••" />
+      <button type="button" class="btn btn-primary btn-block" data-act="forgot-reset">Parolni yangilash</button>
+    </div>
+  `);
+}
+
+async function sendResetCode() {
+  const err = $('#fp-error');
+  const showErr = function (m) { if (err) { err.textContent = m; err.classList.add('show'); } };
+  const contact = String(($('#fp-contact') || {}).value || '').trim();
+  if (!contact) { showErr('Telefon, Gmail yoki loginni kiriting'); return; }
+
+  const isTeacher = contact.toLowerCase() === TEACHER_LOGIN;
+  let row = null;
+  if (!isTeacher) {
+    row = await CloudSync.lookupStudentByContact(contact);
+    if (!row) { showErr('Bunday telefon/Gmail/login topilmadi'); return; }
+  }
+
+  const code = sixDigitCode();
+  const until = Date.now() + 10 * 60 * 1000;   /* 10 daqiqa */
+  await CloudSync.saveAuthCode({
+    purpose: 'reset',
+    studentId: row ? row.id : null,
+    contact: row ? (row.email || row.phone || contact) : 'ADMIN',
+    code: code,
+    expiresAt: new Date(until).toISOString()
+  });
+
+  const tgText = '🔑 <b>Parolni tiklash kodi</b>\nKod: <b>' + code + '</b>\n10 daqiqa amal qiladi.';
+  const mailSubj = 'Parolni tiklash kodi';
+  const mailBody = '<p>Parolni tiklash kodi:</p><p><b style="font-size:24px;letter-spacing:4px">' +
+    code + '</b></p><p>Kod 10 daqiqa amal qiladi.</p>';
+
+  const channels = [];
+  if (isTeacher) {
+    CloudSync.queueMessages([{ chat_id: 'ADMIN', text: tgText }]);
+    CloudSync.queueEmail([{ to_email: 'ADMIN', subject: mailSubj, body_html: mailBody }]);
+    channels.push('Telegram (ustoz)', 'Gmail (ustoz)');
+  } else {
+    if (row.telegram_chat_id) {
+      CloudSync.queueMessages([{ chat_id: String(row.telegram_chat_id), student_id: row.id, text: tgText }]);
+      channels.push('Telegram');
+    }
+    if (row.email) {
+      CloudSync.queueEmail([{ to_email: String(row.email), subject: mailSubj, body_html: mailBody }]);
+      channels.push('Gmail (' + row.email + ')');
+    }
+  }
+
+  state.resetCtx = {
+    code: code,
+    until: until,
+    studentId: row ? row.id : null,
+    isTeacher: isTeacher
+  };
+  const step2 = $('#fp-step2');
+  if (step2) step2.hidden = false;
+  if (err) { err.textContent = ''; err.classList.remove('show'); }
+  const codeEl = $('#fp-code');
+  if (codeEl) codeEl.focus();
+
+  if (!channels.length) {
+    showErr("Bu hisobda Telegram ham, Gmail ham yo'q — ustoz bilan bog'laning");
+    return;
+  }
+  toast('Kod yuborildi: ' + channels.join(' va '));
+}
+
+async function resetPassword() {
+  const ctx = state.resetCtx;
+  const err = $('#fp-error');
+  const showErr = function (m) { if (err) { err.textContent = m; err.classList.add('show'); } };
+  const code = String(($('#fp-code') || {}).value || '').trim();
+  const n1 = String(($('#fp-new') || {}).value || '');
+  const n2 = String(($('#fp-new2') || {}).value || '');
+
+  if (!ctx) { showErr("Avval kod so'rang"); return; }
+  if (Date.now() > ctx.until) { showErr("Kod muddati tugadi — qaytadan so'rang"); return; }
+  if (code !== ctx.code) { showErr("Kod noto'g'ri"); return; }
+  if (n1.length < 3) { showErr("Yangi parol kamida 3 ta belgi bo'lsin"); return; }
+  if (n1 !== n2) { showErr('Parollar mos kelmadi'); return; }
+
+  /* Kod bir marta ishlaydi: bazada 'used' bo'ladi */
+  if (CloudSync.ready()) {
+    const used = await CloudSync.consumeAuthCode('reset', code);
+    if (!used) { showErr('Kod eskirgan yoki allaqachon ishlatilgan'); return; }
+  }
+
+  const hashed = hashPasswordSync(n1);
+  if (ctx.isTeacher) {
+    CloudSync.pushTeacherPassword(n1);
+    accounts[TEACHER_LOGIN] = Object.assign({}, accounts[TEACHER_LOGIN] || {},
+      { login: TEACHER_LOGIN, role: 'teacher', name: TEACHER_NAME, password: n1 });
+  } else {
+    const client = window.__cloudClient || (window.supabase && window.supabase.createClient &&
+      window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY));
+    if (!client) { showErr("Bulut bilan aloqa yo'q — keyinroq urinib ko'ring"); return; }
+    const res = await client.from('students').update({ password_hash: hashed, password: hashed })
+      .eq('id', ctx.studentId);
+    if (res.error) { showErr('Parolni saqlashda xatolik'); return; }
+  }
+
+  state.resetCtx = null;
+  closeModal();
+  render();
+  toast('Parol yangilandi ✓ — endi yangi parol bilan kiring');
+}
+
+/* ==================== O'QUVCHI: GMAIL MANZILI ==================== */
+function saveStudentEmail() {
+  const st = linkedStudent();
+  if (!st) return;
+  const el = $('#st-email');
+  const v = String((el && el.value) || '').trim();
+  if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { toast("Gmail manzil noto'g'ri", 'error'); return; }
+  CloudSync.updateStudentContact(st.id, { email: v })
+    .then(function (ok) {
+      render();
+      if (ok) toast('Gmail manzil saqlandi ✓');
+      else toast("Bulut bilan aloqa yo'q", 'error');
+    })
+    .catch(function () { toast('Saqlashda xatolik', 'error'); });
+}
 /* ==================== Render ==================== */
 const SCREENS = {
   'login': loginScreen,
@@ -5725,6 +6172,7 @@ function render() {
   renderTopNavTabs();
   renderTopNavControls();
   $('#screen').innerHTML = (SCREENS[scr] || loginScreen)();
+  if (scr === 'login') paintCaptcha();
   if (scr === 'students') refreshStudentList();
   if (scr === 'grades') ensureGradeState();
   if (scr === 'attendance') ensureAttState();
@@ -6021,6 +6469,13 @@ document.addEventListener('click', function (e) {
   const actions = {
     /* --- Kirish --- */
     'do-login': doLogin,
+    'captcha-refresh': function () { refreshCaptcha(); },
+    'open-forgot': openForgotPwd,
+    'forgot-send': function () { sendResetCode(); },
+    'forgot-reset': function () { resetPassword(); },
+    'do-2fa': submitTwoFA,
+    'resend-2fa': function () { if (state.pending2fa) startTeacher2FA(state.pending2fa.user); },
+    'save-student-email': saveStudentEmail,
     'logout': logout,
     'nav': function () { go(btn.getAttribute('data-screen')); },
 

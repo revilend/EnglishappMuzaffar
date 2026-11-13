@@ -6,7 +6,10 @@ import json
 import logging
 import os
 import re
+import smtplib
+import ssl
 from datetime import datetime, timezone
+from email.message import EmailMessage
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.fsm.context import FSMContext
@@ -105,6 +108,7 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
                             web_app=WebAppInfo(url=config.WEBAPP_URL))],
             [KeyboardButton(text=STUDENT_MENU["speak"]), KeyboardButton(text=STUDENT_MENU["grades"])],
             [KeyboardButton(text=STUDENT_MENU["login"])],
+            [KeyboardButton(text="📱 Telefon raqamni ulash", request_contact=True)],
         ],
     )
 
@@ -360,6 +364,39 @@ def student_by_chat(chat_id: int):
     except Exception as e:
         logging.warning(f"student_by_chat: {e}")
         return None
+
+
+@dp.message(F.contact)
+async def on_contact_shared(message: types.Message):
+    """O'quvchi telefon raqamini ulashadi → students.phone ga yoziladi."""
+    contact = message.contact
+    if contact is None:
+        return
+    if contact.user_id and message.from_user and contact.user_id != message.from_user.id:
+        await message.answer("Iltimos, faqat o'zingizning telefon raqamingizni ulashing.")
+        return
+    phone = (contact.phone_number or "").strip()
+    if not phone:
+        await message.answer("Telefon raqamini o'qib bo'lmadi. Qaytadan urinib ko'ring.")
+        return
+    st = student_by_chat(message.chat.id)
+    if not st:
+        await message.answer(
+            "📱 Raqam qabul qilindi, lekin hisobingiz hali botga ulanmagan.\n"
+            "Avval <code>/login &lt;login&gt; &lt;parol&gt;</code> bilan ulang.",
+            parse_mode="HTML",
+        )
+        return
+    try:
+        supabase.table("students").update({"phone": phone}).eq("id", st["id"]).execute()
+    except Exception as e:
+        logging.error(f"phone save error: {e}")
+        await message.answer("❌ Raqamni saqlashda xatolik. Keyinroq urinib ko'ring.")
+        return
+    await message.answer(
+        "✅ Telefon raqamingiz saqlandi. Parolni tiklashda shu raqamdan foydalanasiz.",
+        reply_markup=get_main_keyboard(),
+    )
 
 
 @dp.message(Command("login"))
@@ -2049,7 +2086,12 @@ async def outbox_tick() -> int:
             continue
 
         try:
-            target_id = int(chat_id) if str(chat_id).lstrip("-").isdigit() else str(chat_id)
+            raw_chat = str(chat_id).strip()
+            if raw_chat.upper() == "ADMIN":
+                # Sayt 'ADMIN' manziliga yozgan xabarlar ustozga boradi
+                target_id = config.ADMIN_ID
+            else:
+                target_id = int(raw_chat) if raw_chat.lstrip("-").isdigit() else raw_chat
             await bot.send_message(
                 chat_id=target_id,
                 text=text,
@@ -2077,6 +2119,81 @@ async def outbox_watcher():
         await asyncio.sleep(3)
 
 
+# ============================================================
+# Gmail (smtplib) — email_outbox orqali xat yuborish
+# ============================================================
+async def send_gmail(to_email: str, subject: str, body_html: str) -> bool:
+    """Gmail SMTP (SSL, 465) orqali HTML xat yuboradi.
+
+    SMTP bloklovchi (sync) kutubxona bo'lgani uchun butun ish
+    asyncio.to_thread ichida bajariladi — event loop qotmaydi.
+    """
+    user = (getattr(config, "GMAIL_USER", "") or "").strip()
+    app_pw = (getattr(config, "GMAIL_APP_PASSWORD", "") or "").strip()
+    if not user or not app_pw:
+        raise RuntimeError("GMAIL_USER / GMAIL_APP_PASSWORD sozlanmagan")
+
+    def _send() -> bool:
+        msg = EmailMessage()
+        msg["From"] = user
+        msg["To"] = str(to_email).strip()
+        msg["Subject"] = subject or "Bildirishnoma"
+        msg.set_content("Bu xat HTML formatda. HTML qo'llab-quvvatlaydigan pochtadan oching.")
+        msg.add_alternative(body_html or "", subtype="html")
+        ctx = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx, timeout=30) as smtp:
+            smtp.login(user, app_pw)
+            smtp.send_message(msg)
+        return True
+
+    return await asyncio.to_thread(_send)
+
+
+async def email_outbox_tick() -> int:
+    """email_outbox'dagi pending xatlarni Gmail orqali yuboradi."""
+    try:
+        rows = supabase.table("email_outbox").select("id, to_email, subject, body_html, status")\
+            .eq("status", "pending").order("id").limit(20).execute().data or []
+    except Exception as e:
+        msg = str(e)
+        if "PGRST205" in msg or "email_outbox" in msg:
+            return 0
+        logging.warning(f"email_outbox_tick: {e}")
+        return 0
+
+    sent = 0
+    for r in rows:
+        row_id = r["id"]
+        target = str(r.get("to_email") or "").strip()
+        # 'ADMIN' — ustozning Gmail manzili (config.ADMIN_EMAIL)
+        if target.upper() == "ADMIN":
+            target = (getattr(config, "ADMIN_EMAIL", "") or getattr(config, "GMAIL_USER", "") or "").strip()
+        try:
+            if not target or "@" not in target:
+                raise ValueError(f"noto'g'ri manzil: {target!r}")
+            await send_gmail(target, r.get("subject") or "Bildirishnoma", r.get("body_html") or "")
+            supabase.table("email_outbox").update({"status": "sent"}).eq("id", row_id).execute()
+            sent += 1
+            logging.info(f"Email outbox sent #{row_id} -> {target}")
+        except Exception as e:
+            logging.error(f"email send error row {row_id} -> {target}: {e}")
+            try:
+                supabase.table("email_outbox").update({"status": "failed"}).eq("id", row_id).execute()
+            except Exception:
+                pass
+    return sent
+
+
+async def email_outbox_watcher():
+    await asyncio.sleep(3)
+    while True:
+        try:
+            await email_outbox_tick()
+        except Exception as e:
+            logging.warning(f"email outbox watcher loop error: {e}")
+        await asyncio.sleep(5)
+
+
 # Asosiy ishga tushirish
 _bg_tasks: set = set()  # fon vazifalari GC'dan himoya uchun shu yerda saqlanadi
 
@@ -2101,6 +2218,7 @@ async def main():
     _bg_tasks.add(asyncio.create_task(messages_watcher()))   # yangi chat xabari
     _bg_tasks.add(asyncio.create_task(receipt_watcher()))    # to'lov cheklari
     _bg_tasks.add(asyncio.create_task(outbox_watcher()))     # telegram_outbox eslatmalari
+    _bg_tasks.add(asyncio.create_task(email_outbox_watcher()))  # Gmail xatlari
 
     # Diagnostika: qaysi bot jonli — logda username ko'rinadi
     try:

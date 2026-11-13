@@ -280,3 +280,57 @@ alter table public.payment_receipts add column if not exists channel_chat_id tex
 insert into public.bot_settings (key, value) values
   ('payments_channel_id', '')
 on conflict (key) do nothing;
+
+-- ============================================================
+-- 15) Xavfsizlik: telefon/Gmail, bir martalik kodlar (2FA, parol tiklash)
+-- ============================================================
+
+-- O'quvchining telefon raqami va Gmail manzili (parolni tiklash uchun)
+alter table public.students add column if not exists phone text;
+alter table public.students add column if not exists email text;
+
+-- Bir martalik kodlar: 'reset' (parolni tiklash) yoki 'teacher_2fa' (ustoz 2-bosqichi)
+create table if not exists public.auth_codes (
+  id          bigint generated always as identity primary key,
+  purpose     text not null default 'reset' check (purpose in ('reset', 'teacher_2fa')),
+  student_id  bigint references public.students (id) on delete cascade,
+  contact     text,
+  code        text not null,
+  expires_at  timestamptz not null,
+  used        boolean not null default false,
+  created_at  timestamptz not null default now()
+);
+create index if not exists auth_codes_code_idx on public.auth_codes (purpose, code, used);
+create index if not exists auth_codes_student_idx on public.auth_codes (student_id, created_at);
+
+-- Gmail outbox: sayt yozadi, bot smtplib orqali yuboradi
+create table if not exists public.email_outbox (
+  id          bigint generated always as identity primary key,
+  to_email    text not null,
+  subject     text not null,
+  body_html   text not null,
+  status      text not null default 'pending',
+  created_at  timestamptz not null default now()
+);
+create index if not exists email_outbox_status_idx on public.email_outbox (status, created_at);
+
+-- RLS: demo loyiha uchun ochiq (anon kalit bilan o'qish/yozish)
+alter table public.auth_codes enable row level security;
+alter table public.email_outbox enable row level security;
+
+drop policy if exists "demo auth_codes all" on public.auth_codes;
+create policy "demo auth_codes all" on public.auth_codes
+  for all using (true) with check (true);
+
+drop policy if exists "demo email_outbox all" on public.email_outbox;
+create policy "demo email_outbox all" on public.email_outbox
+  for all using (true) with check (true);
+
+-- Jadval/sekvenslarga to'liq ruxsat (anon, authenticated, service_role)
+grant usage on schema public to anon, authenticated, service_role;
+grant all on public.auth_codes to anon, authenticated, service_role;
+grant all on public.email_outbox to anon, authenticated, service_role;
+grant all on all sequences in schema public to anon, authenticated, service_role;
+
+-- PostgREST sxema keshini yangilash (yangi jadvallar darhol ko'rinadi)
+notify pgrst, 'reload schema';

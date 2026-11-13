@@ -9,3 +9,9 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "https://mvjoeqyqaylfccqcnwwe.supabase.
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_publishable_PHMC_kfQfu5BLFgDOzHsjw_B0VO2xDI")
 
 PAYMENTS_CHANNEL_ID = os.getenv("PAYMENTS_CHANNEL_ID", "")
+
+# Gmail bildirishnomalari (App Password — Google hisob sozlamalaridan olinadi)
+GMAIL_USER = os.getenv("GMAIL_USER", "")
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
+# Ustozga ketadigan xatlar manzili (standart: GMAIL_USER)
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", GMAIL_USER)
