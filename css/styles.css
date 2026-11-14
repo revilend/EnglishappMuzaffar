@@ -1665,6 +1665,14 @@ html[data-theme="dark"] .st-inset {
 .st-head { display: flex; align-items: flex-start; gap: 12px; width: 100%; box-sizing: border-box; }
 .st-head .s-main { flex: 1; min-width: 0; }
 .st-head .chip-class { align-self: flex-start; }
+.chip-hw-allow {
+  display: inline-flex; align-items: center; gap: 3px;
+  margin-left: 6px; padding: 2px 8px; border-radius: 999px;
+  background: rgba(34, 197, 94, 0.14); color: #16a34a;
+  font-size: 10.5px; font-weight: 700; vertical-align: 1px; white-space: nowrap;
+}
+.chip-hw-allow svg { width: 11px; height: 11px; }
+.hw-allow-chip svg { width: 12px; height: 12px; vertical-align: -1px; }
 .student-card > .st-inset { width: 100%; box-sizing: border-box; }
 .student-card > .st-actions { width: 100%; box-sizing: border-box; }
 

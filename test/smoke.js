@@ -2739,14 +2739,30 @@ await (async () => {
   check(modalHwSwitch().classList.contains('on') &&
         modalHwSwitch().getAttribute('aria-checked') === 'true',
     'topshiriq: modalda toggle yoqildi');
-  check(cardHwSwitch.classList.contains('on'),
+  check(q('.student-card .st-hw-allow [data-act="hw-upload-toggle"]').classList.contains('on'),
     'topshiriq: kartadagi switch ham darhol yoqildi (sinxron)');
+  check(!!q('.student-card .chip-hw-allow'),
+    'topshiriq: ruxsati bor o‘quvchi kartasida “Yuklash” belgisi ko‘rinadi');
   const toggledSid = modalHwSwitch().getAttribute('data-sid');
   await new Promise(r => setTimeout(r, 300));
   const toggledRow = (cloudStub.db.students || []).filter(r => ('s' + r.id) === toggledSid)[0] || {};
   check(toggledRow.homework_upload_allowed === true,
     'topshiriq: students.homework_upload_allowed = true bazaga yozildi');
   click('[data-act="close-modal"]');
+  /* Filtr: faqat yuklash ruxsati berilganlar */
+  const hwFilterChip = q('[data-act="filter-hw-allow"]');
+  check(!!hwFilterChip, 'topshiriq: o‘quvchilar ro‘yxatida “Yuklash ruxsati” filtri bor');
+  click(hwFilterChip);
+  check(qa('.student-card').length > 0 &&
+        qa('.student-card').every(c => !!c.querySelector('.chip-hw-allow')),
+    'topshiriq: filtr faqat ruxsat berilgan o‘quvchilarni ko‘rsatadi');
+  check(q('[data-act="filter-hw-allow"]').classList.contains('active') &&
+        q('[data-act="filter-hw-allow"]').getAttribute('aria-pressed') === 'true',
+    'topshiriq: filtr chipi faol holatda belgilanadi');
+  click('[data-act="filter-hw-allow"]');
+  check(qa('.student-card').length >= qa('.student-card').filter(c => !!c.querySelector('.chip-hw-allow')).length,
+    'topshiriq: filtr o‘chirilganda ro‘yxat to‘liq qaytadi');
+
   /* restore1 uchun ruxsat (o'quvchi tomonini sinash maqsadida) */
   if (restoreRow0) restoreRow0.homework_upload_allowed = true;
 

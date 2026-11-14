@@ -155,6 +155,7 @@ const state = {
   screen: 'login',
   filterClass: 'Barchasi',
   filterGroup: null,
+  filterHwAllow: false,
   search: '',
   toastTimer: null,
   editor: null,
@@ -2824,7 +2825,8 @@ const I18N_EN = {
   "O'qituvchi komentariyasi": "Teacher's comment",
   'Siz yuklagan fayllar': 'Files you uploaded',
   'Topshiriqni yuklash': 'Upload homework',
-  'Uyga vazifa yuklashga ruxsat': 'Allow homework upload',
+  'Yuklash ruxsati': 'Upload allowed',
+  'Yuklash': 'Upload',
   "Barcha guruhlar": 'All groups',
   'Komentariya yuborildi': 'Comment sent',
   'Ko‘rilmagan': 'New',
@@ -4602,7 +4604,8 @@ function studentCard(s) {
       <div class="avatar st-avatar">${esc(initials(s.fullName))}</div>
       <div class="s-main">
         <span class="s-name">${esc(s.fullName)}</span>
-        <div class="s-group">${g ? esc(g.name) : t("Guruh taylanmagan")}</div>
+        <div class="s-group">${g ? esc(g.name) : t("Guruh taylanmagan")}${s.homeworkUploadAllowed === true
+          ? ` <span class="chip-hw-allow">${ico('upload', 12)} ${t('Yuklash')}</span>` : ''}</div>
         ${presenceHTML(s)}
         <div class="s-contacts">
           <span class="s-contact"><span class="lbl">Login</span><span class="login-val">${sLogin ? esc(sLogin) : '—'}</span></span>
@@ -4653,7 +4656,8 @@ function filteredStudents() {
     const byClass = state.filterClass === 'Barchasi' || s.schoolClass === state.filterClass;
     const byGroup = !state.filterGroup || s.groupId === state.filterGroup;
     const byQuery = !q || String(s.fullName).toLowerCase().indexOf(q) >= 0;
-    return byClass && byGroup && byQuery;
+    const byHwAllow = !state.filterHwAllow || s.homeworkUploadAllowed === true;
+    return byClass && byGroup && byQuery && byHwAllow;
   });
 }
 function studentListHTML() {
@@ -4699,6 +4703,8 @@ function studentsScreen() {
 
   <div class="chips${state.classHint ? ' is-hl' : ''}">
     ${chips.map(c => `<button type="button" class="chip-btn ${state.filterClass === c ? 'active' : ''}" data-act="filter-class" data-class="${esc(c)}">${esc(tClass(c))}</button>`).join('')}
+    <button type="button" class="chip-btn hw-allow-chip${state.filterHwAllow ? ' active' : ''}" data-act="filter-hw-allow"
+            aria-pressed="${state.filterHwAllow ? 'true' : 'false'}">${ico('upload', 13)} ${t('Yuklash ruxsati')}</button>
   </div>
 
   <div id="students-list">${studentListHTML()}</div>
@@ -5440,6 +5446,8 @@ function toggleHwUploadAllowed(sid) {
     btns[i].setAttribute('aria-checked', String(st.homeworkUploadAllowed));
   }
   CloudSync.pushStudent(sid);
+  /* Kartadagi "Yuklash" belgisi va filtr natijasi darhol yangilansin */
+  if (state.screen === 'students') refreshStudentList();
   toast(st.homeworkUploadAllowed ? 'Uyga vazifa yuklashga ruxsat berildi' : "Yuklash ruxsati o'chirildi");
 }
 
@@ -7888,6 +7896,11 @@ document.addEventListener('click', function (e) {
     },
     'filter-class': function () {
       state.filterClass = btn.getAttribute('data-class');
+      render();
+    },
+    /* Faqat uyga vazifa yuklashga ruxsati bor o'quvchilar */
+    'filter-hw-allow': function () {
+      state.filterHwAllow = !state.filterHwAllow;
       render();
     },
 
