@@ -1200,6 +1200,7 @@ const CloudSync = (function () {
       homeworkDbId: r.homework_id == null ? null : Number(r.homework_id),
       files: submissionFilesOf(r.files),
       note: r.note || '',
+      status: r.status || 'yangi',
       teacherComment: r.teacher_comment || '',
       commentedAt: r.commented_at || null,
       createdAt: r.created_at || '',
@@ -1230,25 +1231,60 @@ const CloudSync = (function () {
       return store.get(K.homeworkSubmissions, []);
     }
   }
+  /* PostgREST/Storage xatosini o'qiladigan matnga aylantiradi */
+  function apiErrText(e) {
+    if (!e) return "noma'lum xato";
+    const parts = [];
+    const code = e.code || e.statusCode || e.status;
+    if (code) parts.push(String(code));
+    if (e.details) parts.push(String(e.details));
+    if (e.hint) parts.push('hint: ' + e.hint);
+    parts.push(String(e.message || e.error_description || e));
+    return parts.filter(Boolean).join(' · ');
+  }
+  /* Eski jadvalda yangi ustunlar bo'lmasa (PGRST204 / schema cache) — aniqlash */
+  function isMissingColumn(e) {
+    return /PGRST204|schema cache|column .* does not exist|could not find the .* column/i
+      .test(String((e && e.code) || '') + ' ' + String((e && e.message) || ''));
+  }
   async function saveHomeworkSubmission(sub) {
-    if (!ready()) throw new Error('Supabase sozlanmagan');
-    const row = {
+    if (!ready()) throw new Error('Baza: Supabase sozlanmagan');
+    /* homework_submissions jadvali ustunlari bilan 1:1 mos obyekt */
+    const base = {
       student_id: sub.studentDbId,
       homework_id: sub.homeworkDbId,
       files: submissionFilesOf(sub.files),
       note: String(sub.note || ''),
       updated_at: new Date().toISOString()
     };
+    const extras = {
+      student_name: String(sub.studentName || ''),
+      group_name: String(sub.groupName || ''),
+      status: String(sub.status || 'yangi')
+    };
     const found = await client.from('homework_submissions').select('*')
       .eq('student_id', sub.studentDbId).eq('homework_id', sub.homeworkDbId).limit(1);
-    if (found.error) throw found.error;
+    if (found.error) {
+      throw new Error("Baza (homework_submissions so'rovi): " + apiErrText(found.error));
+    }
     const existing = found.data && found.data[0];
-    const res = existing
-      ? await client.from('homework_submissions').update(row).eq('id', existing.id).select()
-      : await client.from('homework_submissions').insert(row).select();
-    if (res.error) throw res.error;
-    const saved = mapSubmission((res.data && res.data[0]) || Object.assign({}, existing || {}, row));
-    return putLocalSubmission(saved);
+    /* 16-bo'lim SQL hali qo'llanmagan bo'lsa, qo'shimcha ustunlarsiz qayta urinamiz */
+    const attempts = [Object.assign({}, base, extras), base];
+    let lastErr = null;
+    for (let i = 0; i < attempts.length; i++) {
+      const row = attempts[i];
+      const res = existing
+        ? await client.from('homework_submissions').update(row).eq('id', existing.id).select()
+        : await client.from('homework_submissions').insert(row).select();
+      if (!res.error) {
+        const saved = mapSubmission((res.data && res.data[0]) || Object.assign({}, existing || {}, row));
+        return putLocalSubmission(saved);
+      }
+      lastErr = res.error;
+      if (!isMissingColumn(res.error)) break;
+      console.warn('[cloud] homework_submissions: qo\'shimcha ustun yo\'q — soddaroq qator bilan qayta yuboriladi');
+    }
+    throw new Error('Baza (homework_submissions INSERT): ' + apiErrText(lastErr));
   }
   async function commentSubmission(id, comment) {
     if (!ready()) throw new Error('Supabase sozlanmagan');
@@ -1262,26 +1298,37 @@ const CloudSync = (function () {
   }
   /* Faylni Storage'ga yuklash: homework-media/submissions/{student}/{homework}/... */
   async function uploadSubmissionFile(file, studentDbId, homeworkDbId) {
-    if (!ready()) throw new Error('Supabase sozlanmagan');
-    const ext = String((file && file.name) || '').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
-    const path = 'submissions/' + studentDbId + '/' + homeworkDbId + '/' +
-      Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.' + ext;
-    let lastErr = null;
+    if (!ready()) throw new Error('Storage: Supabase sozlanmagan');
+    /* Nomda bo'shliq, apostrof, emoji yoki kirill bo'lsa — "Failed to fetch" bermasligi uchun ASCII */
+    const safeName = String((file && file.name) || 'file').replace(/[^a-zA-Z0-9._-]/g, '_') || 'file';
+    const rawPath = 'submissions/' + studentDbId + '/' + homeworkDbId + '/' + Date.now() + '_' + safeName;
+    const path = rawPath.split('/').map(encodeURIComponent).join('/');
+    const contentType = (file && file.type) ? String(file.type) : 'application/octet-stream';
+    const errors = [];
     for (let i = 0; i < MEDIA_BUCKETS.length; i++) {
       const bucket = MEDIA_BUCKETS[i];
       try {
         const res = await client.storage.from(bucket).upload(path, file, {
-          cacheControl: '3600', upsert: false, contentType: (file && file.type) || undefined
+          cacheControl: '3600',
+          upsert: true,
+          contentType: contentType,
+          headers: { 'x-upsert': 'true' }
         });
         if (res.error) throw res.error;
         const pub = client.storage.from(bucket).getPublicUrl(path);
-        return { url: pub.data.publicUrl, path: path, bucket: bucket };
+        const url = (pub && pub.data && pub.data.publicUrl) || '';
+        if (!url) throw new Error('public URL olinmadi');
+        return { url: url, path: path, bucket: bucket, contentType: contentType, name: safeName };
       } catch (e) {
-        lastErr = e;
-        console.warn('[cloud] submission upload (' + bucket + '):', (e && e.message) || e);
+        let msg = apiErrText(e);
+        if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+          msg += ' (tarmoq/CORS — bucket public va CORS sozlamalarini tekshiring)';
+        }
+        errors.push(bucket + ': ' + msg);
+        console.warn('[cloud] submission upload (' + bucket + '):', msg);
       }
     }
-    throw lastErr || new Error('Storage bucket topilmadi');
+    throw new Error('Storage xatosi — ' + errors.join(' | '));
   }
 
   /* --- telegram_outbox: sayt yozadi, bot yuboradi (chek / eslatma) --- */
@@ -3520,6 +3567,8 @@ async function submitHomeworkFiles(btn) {
     await CloudSync.saveHomeworkSubmission({
       studentDbId: st.dbId,
       homeworkDbId: h.dbId,
+      studentName: st.fullName || '',
+      groupName: (groupById(st.groupId) || {}).name || '',
       files: all,
       note: note || (prev && prev.note) || ''
     });

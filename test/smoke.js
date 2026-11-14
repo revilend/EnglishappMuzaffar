@@ -2815,6 +2815,25 @@ await (async () => {
   const subInput = q('.hw-sub-input');
   check(subInput.getAttribute('accept') === '*/*' && subInput.hasAttribute('multiple'),
     'topshiriq: fayl maydoni accept="*/*" + multiple (rasm, Word, PDF, Excel, video, audio)');
+  /* Real yuklash funksiyasi: xavfsiz ASCII nom, content-type, x-upsert va xato tafsiloti */
+  const realUpload = win.__cloud.uploadSubmissionFile;
+  const trickyFile = new win.File([new Uint8Array([1])], 'Insho yakuniy (1).docx', { type: '' });
+  const upRes = await realUpload(trickyFile, 1, 1);
+  check(/^submissions\/1\/1\/\d+_Insho_yakuniy__1_\.docx$/.test(upRes.path),
+    'topshiriq: storage yo‘li xavfsiz ASCII nom bilan (submissions/{student}/{homework}/ts_nom)');
+  const stCall = cloudStub.storageCalls[cloudStub.storageCalls.length - 1] || {};
+  check(stCall.opts && stCall.opts.contentType === 'application/octet-stream' &&
+        stCall.opts.upsert === true && String((stCall.opts.headers || {})['x-upsert']) === 'true',
+    'topshiriq: contentType bo‘sh → application/octet-stream + x-upsert header');
+  cloudStub.setStorageError({ message: 'new row violates row-level security policy', statusCode: 403 });
+  let upErr = '';
+  try {
+    await realUpload(new win.File([new Uint8Array([1])], 'a.pdf', { type: 'application/pdf' }), 1, 1);
+  } catch (e) { upErr = (e && e.message) || ''; }
+  cloudStub.setStorageError(null);
+  check(/Storage/.test(upErr) && /403/.test(upErr),
+    'topshiriq: Storage xatosi bosqichi + HTTP status bilan ko‘rsatiladi');
+
   win.__cloud.uploadSubmissionFile = function (file, sid, hid) {
     return Promise.resolve({
       url: 'https://stub.supabase.local/storage/v1/object/public/homework-media/submissions/' +
@@ -2834,6 +2853,9 @@ await (async () => {
     'topshiriq: homework_submissions ga fayl + izoh saqlandi');
   check(String(subRow.files[0].url).indexOf('submissions/') >= 0,
     'topshiriq: Storage yo‘li submissions/{student}/{homework}/...');
+  const restoreName0 = String((restoreRow0 && restoreRow0.name) || '');
+  check(subRow.student_name === restoreName0 && !!subRow.group_name && subRow.status === 'yangi',
+    'topshiriq: INSERT obyekti jadval ustunlariga mos (student_name, group_name, status, files, note)');
   check(!!q('.hw-my-files .hw-doc-link'), 'topshiriq: PDF uchun “Yuklab olish” havolasi');
 
   /* (c) ustoz paneli: “Bajarilgan topshiriqlar” + komentariya */

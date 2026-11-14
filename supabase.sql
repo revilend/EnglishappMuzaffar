@@ -354,6 +354,9 @@ create table if not exists public.homework_submissions (
   id              bigint generated always as identity primary key,
   student_id      bigint not null references public.students (id) on delete cascade,
   homework_id     bigint not null references public.homework (id) on delete cascade,
+  student_name    text not null default '',              -- ro'yxatda tez ko'rsatish uchun
+  group_name      text not null default '',
+  status          text not null default 'yangi',
   files           jsonb not null default '[]'::jsonb,   -- [{url, type, name, size}]
   note            text not null default '',
   teacher_comment text not null default '',
@@ -362,6 +365,11 @@ create table if not exists public.homework_submissions (
   updated_at      timestamptz not null default now(),
   unique (student_id, homework_id)
 );
+-- Eski o'rnatishlar uchun (idempotent)
+alter table public.homework_submissions add column if not exists student_name text not null default '';
+alter table public.homework_submissions add column if not exists group_name text not null default '';
+alter table public.homework_submissions add column if not exists status text not null default 'yangi';
+
 create index if not exists homework_submissions_hw_idx
   on public.homework_submissions (homework_id, created_at desc);
 create index if not exists homework_submissions_student_idx
