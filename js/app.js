@@ -2737,6 +2737,7 @@ const I18N_EN = {
   /* --- Dinamik kartalar matnlari (o'quvchi kartasi, uyga vazifa) --- */
   'Speaking qarzi': 'Speaking debt',
   'Ovozli ruxsat': 'Voice allowed',
+  'Uyga vazifa yuklashga ruxsat': 'Allow homework upload',
   'Xabar yozish': 'Message',
   'Parolni yangilash': 'Reset Password',
   'Tahrirlash': 'Edit',
@@ -4623,6 +4624,11 @@ function studentCard(s) {
         <button type="button" class="switch${s.voiceAllowed !== false ? ' on' : ''}" data-act="voice-toggle" data-sid="${s.id}"
                 role="switch" aria-checked="${s.voiceAllowed !== false}" aria-label="${t('Ovozli ruxsat')}"></button>
       </div>
+      <div class="row between st-voice st-hw-allow">
+        <span class="lbl-strong">${ico('upload', 15)} ${t('Uyga vazifa yuklashga ruxsat')}</span>
+        <button type="button" class="switch${s.homeworkUploadAllowed === true ? ' on' : ''}" data-act="hw-upload-toggle" data-sid="${s.id}"
+                role="switch" aria-checked="${s.homeworkUploadAllowed === true}" aria-label="${t('Uyga vazifa yuklashga ruxsat')}"></button>
+      </div>
       ${showMoney ? `<div class="pay-line">
         <span class="pay-status ${debt > 0 ? 'due' : 'ok'}">${debt > 0 ? `To'lov qarzi: ${fmtSom(debt)} so'm` : "To'langan"}</span>
       </div>
@@ -5427,10 +5433,11 @@ function toggleHwUploadAllowed(sid) {
   if (!st) return;
   st.homeworkUploadAllowed = st.homeworkUploadAllowed !== true;
   store.set(K.students, list);
-  const btn = $('[data-act="hw-upload-toggle"][data-sid="' + sid + '"]');
-  if (btn) {
-    btn.classList.toggle('on', st.homeworkUploadAllowed);
-    btn.setAttribute('aria-checked', String(st.homeworkUploadAllowed));
+  /* Karta va modalda bir xil switch bo'lishi mumkin — hammasini yangilaymiz */
+  const btns = document.querySelectorAll('[data-act="hw-upload-toggle"][data-sid="' + sid + '"]');
+  for (let i = 0; i < btns.length; i++) {
+    btns[i].classList.toggle('on', st.homeworkUploadAllowed);
+    btns[i].setAttribute('aria-checked', String(st.homeworkUploadAllowed));
   }
   CloudSync.pushStudent(sid);
   toast(st.homeworkUploadAllowed ? 'Uyga vazifa yuklashga ruxsat berildi' : "Yuklash ruxsati o'chirildi");

@@ -1609,6 +1609,7 @@ html[data-theme="dark"] .st-inset {
 }
 .st-inset .s-debt { margin-top: 0; }
 .st-inset .st-voice { margin-top: 9px; }
+.st-inset .st-hw-allow { margin-top: 9px; }
 
 /* 4 ta tugma → 2x2 setka (hech qachon tashqariga chiqmaydi) */
 .st-actions {

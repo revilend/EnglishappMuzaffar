@@ -2726,16 +2726,22 @@ await (async () => {
   if (await until(() => !!q('[data-act="edit-student"]'), 2000)) { /* kartalar async chiziladi */ }
   const anyEditBtn = q('[data-act="edit-student"]');
   check(!!anyEditBtn, 'topshiriq: o‘quvchi kartalarida “Tahrirlash” tugmasi bor');
+  /* Karta ichida (Ovozli ruxsat yonida) ham switch bo'lishi kerak */
+  const cardHwSwitch = q('.student-card .st-hw-allow [data-act="hw-upload-toggle"]');
+  check(!!cardHwSwitch, 'topshiriq: o‘quvchi kartasida “Uyga vazifa yuklashga ruxsat” switch’i bor');
   click(anyEditBtn);
-  check(!!q('[data-act="hw-upload-toggle"]'),
+  const modalHwSwitch = () => q('#modal-sheet [data-act="hw-upload-toggle"]');
+  check(!!modalHwSwitch(),
     'topshiriq: tahrirlash modalida “Uyga vazifa yuklashga ruxsat” toggle bor');
-  check(q('[data-act="hw-upload-toggle"]').getAttribute('aria-checked') === 'false',
+  check(modalHwSwitch().getAttribute('aria-checked') === 'false',
     'topshiriq: ruxsat boshlang‘ichda o‘chiq');
   clickAct('hw-upload-toggle');
-  check(q('[data-act="hw-upload-toggle"]').classList.contains('on') &&
-        q('[data-act="hw-upload-toggle"]').getAttribute('aria-checked') === 'true',
-    'topshiriq: toggle yoqildi');
-  const toggledSid = q('[data-act="hw-upload-toggle"]').getAttribute('data-sid');
+  check(modalHwSwitch().classList.contains('on') &&
+        modalHwSwitch().getAttribute('aria-checked') === 'true',
+    'topshiriq: modalda toggle yoqildi');
+  check(cardHwSwitch.classList.contains('on'),
+    'topshiriq: kartadagi switch ham darhol yoqildi (sinxron)');
+  const toggledSid = modalHwSwitch().getAttribute('data-sid');
   await new Promise(r => setTimeout(r, 300));
   const toggledRow = (cloudStub.db.students || []).filter(r => ('s' + r.id) === toggledSid)[0] || {};
   check(toggledRow.homework_upload_allowed === true,
