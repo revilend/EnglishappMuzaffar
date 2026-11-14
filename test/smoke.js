@@ -2130,6 +2130,10 @@ await (async () => {
         text().includes('@uzbekspeakingcheckbot'), 'landing: footer (sayt + bot)');
   check(cssSrc.indexOf('.landing-hero') >= 0 && /\.landing-hero \{[^}]*border-radius/.test(cssSrc),
     'css: landing hero uslubi mavjud');
+  check(/\.hw-media \.plyr--audio \.plyr__controls \{[^}]*flex-wrap: wrap/.test(cssSrc) &&
+        /\.hw-media \.plyr--audio \.plyr__progress__container \{[^}]*min-width: 110px/.test(cssSrc) &&
+        /\.hw-media \.plyr--audio \.plyr__controls \.plyr__control \{[^}]*flex-shrink: 0/.test(cssSrc),
+    'audio pleyer: tor ekranda tugmalar keyingi qatorga tushadi (flex-wrap + flex-shrink + progress min-width)');
   check(cssSrc.indexOf('.auth') >= 0 && /\.auth \{[^}]*justify-content: flex-start/.test(cssSrc),
     'css: auth wrapper justify-content: flex-start');
   check(/\.recover-modes \{[^}]*grid/.test(cssSrc) && cssSrc.indexOf('.recover-opt') >= 0,

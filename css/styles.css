@@ -1684,6 +1684,21 @@ html[data-theme="dark"] .st-inset {
 .hw-media .plyr, .hw-media video, .hw-media audio { width: 100%; border-radius: 12px; }
 .hw-media audio { min-height: 40px; }
 .hw-media .plyr { --plyr-color-main: #4f46e5; border-radius: 12px; overflow: hidden; }
+/* Audio pleyer: tor ekranda boshqaruv tugmalari qirqilmaydi — keyingi qatorga tushadi */
+.hw-media .plyr--audio .plyr__controls { flex-wrap: wrap; gap: 4px 6px; padding: 8px 10px; color: #1e293b; }
+.hw-media .plyr--audio .plyr__controls .plyr__control { flex-shrink: 0; }
+.hw-media .plyr--audio .plyr__controls .plyr__control svg { fill: currentColor; }
+.hw-media .plyr--audio .plyr__controls .plyr__control:hover,
+.hw-media .plyr--audio .plyr__controls .plyr__control[aria-expanded="true"] {
+  background: rgba(79, 70, 229, 0.14); border-radius: 8px;
+}
+.hw-media .plyr--audio .plyr__progress__container { min-width: 110px; flex: 1 1 120px; }
+html[data-theme="dark"] .hw-media .plyr--audio .plyr__controls { background: #1e293b; color: #e2e8f0; }
+html[data-theme="dark"] .hw-media .plyr--audio .plyr__controls .plyr__control svg { fill: #e2e8f0; }
+html[data-theme="dark"] .hw-media .plyr--audio .plyr__controls .plyr__control:hover,
+html[data-theme="dark"] .hw-media .plyr--audio .plyr__controls .plyr__control[aria-expanded="true"] {
+  background: rgba(148, 163, 184, 0.22); color: #f8fafc;
+}
 .hw-media-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
 .hw-media-tag { font-size: 11.5px; font-weight: 700; color: var(--muted); letter-spacing: .2px; }
 .hw-media-zoom { position: fixed; inset: 0; z-index: 9999; background: rgba(2, 6, 23, .92); display: flex; align-items: center; justify-content: center; padding: 14px; }

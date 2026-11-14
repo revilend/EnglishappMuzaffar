@@ -889,6 +889,7 @@ const CloudSync = (function () {
             id: 'h' + r.id, dbId: r.id, groupId: 'g' + r.group_id,
             title: r.title || '', description: r.description || '',
             dueDate: r.due_date || '', mediaUrl: r.media_url || '', mediaType: r.media_type || '',
+            attachments: parseAttachments(r.attachments),
             createdAt: r.created_at || ''
           };
         }));
