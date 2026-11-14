@@ -383,6 +383,8 @@ check(!!q('[data-act="stat-groups"]') && !!q('[data-act="stat-students"]') && !!
   "stat: Guruhlar/O'quvchilar/Sinflar kartalari interaktiv (button)");
 clickAct('stat-groups');
 check(text().includes('Guruhlar') && groupCards() === 2, "stat: 'Guruhlar' kartasi → Guruhlar ekrani (2 ta)");
+check(q('[data-act="filter-group-type"][data-type="all"]').classList.contains('active'),
+  'stat: Guruhlar kartasi ochilganda tur filtri "Barchasi" holatida');
 click('[data-act="nav"][data-screen="home"]');
 clickAct('stat-students');
 check(text().includes("O'quvchilar") && studentCards() === 6, "stat: 'O'quvchilar' kartasi → O'quvchilar ekrani (6 ta)");
@@ -415,6 +417,18 @@ check(!!q('[data-act="pay-student"]'), "moliya: '💵 To'lov kiritish' tugmasi b
 click('[data-act="nav"][data-screen="groups"]');
 check(text().includes('Guruhlar'), 'guruhlar: ekran');
 check(groupCards() === 2, 'guruhlar: 2 ta guruh');
+/* Tur bo'yicha ajratish: Maktab / Repetitorlik */
+check(qa('[data-act="filter-group-type"]').length === 3,
+  'guruh turi: Guruhlar ekranida 3 ta tur filtri chipi (Barchasi/Maktab/Repetitorlik)');
+click('[data-act="filter-group-type"][data-type="school"]');
+check(groupCards() === 1 && text().includes('IELTS Band 7.0') && !text().includes('General English'),
+  'guruh turi: "Maktab" filtri faqat maktab guruhini qoldiradi');
+click('[data-act="filter-group-type"][data-type="tutoring"]');
+check(groupCards() === 1 && text().includes('General English') && !text().includes('IELTS Band 7.0'),
+  'guruh turi: "Repetitorlik" filtri faqat repetitor guruhini qoldiradi');
+click('[data-act="filter-group-type"][data-type="all"]');
+check(groupCards() === 2 && text().includes('IELTS Band 7.0') && text().includes('General English'),
+  'guruh turi: "Barchasi" filtri ikkala guruhni qaytaradi');
 check(text().includes('Maktab guruhi') && text().includes('Repetitor guruhi'),
   "guruh turi: ustoz kartalarida '🏫 Maktab guruhi' (ko'k) + '🎓 Repetitor guruhi' (binafsha) nishoni");
 check(qa('.gc-type.is-school').length === 1 && qa('.gc-type.is-tutoring').length === 1,

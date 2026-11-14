@@ -156,6 +156,7 @@ const state = {
   filterClass: 'Barchasi',
   filterGroup: null,
   filterHwAllow: false,
+  groupTypeFilter: 'all',
   search: '',
   toastTimer: null,
   editor: null,
@@ -4575,17 +4576,28 @@ function debtorsScreen() {
 
 function groupsScreen() {
   if (!isTeacher()) return blockedScreen("Bu bo'lim faqat Muzaffar Amirov uchun");
-  const groups = getGroups();
+  const all = getGroups();
   const students = getStudents();
+  const typeF = state.groupTypeFilter === 'school' || state.groupTypeFilter === 'tutoring'
+    ? state.groupTypeFilter : 'all';
+  const groups = typeF === 'all' ? all : all.filter(g => groupTypeOf(g) === typeF);
+  const typeChips = [
+    { key: 'all', label: 'Barchasi', icon: 'groups' },
+    { key: 'school', label: 'Maktab', icon: 'building' },
+    { key: 'tutoring', label: 'Repetitorlik', icon: 'gradCap' }
+  ];
   return `
   <div class="screen-head">
     <div>
       <h2 class="screen-title">${t('Guruhlar')}</h2>
-      <div class="muted small">${groups.length} ta guruh</div>
+      <div class="muted small">${groups.length} ta guruh${typeF === 'all' ? '' : typeF === 'school' ? ' · maktab' : ' · repetitorlik'}</div>
     </div>
     <button type="button" class="btn btn-primary btn-sm" data-act="open-add-group">+ Guruh</button>
   </div>
-  ${groups.length ? groups.map(g => groupCard(g, students)).join('') : emptyState("Hozircha guruh yo'q", 'groups')}
+  <div class="chips groups-type-chips">
+    ${typeChips.map(c => `<button type="button" class="chip-btn${typeF === c.key ? ' active' : ''}" data-act="filter-group-type" data-type="${c.key}" aria-pressed="${typeF === c.key ? 'true' : 'false'}">${ico(c.icon, 13)} ${c.label}</button>`).join('')}
+  </div>
+  ${groups.length ? groups.map(g => groupCard(g, students)).join('') : emptyState(typeF === 'school' ? "Maktab guruhi yo'q" : typeF === 'tutoring' ? "Repetitorlik guruhi yo'q" : "Hozircha guruh yo'q", 'groups')}
   `;
 }
 
@@ -7871,6 +7883,7 @@ document.addEventListener('click', function (e) {
     /* --- Dashboard stat kartalari (bosiladigan) --- */
     'stat-groups': function () {
       if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+      state.groupTypeFilter = 'all';
       go('groups');
     },
     'stat-students': function () {
@@ -7900,6 +7913,11 @@ document.addEventListener('click', function (e) {
     /* Faqat uyga vazifa yuklashga ruxsati bor o'quvchilar */
     'filter-hw-allow': function () {
       state.filterHwAllow = !state.filterHwAllow;
+      render();
+    },
+    /* Guruhlar ekrani: Maktab / Repetitorlik ajratmasi */
+    'filter-group-type': function () {
+      state.groupTypeFilter = btn.getAttribute('data-type') || 'all';
       render();
     },
 
