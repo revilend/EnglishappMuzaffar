@@ -29,6 +29,8 @@ from aiogram.types import (
 from supabase import create_client, Client
 import config
 config.WEBAPP_URL = "https://teachermuzaffar.uz/"
+# Telegram Mini App faqat shu manzilda ochiladi (github.io havolalari 404 beradi).
+config.WEBAPP_URL = config.WEBAPP_URL.strip().rstrip("/") + "/"
 
 def check_password_match(entered: str, stored_hash_or_plain: str) -> bool:
     if not stored_hash_or_plain or not entered:
@@ -113,6 +115,24 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📱 Telefon raqamni ulash", request_contact=True)],
         ],
     )
+
+
+def webapp_menu_button(is_admin: bool = False) -> MenuButtonWebApp:
+    """Telegram menyu tugmasi — har doim https://teachermuzaffar.uz/ manziliga."""
+    return MenuButtonWebApp(
+        text="📱 Muzaffar Amirov Paneli" if is_admin else "📱 Shaxsiy Kabinetim",
+        web_app=WebAppInfo(url=config.WEBAPP_URL),
+    )
+
+
+async def sync_menu_button(chat_id: int, is_admin: bool = False) -> None:
+    """chat_id uchun menyu (Menu) tugmasini kanonik Mini App manziliga yangilaydi."""
+    if bot is None:
+        return
+    try:
+        await bot.set_chat_menu_button(chat_id=chat_id, menu_button=webapp_menu_button(is_admin))
+    except Exception as e:
+        logging.warning(f"set_chat_menu_button ({chat_id}): {e}")
 
 
 async def _deny_non_admin(message: types.Message) -> bool:
@@ -282,6 +302,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     pending_logins.pop(message.from_user.id, None)
     try:
+        # Eski (github.io) menyu tugmasi 404 bermasligi uchun har /start da yangilanadi
+        await sync_menu_button(message.from_user.id, is_admin=(message.from_user.id == config.ADMIN_ID))
         user_id = message.from_user.id
         user_name = html.escape(message.from_user.full_name or "O'quvchi")
 
@@ -335,14 +357,7 @@ async def cmd_admin(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
         await message.answer("⛔ Kechirasiz! Ushbu buyruq faqat Muzaffar Amirov uchun.")
         return
-    try:
-        await bot.set_chat_menu_button(
-            chat_id=message.from_user.id,
-            menu_button=MenuButtonWebApp(text="📱 Muzaffar Amirov Paneli",
-                                         web_app=WebAppInfo(url=config.WEBAPP_URL))
-        )
-    except Exception as e:
-        logging.warning(f"set_chat_menu_button (/admin): {e}")
+    await sync_menu_button(message.from_user.id, is_admin=True)
     inline = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚀 Muzaffar Amirov Panelini ochish",
                               web_app=WebAppInfo(url=config.WEBAPP_URL))],
