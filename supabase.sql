@@ -275,6 +275,8 @@ alter table public.payment_receipts add column if not exists admin_message_id bi
 alter table public.payment_receipts add column if not exists admin_chat_id text;
 alter table public.payment_receipts add column if not exists channel_message_id bigint;
 alter table public.payment_receipts add column if not exists channel_chat_id text;
+-- Har bir adminning chek xabari: [{"chat_id": "...", "message_id": ...}]
+alter table public.payment_receipts add column if not exists admin_messages jsonb default '[]'::jsonb;
 
 -- payments_channel_id sozlamasi
 insert into public.bot_settings (key, value) values

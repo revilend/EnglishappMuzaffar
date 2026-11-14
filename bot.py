@@ -32,6 +32,17 @@ config.WEBAPP_URL = "https://teachermuzaffar.uz/"
 # Telegram Mini App faqat shu manzilda ochiladi (github.io havolalari 404 beradi).
 config.WEBAPP_URL = config.WEBAPP_URL.strip().rstrip("/") + "/"
 
+
+def is_admin(user_id) -> bool:
+    """Foydalanuvchi admin (ustoz) ekanini tekshiradi.
+
+    Bir nechta admin qo'llanadi: config.ADMIN_IDS (ADMIN_ID/ADMIN_IDS env).
+    """
+    try:
+        return int(user_id) in config.ADMIN_IDS
+    except (TypeError, ValueError):
+        return False
+
 def check_password_match(entered: str, stored_hash_or_plain: str) -> bool:
     if not stored_hash_or_plain or not entered:
         return False
@@ -117,26 +128,26 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def webapp_menu_button(is_admin: bool = False) -> MenuButtonWebApp:
+def webapp_menu_button(admin: bool = False) -> MenuButtonWebApp:
     """Telegram menyu tugmasi — har doim https://teachermuzaffar.uz/ manziliga."""
     return MenuButtonWebApp(
-        text="📱 Muzaffar Amirov Paneli" if is_admin else "📱 Shaxsiy Kabinetim",
+        text="📱 Muzaffar Amirov Paneli" if admin else "📱 Shaxsiy Kabinetim",
         web_app=WebAppInfo(url=config.WEBAPP_URL),
     )
 
 
-async def sync_menu_button(chat_id: int, is_admin: bool = False) -> None:
+async def sync_menu_button(chat_id: int, admin: bool = False) -> None:
     """chat_id uchun menyu (Menu) tugmasini kanonik Mini App manziliga yangilaydi."""
     if bot is None:
         return
     try:
-        await bot.set_chat_menu_button(chat_id=chat_id, menu_button=webapp_menu_button(is_admin))
+        await bot.set_chat_menu_button(chat_id=chat_id, menu_button=webapp_menu_button(admin))
     except Exception as e:
         logging.warning(f"set_chat_menu_button ({chat_id}): {e}")
 
 
 async def _deny_non_admin(message: types.Message) -> bool:
-    if message.from_user.id == config.ADMIN_ID:
+    if is_admin(message.from_user.id):
         return False
     await message.answer("Kechirasiz, bu bo'lim faqat Muzaffar Amirov uchun mavjud.")
     return True
@@ -147,7 +158,7 @@ async def _deny_non_admin(message: types.Message) -> bool:
 async def btn_admin_backup(message: types.Message):
     if await _deny_non_admin(message):
         return
-    await send_backup_document(config.ADMIN_ID)
+    await send_backup_document()
 
 
 # ---------------- Ustoz: 👥 O'quvchilar ro'yxati ----------------
@@ -201,7 +212,7 @@ async def btn_admin_cleanup(message: types.Message):
     if await _deny_non_admin(message):
         return
     # 1) AVVAL to'liq zaxira fayli yuboriladi
-    await send_backup_document(config.ADMIN_ID)
+    await send_backup_document()
     # 2) Keyin tasdiq tugmalari
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🧹 Xabarlarni tozalash (chat)", callback_data="cleanup:messages"),
@@ -218,7 +229,7 @@ async def btn_admin_cleanup(message: types.Message):
 
 @dp.callback_query(F.data.startswith("cleanup:"))
 async def on_cleanup_answer(call: types.CallbackQuery):
-    if call.from_user.id != config.ADMIN_ID:
+    if not is_admin(call.from_user.id):
         await call.answer("Ruxsat yo'q", show_alert=True)
         return
     action = call.data.split(":", 1)[1]
@@ -303,7 +314,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     pending_logins.pop(message.from_user.id, None)
     try:
         # Eski (github.io) menyu tugmasi 404 bermasligi uchun har /start da yangilanadi
-        await sync_menu_button(message.from_user.id, is_admin=(message.from_user.id == config.ADMIN_ID))
+        await sync_menu_button(message.from_user.id, admin=is_admin(message.from_user.id))
         user_id = message.from_user.id
         user_name = html.escape(message.from_user.full_name or "O'quvchi")
 
@@ -354,10 +365,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
 # /admin command — To'liq ustoz boshqaruv paneli
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message):
-    if message.from_user.id != config.ADMIN_ID:
+    if not is_admin(message.from_user.id):
         await message.answer("⛔ Kechirasiz! Ushbu buyruq faqat Muzaffar Amirov uchun.")
         return
-    await sync_menu_button(message.from_user.id, is_admin=True)
+    await sync_menu_button(message.from_user.id, admin=True)
     inline = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚀 Muzaffar Amirov Panelini ochish",
                               web_app=WebAppInfo(url=config.WEBAPP_URL))],
@@ -455,11 +466,8 @@ def get_teacher_password() -> str:
 
 
 def is_admin_user(user) -> bool:
-    """Faqat ustozning shaxsiy Telegram akkaunti (config.ADMIN_ID) ustoz bo'la oladi."""
-    try:
-        return user is not None and int(user.id) == int(config.ADMIN_ID)
-    except Exception:
-        return False
+    """Ustoz akkauntlari (config.ADMIN_IDS) — m_amirov faqat shularga ulanadi."""
+    return user is not None and is_admin(getattr(user, "id", None))
 
 
 async def attempt_login(message: types.Message, login: str, password: str):
@@ -652,7 +660,7 @@ async def _linked_or_prompt(message: types.Message):
 
 @dp.message(F.text == STUDENT_MENU["login"])
 async def btn_student_login(message: types.Message):
-    if message.from_user.id == config.ADMIN_ID:
+    if is_admin(message.from_user.id):
         await message.answer("Bu o'quvchi menyusi — siz allaqachon ustoz sifatida kirdingiz.")
         return
     st = student_by_chat(message.from_user.id)
@@ -698,7 +706,7 @@ async def cb_login_cancel(call: types.CallbackQuery):
 
 @dp.message(F.text == STUDENT_MENU["grades"])
 async def btn_student_grades(message: types.Message):
-    if message.from_user.id == config.ADMIN_ID:
+    if is_admin(message.from_user.id):
         await message.answer("Bu o'quvchi menyusi — baholaringiz saytda Muzaffar Amirov panelida.")
         return
     st = await _linked_or_prompt(message)
@@ -738,7 +746,7 @@ async def btn_student_grades(message: types.Message):
 
 @dp.message(F.text == STUDENT_MENU["speak"])
 async def btn_student_speak(message: types.Message):
-    if message.from_user.id == config.ADMIN_ID:
+    if is_admin(message.from_user.id):
         await message.answer("🎙 Ovozli topshiriklar o'quvchilardan keladi — ular menyudan foydalanadi.")
         return
     st = await _linked_or_prompt(message)
@@ -798,16 +806,20 @@ async def _send_media_to_teacher(file_id: str, media_type: str, student: dict, s
     kb = grade_keyboard(sub_id) if sub_id is not None else InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📝 Saytda ochish", web_app=WebAppInfo(url=config.WEBAPP_URL))],
     ])
-    if media_type == "video_note":
-        # Krujokka inline tugma ilova bo'lmaydi — matn xabari bilan yuboramiz
-        await bot.send_video_note(chat_id=config.ADMIN_ID, video_note=file_id)
-        await bot.send_message(chat_id=config.ADMIN_ID, text=caption, reply_markup=kb, parse_mode="HTML")
-    elif media_type == "video":
-        await bot.send_video(chat_id=config.ADMIN_ID, video=file_id, caption=caption,
-                             reply_markup=kb, parse_mode="HTML")
-    else:
-        await bot.send_voice(chat_id=config.ADMIN_ID, voice=file_id, caption=caption,
-                             reply_markup=kb, parse_mode="HTML")
+    for aid in config.ADMIN_IDS:
+        try:
+            if media_type == "video_note":
+                # Krujokka inline tugma ilova bo'lmaydi — matn xabari bilan yuboramiz
+                await bot.send_video_note(chat_id=aid, video_note=file_id)
+                await bot.send_message(chat_id=aid, text=caption, reply_markup=kb, parse_mode="HTML")
+            elif media_type == "video":
+                await bot.send_video(chat_id=aid, video=file_id, caption=caption,
+                                     reply_markup=kb, parse_mode="HTML")
+            else:
+                await bot.send_voice(chat_id=aid, voice=file_id, caption=caption,
+                                     reply_markup=kb, parse_mode="HTML")
+        except Exception as e:
+            logging.error(f"speaking -> admin {aid}: {e}")
 
 
 @dp.message(F.voice | F.video_note | F.video)
@@ -865,7 +877,7 @@ async def handle_speaking_submission(message: types.Message):
 @dp.callback_query(F.data.startswith("g:"))
 async def on_grade_tap(call: types.CallbackQuery):
     """Ustoz [9] bosadi → baho jurnalga, qarz −1, o'quvchiga xabar."""
-    if call.from_user.id != config.ADMIN_ID:
+    if not is_admin(call.from_user.id):
         await call.answer("Ruxsat yo'q", show_alert=True)
         return
     try:
@@ -979,7 +991,7 @@ async def on_reject_tap(call: types.CallbackQuery):
     MUHIM: speaking qarzi (speaking_debt) KAMAYMAYDI va
     grades jadvaliga HECH QANDAY baho yozilmaydi!
     '''
-    if call.from_user.id != config.ADMIN_ID:
+    if not is_admin(call.from_user.id):
         await call.answer("Ruxsat yo'q", show_alert=True)
         return
     try:
@@ -1304,8 +1316,10 @@ async def message_tick() -> int:
                 logging.warning(f"messages watcher name: {e}")
                 continue
             name = (studs[0].get("name") if studs else None) or "O'quvchi"
-            if await send_alert(config.ADMIN_ID, msg_alert_from_student(name, text)):
-                sent += 1
+            alert_text = msg_alert_from_student(name, text)
+            for aid in config.ADMIN_IDS:
+                if await send_alert(aid, alert_text):
+                    sent += 1
     return sent
 
 
@@ -1432,8 +1446,11 @@ def restore_backup(data: dict) -> dict:
     return counts
 
 
-async def send_backup_document(chat_id: int):
-    """Barcha jadvallarni timestamped JSON fayl sifatida yuboradi (faqat ustoz)."""
+async def send_backup_document(chat_id: int = None):
+    """Barcha jadvallarni timestamped JSON fayl sifatida yuboradi (faqat ustoz).
+
+    chat_id berilmasa — config.ADMIN_IDS dagi barcha adminlarga yuboriladi.
+    """
     data = fetch_all_backup()
     payload = {
         "app": "english-tutor",
@@ -1456,32 +1473,37 @@ async def send_backup_document(chat_id: int):
         "Qayta tiklash uchun shu faylni menga qayta yuboring "
         "(yoki /restore yozing) — tasdiq tugmasini ko'rsataman."
     )
-    await bot.send_document(
-        chat_id=chat_id,
-        document=BufferedInputFile(raw, filename=fname),
-        caption=caption,
-        parse_mode="HTML",
-    )
+    targets = [chat_id] if chat_id else list(config.ADMIN_IDS)
+    for target in targets:
+        try:
+            await bot.send_document(
+                chat_id=target,
+                document=BufferedInputFile(raw, filename=fname),
+                caption=caption,
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logging.error(f"backup -> {target}: {e}")
 
 
 @dp.message(Command("backup"))
 async def cmd_backup(message: types.Message):
     """Zaxirani JSON fayl sifatida ADMIN_ID ga yuboradi (faqat ustoz)."""
-    if message.from_user.id != config.ADMIN_ID:
+    if not is_admin(message.from_user.id):
         await message.answer("Kechirasiz, bu buyruq faqat Muzaffar Amirov uchun mavjud.")
         return
-    await send_backup_document(config.ADMIN_ID)
+    await send_backup_document()
 
 
 @dp.callback_query(F.data == "backup_req")
 async def on_backup_button(call: types.CallbackQuery):
     """ /start dagi '📥 Barcha ma'lumotlarni yuklab olish (Backup)' tugmasi. """
-    if call.from_user.id != config.ADMIN_ID:
+    if not is_admin(call.from_user.id):
         await call.answer("Ruxsat yo'q", show_alert=True)
         return
     await call.answer("Zaxira tayyorlanmoqda...")
     try:
-        await send_backup_document(config.ADMIN_ID)
+        await send_backup_document()
     except Exception as e:
         logging.error(f"Backup button error: {e}")
         try:
@@ -1492,7 +1514,7 @@ async def on_backup_button(call: types.CallbackQuery):
 
 @dp.message(Command("restore"))
 async def cmd_restore(message: types.Message):
-    if message.from_user.id != config.ADMIN_ID:
+    if not is_admin(message.from_user.id):
         await message.answer("Kechirasiz, bu buyruq faqat Muzaffar Amirov uchun mavjud.")
         return
     await message.answer(
@@ -1503,7 +1525,7 @@ async def cmd_restore(message: types.Message):
     )
 
 
-@dp.message(F.document, F.from_user.id == config.ADMIN_ID)
+@dp.message(F.document, F.from_user.id.in_(list(config.ADMIN_IDS)))
 async def on_backup_file(message: types.Message):
     """ADMIN_ID json fayl yuborsa — tasdiq tugmasini so'raydi."""
     doc = message.document
@@ -1528,7 +1550,7 @@ async def on_backup_file(message: types.Message):
 
 @dp.callback_query(F.data.in_(["restore_yes", "restore_no"]))
 async def on_restore_answer(call: types.CallbackQuery):
-    if call.from_user.id != config.ADMIN_ID:
+    if not is_admin(call.from_user.id):
         await call.answer("Ruxsat yo'q", show_alert=True)
         return
 
@@ -1681,7 +1703,7 @@ async def on_free_text(message: types.Message):
             return
 
         # --- Yordam: erkin matn → menyuni qayta ko'rsatamiz ---
-        if uid == config.ADMIN_ID:
+        if is_admin(uid):
             await message.answer("📋 Ustoz menyusi:", reply_markup=admin_reply_keyboard())
         else:
             await message.answer("📋 O'quvchi menyusi:", reply_markup=get_main_keyboard())
@@ -1786,31 +1808,31 @@ async def broadcast_receipt_to_admin(receipt: dict):
     ).replace(",", " ")
 
     kb = receipt_main_keyboard(r_id)
-    admin_msg_id = None
+    admin_messages = []   # [{"chat_id": "...", "message_id": ...}] — barcha adminlar
     channel_msg_id = None
     channel_chat_id = get_payments_channel_id()
 
-    # 1. Muzaffar Amirov lichkasiga yuborish
-    try:
-        if receipt_url:
-            m = await bot.send_photo(
-                chat_id=config.ADMIN_ID,
-                photo=receipt_url,
-                caption=caption,
-                reply_markup=kb,
-                parse_mode="HTML"
-            )
-            admin_msg_id = m.message_id
-        else:
-            m = await bot.send_message(
-                chat_id=config.ADMIN_ID,
-                text=caption,
-                reply_markup=kb,
-                parse_mode="HTML"
-            )
-            admin_msg_id = m.message_id
-    except Exception as e:
-        logging.error(f"send receipt to admin: {e}")
+    # 1. Barcha admin (ustoz) lichkalariga yuborish
+    for aid in config.ADMIN_IDS:
+        try:
+            if receipt_url:
+                m = await bot.send_photo(
+                    chat_id=aid,
+                    photo=receipt_url,
+                    caption=caption,
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
+            else:
+                m = await bot.send_message(
+                    chat_id=aid,
+                    text=caption,
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
+            admin_messages.append({"chat_id": str(aid), "message_id": m.message_id})
+        except Exception as e:
+            logging.error(f"send receipt to admin {aid}: {e}")
 
     # 2. Yopiq to'lovlar kanaliga yuborish (agar payments_channel_id sozlangan bo'lsa)
     if channel_chat_id:
@@ -1838,9 +1860,11 @@ async def broadcast_receipt_to_admin(receipt: dict):
     # 3. Message ID larni saqlash (sinxron tahrirlash uchun)
     try:
         update_data = {}
-        if admin_msg_id:
-            update_data["admin_message_id"] = admin_msg_id
-            update_data["admin_chat_id"] = str(config.ADMIN_ID)
+        if admin_messages:
+            update_data["admin_messages"] = admin_messages
+            # Orqaga moslik: birinchi adminning message_id si alohida saqlanadi
+            update_data["admin_message_id"] = admin_messages[0]["message_id"]
+            update_data["admin_chat_id"] = admin_messages[0]["chat_id"]
         if channel_msg_id:
             update_data["channel_message_id"] = channel_msg_id
             update_data["channel_chat_id"] = str(channel_chat_id)
@@ -1883,14 +1907,41 @@ async def receipt_watcher():
             logging.warning(f"receipt watcher loop: {e}")
         await asyncio.sleep(6)
 
+def _receipt_admin_targets(receipt: dict):
+    """Chek yuborilgan barcha admin chatlari + kanal: [(chat_id, message_id), ...]."""
+    targets = []
+    raw = receipt.get("admin_messages")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            raw = None
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict) and item.get("chat_id") and item.get("message_id"):
+                targets.append((item["chat_id"], item["message_id"]))
+    elif isinstance(raw, dict):
+        for chat_id, msg_id in raw.items():
+            if chat_id and msg_id:
+                targets.append((chat_id, msg_id))
+    # Eski yozuvlar: faqat admin_chat_id/admin_message_id saqlangan
+    if not targets and receipt.get("admin_message_id"):
+        targets.append((receipt.get("admin_chat_id") or config.ADMIN_ID,
+                        receipt.get("admin_message_id")))
+    if receipt.get("channel_chat_id") and receipt.get("channel_message_id"):
+        targets.append((receipt.get("channel_chat_id"), receipt.get("channel_message_id")))
+    return targets
+
+
 async def _sync_receipt_messages(receipt: dict, new_text: str):
-    targets = [
-        (receipt.get("admin_chat_id") or config.ADMIN_ID, receipt.get("admin_message_id")),
-        (receipt.get("channel_chat_id"), receipt.get("channel_message_id"))
-    ]
+    targets = _receipt_admin_targets(receipt)
+    seen = set()
     for chat_id, msg_id in targets:
         if not chat_id or not msg_id:
             continue
+        if (str(chat_id), str(msg_id)) in seen:
+            continue
+        seen.add((str(chat_id), str(msg_id)))
         try:
             await bot.edit_message_caption(
                 chat_id=int(chat_id) if str(chat_id).lstrip("-").isdigit() else str(chat_id),
@@ -1914,6 +1965,9 @@ async def _sync_receipt_messages(receipt: dict, new_text: str):
 # ---------------- [ ✅ Tasdiqlash ] handler ----------------
 @dp.callback_query(F.data.startswith("pay_ok:"))
 async def on_pay_ok(call: types.CallbackQuery):
+    if not is_admin(call.from_user.id):
+        await call.answer("Ruxsat yo'q", show_alert=True)
+        return
     try:
         r_id = int(call.data.split(":", 1)[1])
     except Exception:
@@ -2015,6 +2069,9 @@ async def on_pay_ok(call: types.CallbackQuery):
 # ---------------- [ ❌ Rad etish ] bosilganda sabablar menyusi ----------------
 @dp.callback_query(F.data.startswith("pay_reject:"))
 async def on_pay_reject_menu(call: types.CallbackQuery):
+    if not is_admin(call.from_user.id):
+        await call.answer("Ruxsat yo'q", show_alert=True)
+        return
     try:
         r_id = int(call.data.split(":", 1)[1])
     except Exception:
@@ -2030,6 +2087,9 @@ async def on_pay_reject_menu(call: types.CallbackQuery):
 # ---------------- [ ↩️ Bekor qilish ] bosilganda asosiy menyuni qaytarish ----------------
 @dp.callback_query(F.data.startswith("pay_cancel:"))
 async def on_pay_cancel(call: types.CallbackQuery):
+    if not is_admin(call.from_user.id):
+        await call.answer("Ruxsat yo'q", show_alert=True)
+        return
     try:
         r_id = int(call.data.split(":", 1)[1])
     except Exception:
@@ -2045,6 +2105,9 @@ async def on_pay_cancel(call: types.CallbackQuery):
 # ---------------- Sabab tanlanganda bajarish ----------------
 @dp.callback_query(F.data.startswith("rej_res:"))
 async def on_rejection_reason_chosen(call: types.CallbackQuery):
+    if not is_admin(call.from_user.id):
+        await call.answer("Ruxsat yo'q", show_alert=True)
+        return
     parts = call.data.split(":")
     if len(parts) < 3:
         await call.answer("Xatolik", show_alert=True)
@@ -2191,8 +2254,8 @@ async def outbox_tick() -> int:
         try:
             raw_chat = str(chat_id).strip()
             if raw_chat.upper() == "ADMIN":
-                # Sayt 'ADMIN' manziliga yozgan xabarlar ustozga boradi
-                target_id = config.ADMIN_ID
+                # Sayt 'ADMIN' manziliga yozgan xabarlar BARCHA ustozlarga boradi
+                target_ids = list(config.ADMIN_IDS)
             elif raw_chat.startswith("+") or re.fullmatch(r"998\d{9}", raw_chat):
                 # Telefon ko'rinishidagi chat_id → o'quvchining ulangan Telegrami
                 target_id = resolve_phone_chat(raw_chat)
@@ -2206,17 +2269,26 @@ async def outbox_tick() -> int:
                     except Exception:
                         pass
                     continue
+                target_ids = [target_id]
             else:
-                target_id = int(raw_chat) if raw_chat.lstrip("-").isdigit() else raw_chat
-            await bot.send_message(
-                chat_id=target_id,
-                text=text,
-                parse_mode="HTML",
-                disable_notification=False
-            )
+                target_ids = [int(raw_chat) if raw_chat.lstrip("-").isdigit() else raw_chat]
+            delivered = 0
+            for target_id in target_ids:
+                try:
+                    await bot.send_message(
+                        chat_id=target_id,
+                        text=text,
+                        parse_mode="HTML",
+                        disable_notification=False
+                    )
+                    delivered += 1
+                except Exception as e_t:
+                    logging.error(f"outbox send error row {row_id} -> {target_id}: {e_t}")
+            if not delivered:
+                raise RuntimeError(f"hech kimga yetib bormadi ({chat_id})")
             supabase.table("telegram_outbox").update({"status": "sent"}).eq("id", row_id).execute()
             sent_count += 1
-            logging.info(f"Outbox sent message #{row_id} to {chat_id}")
+            logging.info(f"Outbox sent message #{row_id} to {chat_id} ({delivered} ta chat)")
         except Exception as e:
             logging.error(f"outbox send error row {row_id} to {chat_id}: {e}")
             try:
