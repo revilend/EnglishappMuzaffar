@@ -62,7 +62,9 @@ const K = {
   tgsubs: 'et_tg_subs',
   sessionId: 'et_session_id',
   cardSettings: 'et_card_settings',
-  paymentReceipts: 'et_payment_receipts'
+  paymentReceipts: 'et_payment_receipts',
+  homeworkSubmissions: 'et_hw_submissions',
+  hwCommentsSeen: 'et_hw_comments_seen'
 };
 
 /* Toza start: demo guruh/o'quvchi seedlari YO'Q — barcha ma'lumot Supabase'dan keladi.
@@ -175,6 +177,7 @@ const state = {
   payMonth: '',
   captcha: null,
   pending2fa: null,
+  subGroup: 'all',
   resetCtx: null,
   authStep: 'landing',
   resetMode: 'password',
@@ -185,7 +188,7 @@ const state = {
 
 const AUTH_SCREENS = ['login'];
 /* Faqat ustoz ruxsat beradigan ekranlar */
-const TEACHER_SCREENS = ['groups', 'students', 'debtors', 'payments', 'grades', 'attendance', 'speaking'];
+const TEACHER_SCREENS = ['groups', 'students', 'submissions', 'debtors', 'payments', 'grades', 'attendance', 'speaking'];
 
 
 function initials(name) {
@@ -400,7 +403,8 @@ const CloudSync = (function () {
       fee_period: s.feePeriod || null,
       last_payment_info: s.lastPaymentInfo || null,
       last_paid_month: s.lastPaidMonth || null,
-      voice_allowed: s.voiceAllowed !== false
+      voice_allowed: s.voiceAllowed !== false,
+      homework_upload_allowed: s.homeworkUploadAllowed === true
     };
     /* Kontaktlar ham faqat mavjud bo'lsa yoziladi — eski qiymat o'chmasin */
     if (s.phone) out.phone = String(s.phone);
@@ -709,6 +713,7 @@ const CloudSync = (function () {
           feePeriod: r.fee_period || '',
           telegramChatId: r.telegram_chat_id == null ? null : Number(r.telegram_chat_id),
           voiceAllowed: r.voice_allowed !== false,
+          homeworkUploadAllowed: r.homework_upload_allowed === true,
           lastDevice: r.last_device || '',
           lastSeen: r.last_seen || null,
           lastPaymentInfo: r.last_payment_info || '',
@@ -783,6 +788,7 @@ const CloudSync = (function () {
       try { await pullSlots(null); } catch (e) { /* speaking_slots yo'q */ }
       try { await pullMonthlyFees(); } catch (e) { /* monthly_fees yo'q */ }
       try { await pullHomework(); } catch (e) { /* homework jadvali yo'q */ }
+      try { await pullSubmissions(); } catch (e) { /* homework_submissions yo'q */ }
       try { await pullCardSettings(); } catch (e) { /* bot_settings yo'q */ }
       try { await pullSpeaking(); } catch (e) { /* speaking_submissions yo'q */ }
       /* Ustoz paroli — bot_settings ('teacher_password') dan o'qiladi */
@@ -831,6 +837,7 @@ const CloudSync = (function () {
       feePeriod: row.fee_period || '',
       telegramChatId: row.telegram_chat_id == null ? null : Number(row.telegram_chat_id),
       voiceAllowed: row.voice_allowed !== false,
+      homeworkUploadAllowed: row.homework_upload_allowed === true,
       lastDevice: row.last_device || '',
       lastSeen: row.last_seen || null,
       phone: row.phone || '',
@@ -897,6 +904,7 @@ const CloudSync = (function () {
     } else {
       store.set(K.homework, []);
     }
+    try { await pullSubmissions(dbId); } catch (e) { /* homework_submissions yo'q */ }
 
     try { await pullSlots(dbId); } catch (e) { /* speaking_slots yo'q */ }
     try { await pullMonthlyFees(row.group_id); } catch (e) { /* monthly_fees yo'q */ }
@@ -951,9 +959,10 @@ const CloudSync = (function () {
         if (t) { t.dbId = res.data[0].id; store.set(K.students, list); }
       } else {
         let res = await client.from('students').update(payload).eq('id', st.dbId);
-        if (res.error && res.error.code === 'PGRST204' && 'voice_allowed' in payload) {
-          /* voice_allowed ustuni hali yaratilmagan — undan tashqari yozamiz */
-          delete payload.voice_allowed;
+        /* Yangi (ixtiyoriy) ustunlar hali bazada bo'lmasa — ularsiz qayta yozamiz */
+        const optionalCols = ['homework_upload_allowed', 'voice_allowed'];
+        for (let i = 0; i < optionalCols.length && res.error && res.error.code === 'PGRST204'; i++) {
+          delete payload[optionalCols[i]];
           res = await client.from('students').update(payload).eq('id', st.dbId);
         }
         if (res.error) throw res.error;
@@ -1164,6 +1173,113 @@ const CloudSync = (function () {
         if (!res.error) return;
       } catch (e) { console.warn('[cloud] media del (' + order[i] + '):', (e && e.message) || e); }
     }
+  }
+
+  /* --- homework_submissions: o'quvchi topshirig'i + ustoz komentariyasi --- */
+  function submissionFilesOf(raw) {
+    let v = raw;
+    if (typeof v === 'string') {
+      try { v = JSON.parse(v); } catch (e) { v = null; }
+    }
+    if (!Array.isArray(v)) return [];
+    return v.filter(function (f) { return f && typeof f === 'object' && f.url; }).map(function (f) {
+      return {
+        url: String(f.url),
+        type: String(f.type || 'file').toLowerCase(),
+        name: String(f.name || ''),
+        size: Number(f.size) || 0
+      };
+    });
+  }
+  function mapSubmission(r) {
+    return {
+      id: r.id,
+      studentDbId: r.student_id == null ? null : Number(r.student_id),
+      homeworkDbId: r.homework_id == null ? null : Number(r.homework_id),
+      files: submissionFilesOf(r.files),
+      note: r.note || '',
+      teacherComment: r.teacher_comment || '',
+      commentedAt: r.commented_at || null,
+      createdAt: r.created_at || '',
+      updatedAt: r.updated_at || r.created_at || ''
+    };
+  }
+  function putLocalSubmission(row) {
+    const list = store.get(K.homeworkSubmissions, []) || [];
+    const i = list.findIndex(function (x) { return String(x.id) === String(row.id); });
+    if (i >= 0) list[i] = Object.assign({}, list[i], row);
+    else list.unshift(row);
+    store.set(K.homeworkSubmissions, list);
+    return row;
+  }
+  /* studentDbId berilmasa — barcha topshiriqlar (ustoz paneli) */
+  async function pullSubmissions(studentDbId) {
+    if (!ready()) return store.get(K.homeworkSubmissions, []);
+    try {
+      let q = client.from('homework_submissions').select('*').order('created_at', { ascending: false });
+      if (studentDbId != null) q = q.eq('student_id', studentDbId);
+      const res = await q;
+      if (res.error) return store.get(K.homeworkSubmissions, []);
+      const list = (res.data || []).map(mapSubmission);
+      store.set(K.homeworkSubmissions, list);
+      return list;
+    } catch (e) {
+      console.warn('[cloud] submissions:', (e && e.message) || e);
+      return store.get(K.homeworkSubmissions, []);
+    }
+  }
+  async function saveHomeworkSubmission(sub) {
+    if (!ready()) throw new Error('Supabase sozlanmagan');
+    const row = {
+      student_id: sub.studentDbId,
+      homework_id: sub.homeworkDbId,
+      files: submissionFilesOf(sub.files),
+      note: String(sub.note || ''),
+      updated_at: new Date().toISOString()
+    };
+    const found = await client.from('homework_submissions').select('*')
+      .eq('student_id', sub.studentDbId).eq('homework_id', sub.homeworkDbId).limit(1);
+    if (found.error) throw found.error;
+    const existing = found.data && found.data[0];
+    const res = existing
+      ? await client.from('homework_submissions').update(row).eq('id', existing.id).select()
+      : await client.from('homework_submissions').insert(row).select();
+    if (res.error) throw res.error;
+    const saved = mapSubmission((res.data && res.data[0]) || Object.assign({}, existing || {}, row));
+    return putLocalSubmission(saved);
+  }
+  async function commentSubmission(id, comment) {
+    if (!ready()) throw new Error('Supabase sozlanmagan');
+    const text = String(comment || '').trim();
+    const res = await client.from('homework_submissions')
+      .update({ teacher_comment: text, commented_at: new Date().toISOString() })
+      .eq('id', id).select();
+    if (res.error) throw res.error;
+    const saved = mapSubmission((res.data && res.data[0]) || { id: id, teacher_comment: text });
+    return putLocalSubmission(saved);
+  }
+  /* Faylni Storage'ga yuklash: homework-media/submissions/{student}/{homework}/... */
+  async function uploadSubmissionFile(file, studentDbId, homeworkDbId) {
+    if (!ready()) throw new Error('Supabase sozlanmagan');
+    const ext = String((file && file.name) || '').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
+    const path = 'submissions/' + studentDbId + '/' + homeworkDbId + '/' +
+      Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+    let lastErr = null;
+    for (let i = 0; i < MEDIA_BUCKETS.length; i++) {
+      const bucket = MEDIA_BUCKETS[i];
+      try {
+        const res = await client.storage.from(bucket).upload(path, file, {
+          cacheControl: '3600', upsert: false, contentType: (file && file.type) || undefined
+        });
+        if (res.error) throw res.error;
+        const pub = client.storage.from(bucket).getPublicUrl(path);
+        return { url: pub.data.publicUrl, path: path, bucket: bucket };
+      } catch (e) {
+        lastErr = e;
+        console.warn('[cloud] submission upload (' + bucket + '):', (e && e.message) || e);
+      }
+    }
+    throw lastErr || new Error('Storage bucket topilmadi');
   }
 
   /* --- telegram_outbox: sayt yozadi, bot yuboradi (chek / eslatma) --- */
@@ -1721,6 +1837,10 @@ const CloudSync = (function () {
     ready: ready,
     pullAll: pullAll,
     uploadHomeworkMedia: uploadHomeworkMedia,
+    pullSubmissions: pullSubmissions,
+    saveHomeworkSubmission: saveHomeworkSubmission,
+    commentSubmission: commentSubmission,
+    uploadSubmissionFile: uploadSubmissionFile,
     removeHomeworkMedia: removeHomeworkMedia,
     queueMessages: queueMessages,
     messageStatus: messageStatus,
@@ -2696,6 +2816,17 @@ const I18N_EN = {
   'Keyingi qadam': 'Next step', 'Yuborish': 'Send',
   'Kodni qayta yuborish': 'Resend code',
   'Kod (6 xona)': 'Code (6 digits)', 'Yangi parol': 'New password', 'Parolni yangilash': 'Update password',
+  /* --- Bajarilgan topshiriqlar + o'quvchi yuklashi --- */
+  'Topshiriqlar': 'Submissions',
+  'Bajarilgan topshiriqlar': 'Submitted Homework',
+  'Komentariya yozish': 'Write a comment',
+  "O'qituvchi komentariyasi": "Teacher's comment",
+  'Siz yuklagan fayllar': 'Files you uploaded',
+  'Topshiriqni yuklash': 'Upload homework',
+  'Uyga vazifa yuklashga ruxsat': 'Allow homework upload',
+  "Barcha guruhlar": 'All groups',
+  'Komentariya yuborildi': 'Comment sent',
+  'Ko‘rilmagan': 'New',
 };
 function getLang() { return store.get('app_lang', 'uz'); }
 function t(s) {
@@ -2783,6 +2914,7 @@ function scrLabel(s) {
     grades: 'Baholar jurnali',
     attendance: 'Tezkor davomat',
     speaking: 'Speaking (1-on-1)',
+    submissions: 'Bajarilgan topshiriqlar',
     profile: 'Profil'
   }[s] || '';
 }
@@ -2812,6 +2944,7 @@ function navItems() {
     return [
       ['home', t('Bosh'), ICON.home],
       ['students', t("O'quvchi"), ICON.students],
+      ['submissions', t('Topshiriqlar'), ICON.clipboardCheck],
       ['payments', t("To'lov"), ICON.star],
       ['grades', t('Baholar'), ICON.grades],
       ['attendance', t('Davomat'), ICON.cal],
@@ -2825,11 +2958,20 @@ function navItems() {
     ['profile', t('Profil'), ICON.profile]
   ];
 }
+/* Ko'rilmagan topshiriqlar soni — navigatsiya nishoni uchun */
+function newSubmissionsCount() {
+  return submissionsList().filter(function (s) { return !String(s.teacherComment || '').trim(); }).length;
+}
+function navBadgeHTML(key) {
+  if (key !== 'submissions') return '';
+  const n = newSubmissionsCount();
+  return n ? `<span class="nav-badge">${n > 99 ? '99+' : n}</span>` : '';
+}
 function renderNav() {
   if (AUTH_SCREENS.indexOf(state.screen) >= 0) return '';
   return navItems().map(it => {
     const active = state.screen === it[0] ? ' active' : '';
-    return `<button type="button" class="nav-item${active}" data-act="nav" data-screen="${it[0]}">${it[2]}<span>${it[1]}</span></button>`;
+    return `<button type="button" class="nav-item${active}" data-act="nav" data-screen="${it[0]}">${it[2]}<span>${it[1]}${navBadgeHTML(it[0])}</span></button>`;
   }).join('');
 }
 function renderTopNavTabs() {
@@ -2842,12 +2984,13 @@ function renderTopNavTabs() {
     grades: 'Baholar jurnali',
     attendance: 'Davomat',
     speaking: 'Speaking',
+    submissions: 'Bajarilgan topshiriqlar',
     profile: 'Profil',
     groups: 'Guruhlar'
   };
   el.innerHTML = navItems().map(it => {
     const active = state.screen === it[0] ? ' active' : '';
-    return `<button type="button" class="top-nav-item${active}" data-act="nav" data-screen="${it[0]}">${esc(t(labels[it[0]] || it[1]))}</button>`;
+    return `<button type="button" class="top-nav-item${active}" data-act="nav" data-screen="${it[0]}">${esc(t(labels[it[0]] || it[1]))}${navBadgeHTML(it[0])}</button>`;
   }).join('');
 }
 
@@ -3248,7 +3391,7 @@ function hwRowHTML(h) {
   /* --- O'quvchi: aylantirish checkbox (○ / ✓) + bajarildi nishoni --- */
   const done = isHwDone(h.id);
   const metaStruck = meta ? (done ? meta.replace('class="muted small"', 'class="muted small hw-struck"') : meta) : '';
-  return `<div class="hw-item hw-task${done ? ' is-done' : ''}">
+  return `<div class="hw-item hw-task${done ? ' is-done' : ''}" data-hid="${esc(String(h.id))}">
     <div class="hw-task-row">
       <button type="button" class="hw-check${done ? ' on' : ''}" data-act="toggle-hw"
               data-hid="${esc(String(h.id))}" aria-pressed="${done ? 'true' : 'false'}"
@@ -3259,9 +3402,129 @@ function hwRowHTML(h) {
         ${metaStruck}
         ${due}
         ${hwMediaHTML(h)}
+        ${hwStudentSubmissionHTML(h)}
       </div>
     </div>
   </div>`;
+}
+
+/* ==================== UYGA VAZIFA TOPSHIRIQLARI (o'quvchi → ustoz) ==================== */
+function myHomeworkSubmission(h) {
+  const st = linkedStudent();
+  if (!st || !h || h.dbId == null || st.dbId == null) return null;
+  const list = store.get(K.homeworkSubmissions, []) || [];
+  return list.filter(function (s) {
+    return String(s.homeworkDbId) === String(h.dbId) && String(s.studentDbId) === String(st.dbId);
+  })[0] || null;
+}
+
+/* Yuklangan fayllar: rasm/video/audio shu yerda, hujjatlar — yuklab olish havolasi */
+function submissionFilesHTML(files) {
+  const list = parseAttachments(files);
+  if (!list.length) return '';
+  return '<div class="sub-files">' + list.map(function (f) {
+    const type = f.type || detectMediaType({ name: f.name }) || 'file';
+    if (type === 'image') {
+      return `<a class="sub-file-img" href="${esc(f.url)}" target="_blank" rel="noopener"><img src="${esc(f.url)}" alt="${esc(f.name || 'Rasm')}" loading="lazy" /></a>`;
+    }
+    if (type === 'video') {
+      return `<div class="hw-media-item"><video controls playsinline preload="metadata" src="${esc(f.url)}"></video></div>`;
+    }
+    if (type === 'audio') {
+      return `<div class="hw-media-item"><audio controls preload="metadata" src="${esc(f.url)}"></audio></div>`;
+    }
+    const isPdf = type === 'pdf' || /\.pdf($|\?)/i.test(f.url);
+    return `<a class="hw-doc-link" href="${esc(f.url)}" target="_blank" rel="noopener" download>
+      <span class="hw-doc-ico">${isPdf ? ico('fileText', 16) : ico('paperclip', 16)}</span>
+      <span class="hw-doc-name">${esc(f.name || 'Fayl')}</span>
+      <span class="hw-doc-dl">${ico('download', 14)} Yuklab olish</span>
+    </a>`;
+  }).join('') + '</div>';
+}
+
+/* O'quvchi vazifa ichida ko'radigan qism: ustoz komentariyasi + o'z fayllari + yuklash formasi.
+   Ruxsat berilmagan o'quvchiga yuklash bo'limi DOM'ga umuman chiqarilmaydi. */
+function hwStudentSubmissionHTML(h) {
+  const st = linkedStudent();
+  if (!st) return '';
+  const sub = myHomeworkSubmission(h);
+  const comment = sub && sub.teacherComment
+    ? `<div class="hw-teacher-comment">${ico('message', 15)}
+        <div><b>O'qituvchi komentariyasi</b><p>${esc(sub.teacherComment)}</p></div>
+      </div>`
+    : '';
+  const mine = sub && sub.files && sub.files.length
+    ? `<div class="hw-my-files">
+        <div class="hw-my-files-h">${ico('paperclip', 14)} Siz yuklagan fayllar</div>
+        ${submissionFilesHTML(sub.files)}
+        ${sub.note ? `<p class="hw-sub-note">${esc(sub.note)}</p>` : ''}
+      </div>`
+    : '';
+  const canUpload = st.homeworkUploadAllowed === true;
+  const upload = canUpload
+    ? `<details class="hw-more">
+      <summary>${ico('upload', 15)} Topshiriqni yuklash</summary>
+      <div class="hw-more-body">
+        <input type="file" class="input hw-sub-input" multiple accept="*/*" data-hid="${esc(String(h.id))}" />
+        <textarea class="input hw-sub-note" rows="2" placeholder="Izoh (ixtiyoriy)"></textarea>
+        <div class="field-error hw-sub-error"></div>
+        <button type="button" class="btn btn-primary btn-block" data-act="hw-submit" data-hid="${esc(String(h.id))}">${ico('upload', 15)} Yuborish</button>
+        <p class="muted small">Rasm, Word, PDF, Excel, video va audio fayllarni yuklash mumkin (har biri 50MB gacha).</p>
+      </div>
+    </details>`
+    : '';
+  return comment + mine + upload;
+}
+
+/* O'quvchi fayl/izoh yuboradi: Storage → homework_submissions */
+async function submitHomeworkFiles(btn) {
+  const st = linkedStudent();
+  const hid = btn ? btn.getAttribute('data-hid') : '';
+  const h = getHomework().filter(function (x) { return String(x.id) === String(hid); })[0];
+  const item = btn && btn.closest ? btn.closest('.hw-item') : null;
+  const input = item ? item.querySelector('.hw-sub-input') : null;
+  const noteEl = item ? item.querySelector('.hw-sub-note') : null;
+  const errEl = item ? item.querySelector('.hw-sub-error') : null;
+  const fail = function (m) {
+    if (errEl) { errEl.textContent = m; errEl.classList.add('show'); }
+    toast(m, 'error');
+  };
+  if (!st || !h) return;
+  if (st.homeworkUploadAllowed !== true) return fail("Uyga vazifa yuklashga ruxsat yo'q");
+  if (h.dbId == null) return fail("Bu vazifa hali bulutga yozilmagan — keyinroq urinib ko'ring");
+  if (st.dbId == null) return fail("Profilingiz bulutga ulanmagan — ustozga murojaat qiling");
+  const files = input && input.files ? Array.prototype.slice.call(input.files) : [];
+  const note = String((noteEl && noteEl.value) || '').trim();
+  if (!files.length && !note) return fail('Fayl tanlang yoki izoh yozing');
+  const big = files.filter(function (f) { return f.size > HW_MAX_BYTES; })[0];
+  if (big) return fail('Fayl hajmi 50MB dan oshmasligi kerak: ' + big.name);
+  const label = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Yuklanmoqda...'; }
+  try {
+    const uploaded = [];
+    for (let i = 0; i < files.length; i++) {
+      const up = await CloudSync.uploadSubmissionFile(files[i], st.dbId, h.dbId);
+      uploaded.push({
+        url: up.url,
+        type: detectMediaType(files[i]) || 'file',
+        name: files[i].name || '',
+        size: files[i].size || 0
+      });
+    }
+    const prev = myHomeworkSubmission(h);
+    const all = ((prev && prev.files) || []).concat(uploaded);
+    await CloudSync.saveHomeworkSubmission({
+      studentDbId: st.dbId,
+      homeworkDbId: h.dbId,
+      files: all,
+      note: note || (prev && prev.note) || ''
+    });
+    render();
+    toast(uploaded.length ? uploaded.length + ' ta fayl yuborildi' : 'Izoh yuborildi');
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = label; }
+    fail('Yuklashda xatolik: ' + ((e && e.message) || 'xatolik'));
+  }
 }
 
 /* --- O'quvchi: vazifani bajarilgan/qayta faol holatga o'tkazish (localStorage'da saqlanadi) --- */
@@ -3867,6 +4130,20 @@ function studentPortal() {
 
   /* --- Uyga vazifalar --- */
   const myHw = getHomework().filter(h => h.groupId && h.groupId === st.groupId);
+  /* O'qituvchi komentariyasi — yangi bo'lsa kabinetda yaqqol bildirishnoma */
+  const hwSeenAt = store.get(K.hwCommentsSeen, '') || '';
+  const freshComments = myHw.filter(function (h) {
+    const sub = myHomeworkSubmission(h);
+    return sub && sub.teacherComment && String(sub.commentedAt || '') > hwSeenAt;
+  }).length;
+  const hwCommentBanner = freshComments ? `<div class="card hw-comment-notice">
+      <span class="hw-comment-notice-ico">${ico('message', 18)}</span>
+      <div class="hw-comment-notice-body">
+        <b>O'qituvchi ${freshComments} ta vazifangizga komentariya yozdi</b>
+        <p class="muted small">Vazifa ichida o'qib, fayllaringizni ko'rishingiz mumkin.</p>
+      </div>
+      <button type="button" class="btn btn-xs ghost" data-act="hw-comments-seen">Ko'rdim</button>
+    </div>` : '';
 
   /* --- Baholar --- */
   const gradeKeys = Object.keys(gradeRec).sort().reverse();
@@ -3931,7 +4208,8 @@ function studentPortal() {
   </div>
 
   <div class="section-title">${ico('bookOpen', 13)} Uyga vazifalar</div>
-  <div class="card">${homeworkListHTML(myHw)}</div>
+  ${hwCommentBanner}
+  <div class="card" id="hw-list">${homeworkListHTML(myHw)}</div>
 
   <div class="section-title">${ico('grades', 15)} Baholar va natijalar</div>
   <div class="card avg-card">
@@ -3966,6 +4244,97 @@ function studentPortal() {
 }
 
 function homeScreen() { return isTeacher() ? teacherHome() : studentPortal(); }
+
+/* ==================== BAJARILGAN TOPSHIRIQLAR (ustoz paneli) ==================== */
+function submissionsList() {
+  return (store.get(K.homeworkSubmissions, []) || []).slice().sort(function (a, b) {
+    return String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || ''));
+  });
+}
+function submissionStudent(s) {
+  return getStudents().filter(function (x) {
+    return x.dbId != null && String(x.dbId) === String(s.studentDbId);
+  })[0] || null;
+}
+function submissionHomework(s) {
+  return getHomework().filter(function (x) {
+    return x.dbId != null && String(x.dbId) === String(s.homeworkDbId);
+  })[0] || null;
+}
+
+function submissionCardHTML(s) {
+  const st = submissionStudent(s);
+  const hw = submissionHomework(s);
+  const when = s.createdAt ? fmtDMY(String(s.createdAt).slice(0, 10)) : '';
+  const haveComment = !!String(s.teacherComment || '').trim();
+  return `<div class="card sub-card${haveComment ? ' is-seen' : ' is-new'}">
+    <div class="row between sub-head">
+      <div class="col sub-who">
+        <strong>${esc(st ? st.fullName : "O'quvchi")}</strong>
+        <span class="muted small">${esc(hw ? hw.title : 'Uyga vazifa')}</span>
+      </div>
+      <span class="chip-class">${esc(when)}</span>
+    </div>
+    ${submissionFilesHTML(s.files)}
+    ${s.note ? `<p class="sub-note">${ico('message', 14)} ${esc(s.note)}</p>` : ''}
+    ${haveComment ? `<div class="sub-teacher-note">${ico('checkCircle', 14)}
+        <span><b>Komentariya:</b> ${esc(s.teacherComment)}${s.commentedAt ? ` <span class="muted small">${esc(timeAgoText(s.commentedAt))}</span>` : ''}</span>
+      </div>` : `<div class="sub-new-badge">${ico('alert', 13)} Ko'rilmagan</div>`}
+    <label class="field-label" for="sub-comment-${esc(String(s.id))}">${ico('message', 14)} Komentariya yozish</label>
+    <textarea class="input sub-comment" id="sub-comment-${esc(String(s.id))}" rows="2" placeholder="O'quvchiga izoh...">${esc(s.teacherComment || '')}</textarea>
+    <button type="button" class="btn btn-primary btn-block" data-act="sub-comment" data-sub="${esc(String(s.id))}">${ico('upload', 15)} Yuborish</button>
+  </div>`;
+}
+
+function submissionsScreen() {
+  if (!isTeacher()) return '';
+  const groups = getGroups();
+  const all = submissionsList();
+  const list = all.filter(function (s) {
+    if (!state.subGroup || state.subGroup === 'all') return true;
+    const hw = submissionHomework(s);
+    return hw && hw.groupId === state.subGroup;
+  });
+  const filterChips = [`<button type="button" class="chip-btn${(!state.subGroup || state.subGroup === 'all') ? ' active' : ''}" data-act="sub-group" data-gid="all">Barchasi</button>`]
+    .concat(groups.map(function (g) {
+      return `<button type="button" class="chip-btn${state.subGroup === g.id ? ' active' : ''}" data-act="sub-group" data-gid="${esc(g.id)}">${esc(g.name)}</button>`;
+    })).join('');
+  return `<div class="screen-head"><h2 class="screen-title">${ico('clipboardCheck', 16)} Bajarilgan topshiriqlar</h2></div>
+  <div class="sub-filters">${filterChips}</div>
+  ${list.length
+    ? `<div class="sub-list">${list.map(submissionCardHTML).join('')}</div>`
+    : `<div class="card">${emptyState("Hozircha yuklangan topshiriqlar yo'q", 'clipboardCheck')}</div>`}`;
+}
+
+/* Ustoz komentariyasi: bazaga + o'quvchining Telegramiga */
+async function sendSubmissionComment(btn) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const id = btn ? btn.getAttribute('data-sub') : '';
+  const sub = submissionsList().filter(function (x) { return String(x.id) === String(id); })[0];
+  if (!sub) return;
+  const box = $('#sub-comment-' + id);
+  const text = String((box && box.value) || '').trim();
+  if (!text) { toast('Avval komentariyani yozing', 'error'); return; }
+  if (btn) btn.disabled = true;
+  try {
+    await CloudSync.commentSubmission(sub.id, text);
+    const st = submissionStudent(sub);
+    const hw = submissionHomework(sub);
+    if (st && st.telegramChatId) {
+      CloudSync.queueMessages([{
+        chat_id: String(st.telegramChatId),
+        student_id: st.dbId,
+        text: "<b>O'qituvchi vazifangizga komentariya yozdi:</b>\n\n" + esc(text) +
+          "\n\n<b>Vazifa:</b> " + esc((hw && hw.title) || 'Uyga vazifa')
+      }]).catch(function (e) { console.warn('[cloud] comment msg:', (e && e.message) || e); });
+    }
+    render();
+    toast('Komentariya yuborildi');
+  } catch (e) {
+    if (btn) btn.disabled = false;
+    toast('Komentariyani saqlashda xatolik', 'error');
+  }
+}
 
 /* ==================== GURUHLAR (faqat ustoz) ==================== */
 /* Kunlar stringi: "Dushanba 09:15, Shanba 11:00" → kun+vaqt; eski "Dushanba" → vaqtsiz */
@@ -5035,12 +5404,36 @@ function openEditStudent(sid) {
     <label class="field-label" for="es-debt">To'lov qarzi (so'mda)</label>
     <input class="input" id="es-debt" type="number" min="0" step="1000" inputmode="numeric" value="${Math.max(0, Number(st.paymentDebt) || 0)}" />
 
+    <div class="switch-row">
+      <span class="switch-row-label">${ico('upload', 16)} Uyga vazifa yuklashga ruxsat</span>
+      <button type="button" class="switch${st.homeworkUploadAllowed === true ? ' on' : ''}"
+              data-act="hw-upload-toggle" data-sid="${esc(String(sid))}"
+              role="switch" aria-checked="${st.homeworkUploadAllowed === true}" aria-label="Uyga vazifa yuklashga ruxsat"></button>
+    </div>
+
     <div class="field-error" id="es-error"></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" data-act="close-modal">Bekor qilish</button>
       <button type="button" class="btn btn-primary" data-act="save-edit-student" data-sid="${esc(String(sid))}">Saqlash</button>
     </div>
   `);
+}
+
+/* Ustoz ruxsati: students.homework_upload_allowed */
+function toggleHwUploadAllowed(sid) {
+  if (!isTeacher()) { toast("Ruxsat yo'q", 'error'); return; }
+  const list = getStudents();
+  const st = list.filter(function (x) { return x.id === sid; })[0];
+  if (!st) return;
+  st.homeworkUploadAllowed = st.homeworkUploadAllowed !== true;
+  store.set(K.students, list);
+  const btn = $('[data-act="hw-upload-toggle"][data-sid="' + sid + '"]');
+  if (btn) {
+    btn.classList.toggle('on', st.homeworkUploadAllowed);
+    btn.setAttribute('aria-checked', String(st.homeworkUploadAllowed));
+  }
+  CloudSync.pushStudent(sid);
+  toast(st.homeworkUploadAllowed ? 'Uyga vazifa yuklashga ruxsat berildi' : "Yuklash ruxsati o'chirildi");
 }
 
 function saveEditStudent(sid) {
@@ -5422,6 +5815,7 @@ function restoreLocal(data) {
       paymentDebt: Number(st.payment_debt) || 0,
       feePeriod: st.fee_period || '',
       voiceAllowed: st.voice_allowed !== false,
+      homeworkUploadAllowed: st.homework_upload_allowed === true,
       telegramChatId: st.telegram_chat_id == null ? null : Number(st.telegram_chat_id),
       lastDevice: st.last_device || '',
       lastSeen: st.last_seen || null,
@@ -7113,6 +7507,7 @@ const SCREENS = {
   'grades': gradesScreen,
   'attendance': attendanceScreen,
   'speaking': speakingScreen,
+  'submissions': submissionsScreen,
   'profile': profileScreen
 };
 
@@ -7515,6 +7910,11 @@ document.addEventListener('click', function (e) {
     'reset-pwd': function () { openResetPwd(btn.getAttribute('data-sid')); },
     'edit-student': function () { openEditStudent(btn.getAttribute('data-sid')); },
     'save-edit-student': function () { saveEditStudent(btn.getAttribute('data-sid')); },
+    'hw-upload-toggle': function () { toggleHwUploadAllowed(btn.getAttribute('data-sid')); },
+    'hw-submit': function () { submitHomeworkFiles(btn); },
+    'hw-comments-seen': function () { store.set(K.hwCommentsSeen, new Date().toISOString()); render(); },
+    'sub-group': function () { state.subGroup = btn.getAttribute('data-gid') || 'all'; render(); },
+    'sub-comment': function () { sendSubmissionComment(btn); },
     'save-reset': function () { saveResetPwd(btn.getAttribute('data-sid')); },
 
     /* --- Zaxira (backup/restore) --- */

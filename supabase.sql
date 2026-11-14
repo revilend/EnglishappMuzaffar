@@ -343,3 +343,37 @@ grant all on all sequences in schema public to anon, authenticated, service_role
 
 -- PostgREST sxema keshini yangilash (yangi jadvallar darhol ko'rinadi)
 notify pgrst, 'reload schema';
+
+-- ============================================================
+-- 16. UYGA VAZIFA TOPSHIRIQLARI (o'quvchi yuklaydi, ustoz komentariya yozadi)
+-- ============================================================
+-- Ustoz ruxsati: o'quvchi saytdan uyga vazifa fayllarini yuklay oladimi
+alter table public.students add column if not exists homework_upload_allowed boolean not null default false;
+
+create table if not exists public.homework_submissions (
+  id              bigint generated always as identity primary key,
+  student_id      bigint not null references public.students (id) on delete cascade,
+  homework_id     bigint not null references public.homework (id) on delete cascade,
+  files           jsonb not null default '[]'::jsonb,   -- [{url, type, name, size}]
+  note            text not null default '',
+  teacher_comment text not null default '',
+  commented_at    timestamptz,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+  unique (student_id, homework_id)
+);
+create index if not exists homework_submissions_hw_idx
+  on public.homework_submissions (homework_id, created_at desc);
+create index if not exists homework_submissions_student_idx
+  on public.homework_submissions (student_id, created_at desc);
+
+alter table public.homework_submissions enable row level security;
+-- Demo loyiha: anon kalit bilan ochiq (bot va sayt bir xil kalitdan foydalanadi)
+drop policy if exists "demo homework_submissions all" on public.homework_submissions;
+create policy "demo homework_submissions all" on public.homework_submissions
+  for all using (true) with check (true);
+
+grant all on public.homework_submissions to anon, authenticated, service_role;
+grant all on all sequences in schema public to anon, authenticated, service_role;
+
+notify pgrst, 'reload schema';

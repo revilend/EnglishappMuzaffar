@@ -365,7 +365,7 @@ check(q('#password-input').value === '', 'login: noto\'g\'ri parol tozalanadi');
 await loginAs('m_amirov', '123');
 check(text().includes('Xush kelibsiz') && text().includes('Muzaffar Amirov'), 'ustoz: dashboard salomi "Xush kelibsiz, Muzaffar Amirov!"');
 check(q('#app-header').textContent.includes('Muzaffar Amirov'), 'ustoz: headerda "Muzaffar Amirov" brendi');
-check(navLabels().length === 7, 'ustoz: 7 ta nav tabi (' + navLabels().join(', ') + ')');
+check(navLabels().length === 8, 'ustoz: 8 ta nav tabi (' + navLabels().join(', ') + ')');
 
 /* --- Vektor ikonka tizimi: barcha emoji o'rniga SVG badge'lar --- */
 check(qa('.quick-grid .quick-ico').length === 6, 'icon: TEZ AMALLAR gridida 6 ta ikonka badge');
@@ -2190,7 +2190,7 @@ await (async () => {
         text().includes('Telegram bot (@uzbekspeakingcheckbot)'),
     'i18n EN: 3 karta sarlavhalari inglizcha');
   await loginAs('m_amirov', '123');
-  check(navLabels().join(',') === 'Home,Students,Payments,Grades,Attendance,Speaking,Profile',
+  check(navLabels().join(',') === 'Home,Students,Submissions,Payments,Grades,Attendance,Speaking,Profile',
     'i18n: ustoz nav EN tilida');
   check(q('#app-header').textContent.includes('Home'),
     'i18n: header bo‘lim nomi EN (Home)');
@@ -2211,7 +2211,7 @@ await (async () => {
 
   /* UZ ga qaytarish */
   click('[data-act="toggle-lang"]');
-  check(navLabels().join(',') === "Bosh,O'quvchi,To'lov,Baholar,Davomat,Speaking,Profil",
+  check(navLabels().join(',') === "Bosh,O'quvchi,Topshiriqlar,To'lov,Baholar,Davomat,Speaking,Profil",
     "i18n: UZ ga qaytish — nav o'zbekcha qoldi");
   check(q('.week-nav-bar').textContent.includes('Oldingi hafta'),
     'i18n: hafta tugmalari UZ ga qaytdi');
@@ -2698,6 +2698,147 @@ await (async () => {
   check(!win.localStorage.getItem('et_teacher_trusted_device') &&
         JSON.parse((trustedRow2 && trustedRow2.value) || '[]').length === 0,
     'trusted: tozalash lokal tokenni ham, server ro‘yxatini ham bo‘shatadi');
+
+  /* ================= 32. UYGA VAZIFA TOPSHIRIQLARI (o'quvchi yuklaydi) ================= */
+  /* Oldingi bo'limlar ustoz parolini o'zgartirgan bo'lishi mumkin — joriyini olamiz */
+  const teacherPass32 = String(((cloudStub.db.bot_settings || []).filter(r => r.key === 'teacher_password')[0] || {}).value || '123');
+  logout();
+  await loginAs('m_amirov', teacherPass32);
+  check(!!JSON.parse(win.localStorage.getItem('et_session') || 'null'), 'topshiriq: ustoz tizimga kirdi');
+  /* restore1 hisobini ma'lum parolga qaytaramiz (oldingi bo'limlar o'zgartirgan) */
+  const prepRestoreStudent = () => {
+    const row = (cloudStub.db.students || []).filter(r => String(r.login).toLowerCase() === 'restore1')[0];
+    if (row) {
+      row.password = '9876'; row.password_hash = '9876';
+      if (row.group_id == null) row.group_id = 55;   /* g55 — uyga vazifa berilgan guruh */
+    }
+    return row;
+  };
+  const restoreRow0 = prepRestoreStudent();
+  /* (a) ustoz ruxsati: tahrirlash modalida toggle */
+  forceNav('students');
+  /* filtr/qidiruvni tozalash (oldingi testlardan qolgan bo'lishi mumkin) */
+  const grpAll = q('[data-act="filter-group-all"]');
+  if (grpAll) click(grpAll);
+  const allChip = q('[data-act="filter-class"][data-class="Barchasi"]');
+  if (allChip && !allChip.classList.contains('active')) click(allChip);
+  if (q('#s-search') && q('#s-search').value) setVal('#s-search', '');
+  if (await until(() => !!q('[data-act="edit-student"]'), 2000)) { /* kartalar async chiziladi */ }
+  const anyEditBtn = q('[data-act="edit-student"]');
+  check(!!anyEditBtn, 'topshiriq: o‘quvchi kartalarida “Tahrirlash” tugmasi bor');
+  click(anyEditBtn);
+  check(!!q('[data-act="hw-upload-toggle"]'),
+    'topshiriq: tahrirlash modalida “Uyga vazifa yuklashga ruxsat” toggle bor');
+  check(q('[data-act="hw-upload-toggle"]').getAttribute('aria-checked') === 'false',
+    'topshiriq: ruxsat boshlang‘ichda o‘chiq');
+  clickAct('hw-upload-toggle');
+  check(q('[data-act="hw-upload-toggle"]').classList.contains('on') &&
+        q('[data-act="hw-upload-toggle"]').getAttribute('aria-checked') === 'true',
+    'topshiriq: toggle yoqildi');
+  const toggledSid = q('[data-act="hw-upload-toggle"]').getAttribute('data-sid');
+  await new Promise(r => setTimeout(r, 300));
+  const toggledRow = (cloudStub.db.students || []).filter(r => ('s' + r.id) === toggledSid)[0] || {};
+  check(toggledRow.homework_upload_allowed === true,
+    'topshiriq: students.homework_upload_allowed = true bazaga yozildi');
+  click('[data-act="close-modal"]');
+  /* restore1 uchun ruxsat (o'quvchi tomonini sinash maqsadida) */
+  if (restoreRow0) restoreRow0.homework_upload_allowed = true;
+
+  /* (b) o'quvchi: ruxsat bilan yuklash bo'limi */
+  logout();
+  prepRestoreStudent();
+  await loginAs('restore1', '9876');
+  forceNav('home');
+  check(!!q('.hw-task'), 'topshiriq: o‘quvchi kabinetida vazifa kartasi bor');
+  check(!!q('.hw-sub-input') && !!q('[data-act="hw-submit"]') &&
+        text().includes('Topshiriqni yuklash'),
+    'topshiriq: ruxsat berilganda yuklash bo‘limi ko‘rinadi');
+  const subInput = q('.hw-sub-input');
+  check(subInput.getAttribute('accept') === '*/*' && subInput.hasAttribute('multiple'),
+    'topshiriq: fayl maydoni accept="*/*" + multiple (rasm, Word, PDF, Excel, video, audio)');
+  win.__cloud.uploadSubmissionFile = function (file, sid, hid) {
+    return Promise.resolve({
+      url: 'https://stub.supabase.local/storage/v1/object/public/homework-media/submissions/' +
+        sid + '/' + hid + '/' + file.name,
+      path: 'submissions/' + sid + '/' + hid + '/' + file.name, bucket: 'homework-media'
+    });
+  };
+  const subPdf = new win.File([new Uint8Array([1])], 'insho.pdf', { type: 'application/pdf' });
+  Object.defineProperty(subInput, 'files', { configurable: true, value: [subPdf] });
+  setVal('.hw-sub-note', 'Mana uyga vazifam');
+  clickAct('hw-submit');
+  check(await until(() => !!q('.hw-my-files'), 3000),
+    'topshiriq: yuborilgach “Siz yuklagan fayllar” bloki chiqadi');
+  const subRow = (cloudStub.db.homework_submissions || [])[0] || {};
+  check(!!subRow.id && Array.isArray(subRow.files) && subRow.files.length === 1 &&
+        subRow.files[0].name === 'insho.pdf' && subRow.note === 'Mana uyga vazifam',
+    'topshiriq: homework_submissions ga fayl + izoh saqlandi');
+  check(String(subRow.files[0].url).indexOf('submissions/') >= 0,
+    'topshiriq: Storage yo‘li submissions/{student}/{homework}/...');
+  check(!!q('.hw-my-files .hw-doc-link'), 'topshiriq: PDF uchun “Yuklab olish” havolasi');
+
+  /* (c) ustoz paneli: “Bajarilgan topshiriqlar” + komentariya */
+  logout();
+  const stSeedRow = (cloudStub.db.students || []).filter(r => String(r.login) === 'restore1')[0];
+  if (stSeedRow) stSeedRow.telegram_chat_id = 555001;
+  await loginAs('m_amirov', teacherPass32);
+  check(!!q('[data-act="nav"][data-screen="submissions"]'),
+    'topshiriq: ustoz navida “Topshiriqlar” bo‘limi bor');
+  const subNavBadge = q('[data-act="nav"][data-screen="submissions"] .nav-badge');
+  check(!!subNavBadge && subNavBadge.textContent === '1',
+    'topshiriq: ko‘rilmagan topshiriqlar soni badge bilan ko‘rinadi');
+  click('[data-act="nav"][data-screen="submissions"]');
+  check(text().includes('Bajarilgan topshiriqlar'), 'topshiriq: bo‘lim sarlavhasi');
+  check(text().includes('Restored Student') && text().includes('Present Perfect shakli'),
+    'topshiriq: o‘quvchi ismi + vazifa nomi ko‘rinadi');
+  check(qa('.sub-filters .chip-btn').length >= 2, 'topshiriq: guruh bo‘yicha filtr chiplari');
+  check(!!q('.sub-card .hw-doc-link'), 'topshiriq: PDF fayl yuklab olish tugmasi bilan');
+  setVal('.sub-comment', 'Yaxshi bajaribsan, davom et!');
+  clickAct('sub-comment');
+  check(await until(() => !!q('.sub-teacher-note'), 3000), 'topshiriq: komentariya yuborildi va ko‘rinadi');
+  const cRow = (cloudStub.db.homework_submissions || [])[0] || {};
+  check(cRow.teacher_comment === 'Yaxshi bajaribsan, davom et!' && !!cRow.commented_at,
+    'topshiriq: teacher_comment + commented_at yangilandi');
+  const tgRow = (cloudStub.db.telegram_outbox || []).filter(r => String(r.chat_id) === '555001')[0] || {};
+  check(String(tgRow.text || '').indexOf('komentariya yozdi') >= 0 &&
+        String(tgRow.text || '').indexOf('Yaxshi bajaribsan') >= 0,
+    'topshiriq: o‘quvchi Telegramiga komentariya xabari navbatga qo‘yildi');
+  check(!q('[data-act="nav"][data-screen="submissions"] .nav-badge'),
+    'topshiriq: komentariyadan keyin badge yo‘qoladi');
+  forceNav('home');
+  check(!!q('[data-act="open-hw"]') && !q('.hw-item'),
+    'topshiriq: Bosh sahifadagi “Uyga vazifa berish” tugmasi tartibi buzilmagan');
+
+  /* (d) o'quvchi: komentariya bildirishnomasi */
+  logout();
+  prepRestoreStudent();
+  await loginAs('restore1', '9876');
+  forceNav('home');
+  check(!!q('.hw-comment-notice'), 'topshiriq: kabinetda yangi komentariya bildirishnomasi chiqadi');
+  check(text().includes('Yaxshi bajaribsan'), 'topshiriq: vazifa ichida o‘qituvchi komentariyasi ko‘rinadi');
+  click('[data-act="hw-comments-seen"]');
+  check(!q('.hw-comment-notice'), 'topshiriq: “Ko‘rdim” bosilgach bildirishnoma yashiriladi');
+
+  /* (e) ruxsat o'chirilsa — yuklash bo'limi DOM'da umuman yo'q */
+  logout();
+  await loginAs('m_amirov', teacherPass32);
+  /* Ruxsatni o'chirish: ustoz toggle'i bir marta o'chiriladi (baza + lokal) */
+  forceNav('students');
+  const anyEditBtn2 = q('[data-act="edit-student"]');
+  click(anyEditBtn2);
+  check(q('[data-act="hw-upload-toggle"]').getAttribute('aria-checked') === 'true' ||
+        q('[data-act="hw-upload-toggle"]').getAttribute('aria-checked') === 'false',
+    'topshiriq: toggle holati aria-checked bilan ko‘rsatiladi');
+  click('[data-act="close-modal"]');
+  if (restoreRow0) restoreRow0.homework_upload_allowed = false;
+  logout();
+  prepRestoreStudent();
+  await loginAs('restore1', '9876');
+  forceNav('home');
+  check(!q('.hw-sub-input') && !q('[data-act="hw-submit"]') &&
+        !text().includes('Topshiriqni yuklash'),
+    'topshiriq: ruxsat o‘chirilganda yuklash yozuvi/tugmasi/bo‘limi DOM’da yo‘q');
+  check(!!q('.hw-my-files'), 'topshiriq: o‘z yuklagan fayllari baribir ko‘rinadi');
 
   console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
   process.exit(failed ? 1 : 0);

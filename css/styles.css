@@ -1787,6 +1787,78 @@ html[data-theme="dark"] .hw-media .plyr--audio .plyr__controls .plyr__control[ar
 .hw-file-actions { display: flex; gap: 8px; margin-top: 8px; }
 .hw-file-actions .btn { flex: 1; }
 
+/* ==================== O'QUVCHI TOPSHIRIG'I + USTOZ KOMENTARIYASI ==================== */
+.switch-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 12px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 14px; background: var(--card);
+}
+.switch-row-label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+
+.hw-more {
+  margin-top: 10px; border: 1px solid rgba(79, 70, 229, 0.28);
+  border-radius: 14px; background: rgba(79, 70, 229, 0.04); overflow: hidden;
+}
+.hw-more > summary {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  font-size: 13px; font-weight: 700; color: var(--accent); cursor: pointer; list-style: none;
+}
+.hw-more > summary::-webkit-details-marker { display: none; }
+.hw-more[open] > summary { border-bottom: 1px solid var(--line); }
+.hw-more-body { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; }
+.hw-sub-input { padding: 10px; font-size: 13px; }
+.hw-teacher-comment {
+  display: flex; gap: 8px; margin-top: 10px; padding: 10px 12px;
+  border: 1px solid rgba(79, 70, 229, 0.28); border-radius: 12px; background: rgba(79, 70, 229, 0.10);
+}
+.hw-teacher-comment b { font-size: 12.5px; }
+.hw-teacher-comment p { margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text); }
+.hw-my-files { margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--line-2); border-radius: 12px; }
+.hw-my-files-h { font-size: 11.5px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+.hw-sub-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); }
+
+.sub-files { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.sub-file-img { display: inline-block; max-width: 240px; }
+.sub-file-img img { display: block; width: 100%; border-radius: 10px; }
+
+.hw-comment-notice {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 10px;
+  border-left: 3px solid var(--accent);
+}
+.hw-comment-notice-ico { display: inline-flex; color: var(--accent); }
+.hw-comment-notice-body { flex: 1; min-width: 0; }
+.hw-comment-notice-body b { font-size: 13px; }
+.hw-comment-notice-body p { margin: 2px 0 0; }
+
+.nav-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px; padding: 0 4px; margin-left: 4px;
+  border-radius: 999px; background: #ef4444; color: #fff;
+  font-size: 10.5px; font-weight: 800; line-height: 1; vertical-align: 1px;
+}
+
+.sub-filters {
+  display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; margin-bottom: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+.sub-filters .chip-btn { flex: none; }
+.sub-filters .chip-btn.active { border-color: var(--accent); color: var(--accent); }
+.sub-list { display: flex; flex-direction: column; gap: 10px; }
+.sub-card { padding: 14px; }
+.sub-card.is-new { border-color: rgba(239, 68, 68, 0.35); }
+.sub-head { align-items: flex-start; gap: 8px; }
+.sub-who strong { font-size: 14px; }
+.sub-note { margin: 8px 0 0; font-size: 12.5px; color: var(--muted); }
+.sub-teacher-note {
+  display: flex; gap: 8px; align-items: flex-start; margin-top: 8px;
+  padding: 8px 10px; border-radius: 10px; background: rgba(34, 197, 94, 0.10); font-size: 12.5px;
+}
+.sub-new-badge {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 8px;
+  font-size: 11.5px; font-weight: 700; color: #ef4444;
+}
+.sub-card .field-label { margin-top: 12px; }
+
 /* Yuklash bloki — fayl tanlash har doim ko'rinadi (native input yashirin) */
 .hw-upload { margin-top: 4px; }
 .hw-upload-row { display: flex; align-items: center; gap: 8px; }
