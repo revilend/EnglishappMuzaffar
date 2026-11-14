@@ -368,11 +368,11 @@ check(q('#app-header').textContent.includes('Muzaffar Amirov'), 'ustoz: headerda
 check(navLabels().length === 8, 'ustoz: 8 ta nav tabi (' + navLabels().join(', ') + ')');
 
 /* --- Vektor ikonka tizimi: barcha emoji o'rniga SVG badge'lar --- */
-check(qa('.quick-grid .quick-ico').length === 6, 'icon: TEZ AMALLAR gridida 6 ta ikonka badge');
-check(qa('.quick-grid .quick-ico svg').length === 6, "icon: har bir badge ichida SVG (emoji o'rniga)");
-check(['tint-indigo', 'tint-emerald', 'tint-sky', 'tint-amber', 'tint-purple', 'tint-slate']
+check(qa('.quick-grid .quick-ico').length === 8, 'icon: TEZ AMALLAR gridida 8 ta ikonka badge');
+check(qa('.quick-grid .quick-ico svg').length === 8, "icon: har bir badge ichida SVG (emoji o'rniga)");
+check(['tint-indigo', 'tint-emerald', 'tint-sky', 'tint-amber', 'tint-purple', 'tint-slate', 'tint-rose', 'tint-teal']
   .every(t => qa('.quick-ico.' + t).length === 1),
-  'icon: indigo/emerald/sky/amber/purple/slate tints har biri bittadan');
+  'icon: indigo/emerald/sky/amber/purple/slate/rose/teal tints har biri bittadan');
 check(!!q('[data-act="open-hw"] svg') && !!q('.stat-ico svg'), 'icon: vazifa tugmasi va status kartalari SVG ikonka');
 check(!/[\u{1F300}-\u{1FAFF}]/u.test(q('#screen').textContent.replace(/[🟢🔴💵📢]/gu, '')),
   "icon: dashboardda cartoon emoji qolmagan (to'lov belgilari mustasno)");
@@ -393,7 +393,21 @@ check(studentCards() === 6 && qa('.chips.is-hl').length === 1 && qa('[data-act="
   "stat: 'Sinflar' kartasi → O'quvchilar + sinf filtri ajratib ko'rsatildi");
 click('[data-act="nav"][data-screen="home"]');
 
-/* Moliyaviy ma'lumotlar UMUMAN yo'q */
+/* --- Bosh sahifa: "So'nggi o'quvchilar" yo'q, tez amallarda yangi bo'limlar --- */
+check(!text().includes("So'nggi o'quvchilar") && !q('.student-card'),
+  'home: "So‘nggi o‘quvchilar" bo‘limi va o‘quvchi kartalari butunlay olib tashlangan');
+check(!!q('.quick-grid [data-act="nav"][data-screen="submissions"]') &&
+      !!q('.quick-grid [data-act="nav"][data-screen="payments"]'),
+  'home: tez amallarda "Bajarilgan topshiriqlar" va "To‘lovlar" tugmalari');
+click('.quick-grid [data-act="nav"][data-screen="payments"]');
+check(text().includes("To'lovlar") && !!q('#pay-month'), 'home: "To‘lovlar" tugmasi to‘lovlar bo‘limini ochadi');
+click('[data-act="nav"][data-screen="home"]');
+click('.quick-grid [data-act="nav"][data-screen="submissions"]');
+check(text().includes('Bajarilgan topshiriqlar'), 'home: "Bajarilgan topshiriqlar" tugmasi bo‘limni ochadi');
+click('[data-act="nav"][data-screen="home"]');
+
+/* Moliyaviy ma'lumotlar (o'quvchi kartalarida — faqat o'quvchilar ekranida) */
+click('[data-act="nav"][data-screen="students"]');
 check(qa('.pay-status').length >= 1, "moliya: o'quvchi kartasida to'lov holati ko'rinadi");
 check(!!q('[data-act="pay-student"]'), "moliya: '💵 To'lov kiritish' tugmasi bor");
 
@@ -566,9 +580,18 @@ check(studentCards() === 2, "guruh→o'quvchi: faqat IELTS guruhidagi 2 ta o'quv
 check(!!q('[data-act="filter-group-all"]') && text().includes('Barcha o\'quvchilar'),
   "guruh→o'quvchi: 'Barcha o'quvchilar' reset tugmasi bor");
 check(text().includes('IELTS Band 7.0 guruhidagi'), "guruh→o'quvchi: aktiv guruh nomi ko'rinadi");
+check(!q('[data-act="remind-debtors"]') && !q('[data-act="nav"][data-screen="debtors"]'),
+  "guruh turi: maktab guruhida qarzdor tugmalari DOM'da umuman yo'q");
 clickAct('filter-group-all');
 check(studentCards() === 6 && !q('[data-act="filter-group-all"]'),
   "guruh→o'quvchi: 'Barcha o'quvchilar' bosildi → filtr tozalandi (6 ta)");
+click('[data-act="nav"][data-screen="groups"]');
+click(qa('.group-card').filter(c => c.textContent.includes('General English'))[0]);
+check(!!q('[data-act="remind-debtors"]') && !!q('[data-act="nav"][data-screen="debtors"]'),
+  "guruh turi: repetitorlik guruhida qarzdor tugmalari ko'rinadi");
+check(!!q('[data-act="remind-debtors"]') && /qarzdorlarga\s+eslatma/i.test(q('[data-act="remind-debtors"]').textContent),
+  "guruh turi: repetitorlik guruhida 'Qarzdorlarga xabar' tugmasi ishlaydi");
+clickAct('filter-group-all');
 
 /* ================= 4. O'QUVCHILAR ================= */
 click('[data-act="nav"][data-screen="students"]');
@@ -1476,7 +1499,7 @@ await (async () => {
   check(/\.quick\s*\{[^}]*padding:\s*14px/.test(cssText), 'tez amallar: p-3.5 (14px) padding');
   check(/\.quick-ico\s*\{[^}]*width:\s*36px;\s*\n?\s*height:\s*36px/.test(cssText),
     'tez amallar: ikonka badge bir xil 36×36px');
-  check(qa('.quick-grid .quick').length === 6, "tez amallar: 6 ta karta (barchasi bir xil balandlikda)");
+  check(qa('.quick-grid .quick').length === 8, "tez amallar: 8 ta karta (barchasi bir xil balandlikda)");
 
   /* ================= 21. VOICE RUXSAT KALITI (kartada) ================= */
   logout();
@@ -2809,6 +2832,9 @@ await (async () => {
   const subNavBadge = q('[data-act="nav"][data-screen="submissions"] .nav-badge');
   check(!!subNavBadge && subNavBadge.textContent === '1',
     'topshiriq: ko‘rilmagan topshiriqlar soni badge bilan ko‘rinadi');
+  const quickSubBadge = q('.quick-grid [data-screen="submissions"] .nav-badge');
+  check(!!quickSubBadge && quickSubBadge.textContent === '1',
+    'topshiriq: home “Tez amallar”da “Bajarilgan topshiriqlar” badge bilan ko‘rinadi');
   click('[data-act="nav"][data-screen="submissions"]');
   check(text().includes('Bajarilgan topshiriqlar'), 'topshiriq: bo‘lim sarlavhasi');
   check(text().includes('Restored Student') && text().includes('Present Perfect shakli'),

@@ -3969,7 +3969,6 @@ function teacherHome() {
   students.forEach(s => { classSet[s.schoolClass] = 1; });
   const u = currentUser() || {};
   const name = u.name || TEACHER_NAME;
-  const recent = students.slice(0, 3);
 
   return `
   <section class="card hero-card">
@@ -3991,6 +3990,8 @@ function teacherHome() {
 
   <div class="section-title">Tez amallar</div>
   <div class="quick-grid">
+    <button type="button" class="card quick" data-act="nav" data-screen="submissions"><span class="quick-ico tint-rose">${ICON.clipboardCheck}</span><span>Bajarilgan topshiriqlar${navBadgeHTML('submissions')}</span></button>
+    <button type="button" class="card quick" data-act="nav" data-screen="payments"><span class="quick-ico tint-teal">${ICON.creditCard}</span><span>To'lovlar</span></button>
     <button type="button" class="card quick" data-act="nav" data-screen="grades"><span class="quick-ico tint-indigo">${ICON.grades}</span><span>Baholar jurnali</span></button>
     <button type="button" class="card quick" data-act="nav" data-screen="attendance"><span class="quick-ico tint-emerald">${ICON.cal}</span><span>Tezkor davomat</span></button>
     <button type="button" class="card quick" data-act="nav" data-screen="speaking"><span class="quick-ico tint-sky">${ICON.mic}</span><span>Speaking slotlari</span></button>
@@ -4001,10 +4002,6 @@ function teacherHome() {
 
   <button type="button" class="btn btn-primary btn-block" data-act="open-hw">${ico('bookOpen', 16)} Uyga vazifa berish</button>
   <div class="muted small" style="margin-top:6px;text-align:center">Berilgan vazifalar guruh sahifasida ko'rinadi.</div>
-
-  <div class="section-title">So'nggi o'quvchilar</div>
-  ${recent.length ? recent.map(studentCard).join('') : emptyState("Hozircha o'quvchi yo'q", 'students')}
-  <button type="button" class="btn btn-ghost btn-block" data-act="nav" data-screen="students">Barchasini ko'rish</button>
   `;
 }
 
@@ -4675,6 +4672,8 @@ function studentsScreen() {
   if (!isTeacher()) return blockedScreen("Bu bo'lim faqat Muzaffar Amirov uchun");
   const chips = ['Barchasi'].concat(APP_DATA.classes);
   const gf = state.filterGroup ? groupById(state.filterGroup) : null;
+  /* Maktab guruhi bepul — qarzdorlik tugmalari umuman kerak emas */
+  const showDebtTools = !gf || groupTypeOf(gf) !== 'school';
   return `
   <div class="screen-head">
     <div>
@@ -4696,10 +4695,10 @@ function studentsScreen() {
     <input class="input" id="s-search" type="search" placeholder="O'quvchi ismini kiriting..." value="${esc(state.search)}" />
   </div>
 
-  <button type="button" class="btn btn-primary btn-block debtors-btn" data-act="remind-debtors">
+  ${showDebtTools ? `<button type="button" class="btn btn-primary btn-block debtors-btn" data-act="remind-debtors">
     <span class="debtors-ico">${ico('megaphone', 18)}</span> Barcha qarzdorlarga eslatma yuborish
   </button>
-  <button type="button" class="btn btn-ghost btn-block" data-act="nav" data-screen="debtors">${ico('creditCard', 16)} Qarzdorlar ro'yxati</button>
+  <button type="button" class="btn btn-ghost btn-block" data-act="nav" data-screen="debtors">${ico('creditCard', 16)} Qarzdorlar ro'yxati</button>` : ''}
 
   <div class="chips${state.classHint ? ' is-hl' : ''}">
     ${chips.map(c => `<button type="button" class="chip-btn ${state.filterClass === c ? 'active' : ''}" data-act="filter-class" data-class="${esc(c)}">${esc(tClass(c))}</button>`).join('')}

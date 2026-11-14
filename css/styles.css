@@ -587,6 +587,7 @@ img.auth-logo {
 .tint-amber   { background: #fffbeb; color: #d97706; }
 .tint-purple  { background: #faf5ff; color: #9333ea; }
 .tint-slate   { background: #f1f5f9; color: #334155; }
+.tint-teal    { background: #f0fdfa; color: #0d9488; }
 .tint-rose    { background: #fff1f2; color: #e11d48; }
 .quick:active { transform: scale(0.97); }
 
