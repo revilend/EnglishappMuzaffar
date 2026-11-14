@@ -7872,6 +7872,29 @@ $('#modal-overlay').addEventListener('click', function (e) {
 /* Week navigation is now rendered directly in gradesScreen() template. */
 
 /* ==================== PLYR: video/audio pleyer (fullscreen, tezlik, ±10s) ==================== */
+/* Speed menyusi: barmoq bilan surilganda sahifa emas, menyu ichi skroll bo'ladi.
+   Menyu chegarasiga yetganda touchmove bekor qilinadi (scroll chaining to'xtaydi). */
+function touchGuardPlyrMenus() {
+  const menus = $$('.hw-media .plyr__menu__container, .hw-media .plyrmenucontainer, .plyrmenucontainer');
+  menus.forEach(function (menu) {
+    if (!menu || menu.getAttribute('data-touch-guard')) return;
+    menu.setAttribute('data-touch-guard', '1');
+    menu.addEventListener('touchmove', function (e) {
+      if (!e.touches || !e.touches.length) return;
+      const y = e.touches[0].clientY;
+      const prev = menu.__touchY;
+      menu.__touchY = y;
+      const dy = (prev == null) ? 0 : (y - prev);
+      const canScroll = menu.scrollHeight > menu.clientHeight + 1;
+      if (!canScroll) { e.preventDefault(); return; }
+      const atTop = menu.scrollTop <= 0;
+      const atBottom = menu.scrollTop + menu.clientHeight >= menu.scrollHeight - 1;
+      if ((dy > 0 && atTop) || (dy < 0 && atBottom)) e.preventDefault();
+    }, { passive: false });
+    menu.addEventListener('touchend', function () { menu.__touchY = null; }, { passive: true });
+    menu.addEventListener('touchcancel', function () { menu.__touchY = null; }, { passive: true });
+  });
+}
 function initPlyr() {
   if (!window.Plyr) return;
   $$('.hw-media video, .hw-media audio').forEach(function (el) {
@@ -7892,6 +7915,7 @@ function initPlyr() {
       });
     } catch (e) { console.warn('[plyr]', (e && e.message) || e); }
   });
+  touchGuardPlyrMenus();
 }
 function watchHwMedia() {
   initPlyr();

@@ -2134,6 +2134,18 @@ await (async () => {
         /\.hw-media \.plyr--audio \.plyr__progress__container \{[^}]*min-width: 110px/.test(cssSrc) &&
         /\.hw-media \.plyr--audio \.plyr__controls \.plyr__control \{[^}]*flex-shrink: 0/.test(cssSrc),
     'audio pleyer: tor ekranda tugmalar keyingi qatorga tushadi (flex-wrap + flex-shrink + progress min-width)');
+  const menuCss = (cssSrc.match(/\.hw-media \.plyr__menu__container[^{]*\{[^}]*\}/g) || []).join(' ');
+  check(/z-index: 999 !important/.test(menuCss) && /max-height: 210px !important/.test(menuCss) &&
+        /overflow-y: auto !important/.test(menuCss) && /overscroll-behavior: contain/.test(menuCss) &&
+        /-webkit-overflow-scrolling: touch/.test(menuCss),
+    'audio pleyer: Speed menyusi paneli — z-index, max-height 210px, ichki skroll, overscroll contain');
+  check(/\.hw-card, \.hw-media[^{]*\{[^}]*overflow: visible !important/.test(cssSrc) &&
+        /\.hw-media \.plyr__menu__container[^{]*\{[^}]*background: #ffffff !important/.test(cssSrc) &&
+        /html\[data-theme="dark"\] \.hw-media \.plyr__menu__container[^{]*\{[^}]*background: #1e293b !important/.test(cssSrc),
+    'audio pleyer: overflow visible + menyu foni light/dark rejimda shaffof emas');
+  check(appJs.indexOf('touchGuardPlyrMenus') >= 0 &&
+        /speed: \{ selected: 1, options: \[0\.5, 0\.75, 1, 1\.25, 1\.5, 2\] \}/.test(appJs),
+    'audio pleyer: tezlik 0.5–2x sozlamasi + menyu touch-guard (sahifa skroll bo\'lmaydi)');
   check(cssSrc.indexOf('.auth') >= 0 && /\.auth \{[^}]*justify-content: flex-start/.test(cssSrc),
     'css: auth wrapper justify-content: flex-start');
   check(/\.recover-modes \{[^}]*grid/.test(cssSrc) && cssSrc.indexOf('.recover-opt') >= 0,

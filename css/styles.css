@@ -1683,7 +1683,82 @@ html[data-theme="dark"] .st-inset {
 }
 .hw-media .plyr, .hw-media video, .hw-media audio { width: 100%; border-radius: 12px; }
 .hw-media audio { min-height: 40px; }
-.hw-media .plyr { --plyr-color-main: #4f46e5; border-radius: 12px; overflow: hidden; }
+.hw-media .plyr { --plyr-color-main: #4f46e5; border-radius: 12px; }
+
+/* Plyr: tezlik (Speed) menyusi yuqoriga ochilib kesilib qolmasin — ota-elementlar kesmaydi */
+.hw-card, .hw-media, .hw-media-item,
+.hw-media .plyr, .hw-media .plyr--audio, .hw-media .plyr__controls {
+  overflow: visible !important;
+}
+/* .hw-card burchaklari buzilmasin: radius element o'zida qoladi, faqat kontent kesilmaydi */
+.hw-card { border-radius: 20px; -webkit-mask-image: none; mask-image: none; }
+.hw-media .plyr { border-radius: 12px; }
+
+/* Speed menyusi paneli: shaffof emas, soya bilan ajralib turadi, ichida skroll bo'ladi */
+.hw-media .plyr__menu__container,
+.hw-media .plyrmenucontainer,
+.plyrmenucontainer {
+  z-index: 999 !important;
+  background: #ffffff !important;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.2) !important;
+  max-height: 210px !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  border-radius: 10px !important;
+}
+html[data-theme="dark"] .hw-media .plyr__menu__container,
+html[data-theme="dark"] .hw-media .plyrmenucontainer,
+html[data-theme="dark"] .plyrmenucontainer {
+  background: #1e293b !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Menyu bandlari: orqadagi play/rewind tugmalari ko'rinmaydi, matn aniq o'qiladi */
+.hw-media .plyr__menu__container [role="menu"],
+.hw-media .plyrmenucontainer [role="menu"] {
+  background: #ffffff !important;
+}
+.hw-media .plyr__menu__container .plyr__control,
+.hw-media .plyr__menu__container [role="menuitemradio"],
+.hw-media .plyr__menu__container [role="menuitemradio"] span,
+.hw-media .plyrmenucontainer .plyr__control,
+.hw-media .plyrmenucontainer [role="menuitemradio"],
+.hw-media .plyrmenucontainer [role="menuitemradio"] span {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  opacity: 1 !important;
+  min-height: 38px;
+  text-shadow: none !important;
+}
+.hw-media .plyr__menu__container .plyr__control:hover,
+.hw-media .plyr__menu__container [role="menuitemradio"][aria-checked="true"],
+.hw-media .plyr__menu__container [role="menuitemradio"][aria-checked="true"] span,
+.hw-media .plyrmenucontainer .plyr__control:hover,
+.hw-media .plyrmenucontainer [role="menuitemradio"][aria-checked="true"],
+.hw-media .plyrmenucontainer [role="menuitemradio"][aria-checked="true"] span {
+  background: rgba(79, 70, 229, 0.14) !important;
+  color: #4f46e5 !important;
+}
+html[data-theme="dark"] .hw-media .plyr__menu__container [role="menu"],
+html[data-theme="dark"] .hw-media .plyrmenucontainer [role="menu"] { background: #1e293b !important; }
+html[data-theme="dark"] .hw-media .plyr__menu__container .plyr__control,
+html[data-theme="dark"] .hw-media .plyr__menu__container [role="menuitemradio"],
+html[data-theme="dark"] .hw-media .plyr__menu__container [role="menuitemradio"] span,
+html[data-theme="dark"] .hw-media .plyrmenucontainer .plyr__control,
+html[data-theme="dark"] .hw-media .plyrmenucontainer [role="menuitemradio"],
+html[data-theme="dark"] .hw-media .plyrmenucontainer [role="menuitemradio"] span {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+html[data-theme="dark"] .hw-media .plyr__menu__container [role="menuitemradio"][aria-checked="true"],
+html[data-theme="dark"] .hw-media .plyr__menu__container [role="menuitemradio"][aria-checked="true"] span,
+html[data-theme="dark"] .hw-media .plyrmenucontainer [role="menuitemradio"][aria-checked="true"],
+html[data-theme="dark"] .hw-media .plyrmenucontainer [role="menuitemradio"][aria-checked="true"] span {
+  background: rgba(148, 163, 184, 0.22) !important;
+  color: #bfdbfe !important;
+}
 /* Audio pleyer: tor ekranda boshqaruv tugmalari qirqilmaydi — keyingi qatorga tushadi */
 .hw-media .plyr--audio .plyr__controls { flex-wrap: wrap; gap: 4px 6px; padding: 8px 10px; color: #1e293b; }
 .hw-media .plyr--audio .plyr__controls .plyr__control { flex-shrink: 0; }
