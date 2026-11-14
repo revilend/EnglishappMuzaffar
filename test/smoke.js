@@ -2924,6 +2924,15 @@ await (async () => {
     'topshiriq: ruxsat o‘chirilganda yuklash yozuvi/tugmasi/bo‘limi DOM’da yo‘q');
   check(!!q('.hw-my-files'), 'topshiriq: o‘z yuklagan fayllari baribir ko‘rinadi');
 
+  /* (f) Supabase SQL: homework-media bucket + anon storage policy'lari */
+  const sqlText = fs.readFileSync(path.join(root, 'supabase.sql'), 'utf8');
+  check(/insert into storage\.buckets[\s\S]*?'homework-media'[\s\S]*?true/i.test(sqlText),
+    'sql: homework-media bucket public sifatida yaratiladi (mavjud bo‘lsa public=true qilinadi)');
+  check(/create policy "homework-media anon insert"\s+on storage\.objects[\s\S]*?with check \(bucket_id = 'homework-media'\)/i.test(sqlText),
+    'sql: anon INSERT policy faqat homework-media bucket uchun');
+  check(/create policy "homework-media anon select"\s+on storage\.objects[\s\S]*?using \(bucket_id = 'homework-media'\)/i.test(sqlText),
+    'sql: anon SELECT policy faqat homework-media bucket uchun');
+
   console.log(failed ? '\n' + failed + ' ta test YIQILDI' : '\nBarcha testlar o\'tdi ✓');
   process.exit(failed ? 1 : 0);
 })();

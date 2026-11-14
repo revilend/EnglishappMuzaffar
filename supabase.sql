@@ -385,3 +385,38 @@ grant all on public.homework_submissions to anon, authenticated, service_role;
 grant all on all sequences in schema public to anon, authenticated, service_role;
 
 notify pgrst, 'reload schema';
+
+-- ============================================================
+-- 17. STORAGE: homework-media bucket + anon ruxsatlar
+-- ============================================================
+-- O'quvchi saytdan fayl yuklaganda "403 / new row violates row-level
+-- security policy" bermasligi uchun bucket public bo'lishi va
+-- storage.objects ustida anon INSERT/SELECT policy'lari bo'lishi kerak.
+
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('homework-media', 'homework-media', true, 52428800)
+on conflict (id) do update
+  set public = true,
+      file_size_limit = 52428800;
+
+-- storage.objects da RLS odatda yoqilgan; policy'lar faqat shu bucket bilan chegaralanadi
+drop policy if exists "homework-media anon select" on storage.objects;
+create policy "homework-media anon select" on storage.objects
+  for select to anon, authenticated
+  using (bucket_id = 'homework-media');
+
+drop policy if exists "homework-media anon insert" on storage.objects;
+create policy "homework-media anon insert" on storage.objects
+  for insert to anon, authenticated
+  with check (bucket_id = 'homework-media');
+
+drop policy if exists "homework-media anon update" on storage.objects;
+create policy "homework-media anon update" on storage.objects
+  for update to anon, authenticated
+  using (bucket_id = 'homework-media')
+  with check (bucket_id = 'homework-media');
+
+drop policy if exists "homework-media anon delete" on storage.objects;
+create policy "homework-media anon delete" on storage.objects
+  for delete to anon, authenticated
+  using (bucket_id = 'homework-media');
